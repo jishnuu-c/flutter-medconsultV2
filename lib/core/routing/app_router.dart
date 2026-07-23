@@ -1,0 +1,189 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../features/auth/presentation/login_screen.dart';
+import '../../features/auth/presentation/register_screen.dart';
+import '../../features/clinic_admin/presentation/clinics_screen.dart';
+import '../../features/clinic_admin/presentation/doctors_screen.dart';
+import '../../features/doctor_dashboard/presentation/availability_screen.dart';
+import '../../features/doctor_dashboard/presentation/caserooms_screen.dart';
+import '../../features/doctor_dashboard/presentation/consultations_screen.dart';
+import '../../features/doctor_dashboard/presentation/doctor_profile_screen.dart';
+import '../../features/doctor_dashboard/presentation/patients_screen.dart';
+import '../../features/doctor_dashboard/presentation/schedule_screen.dart';
+import '../../features/landing/presentation/landing_screen.dart';
+import '../../features/patient_dashboard/presentation/book_appointment_screen.dart';
+import '../../features/patient_dashboard/presentation/patient_consultations_screen.dart';
+import '../../features/patient_dashboard/presentation/patient_emr_screen.dart';
+import '../../features/patient_dashboard/presentation/patient_health_profile_screen.dart';
+import '../../features/patient_dashboard/presentation/patient_home_screen.dart';
+import '../../features/patient_dashboard/presentation/patient_profile_screen.dart';
+import '../../features/system_admin/presentation/system_admin_screen.dart';
+
+import '../auth/auth_provider.dart';
+import '../models/auth_models.dart';
+import '../widgets/app_layout.dart';
+
+final routerProvider = Provider<GoRouter>((ref) {
+  return GoRouter(
+    initialLocation: '/',
+    refreshListenable: _RiverpodRefreshStream(ref),
+    redirect: (BuildContext context, GoRouterState state) {
+      final authState = ref.read(authNotifierProvider);
+
+      if (!authState.isInitialized) {
+        return null;
+      }
+
+      final isLoggedIn = authState.isLoggedIn;
+      final location = state.uri.toString();
+      final isAuthRoute = location == '/login' || location.startsWith('/login?') || location == '/register' || location.startsWith('/register?');
+
+      // 1. noAuthGuard logic for /login and /register
+      if (isAuthRoute && isLoggedIn) {
+        final user = authState.currentUser;
+        if (user?.role == UserRole.PATIENT) {
+          return '/patient/home';
+        } else if (user?.role == UserRole.DOCTOR) {
+          return '/doctor/schedule';
+        } else if (user?.role == UserRole.CLINIC_ADMIN) {
+          return '/clinic-admin/clinics';
+        } else if (user?.role == UserRole.SYSTEM_ADMIN) {
+          return '/system-admin';
+        } else {
+          return '/patient/home';
+        }
+      }
+
+      // 2. authGuard & roleGuard logic for protected section routes
+      if (location.startsWith('/patient')) {
+        if (!isLoggedIn) return '/login?returnUrl=${Uri.encodeComponent(location)}';
+        if (authState.currentUser != null && !authState.hasRole([UserRole.PATIENT])) return '/patient/home';
+      }
+
+      if (location.startsWith('/doctor')) {
+        if (!isLoggedIn) return '/login?returnUrl=${Uri.encodeComponent(location)}';
+        if (authState.currentUser != null && !authState.hasRole([UserRole.DOCTOR])) return '/doctor/schedule';
+      }
+
+      if (location.startsWith('/clinic-admin')) {
+        if (!isLoggedIn) return '/login?returnUrl=${Uri.encodeComponent(location)}';
+        if (authState.currentUser != null && !authState.hasRole([UserRole.CLINIC_ADMIN])) return '/clinic-admin/clinics';
+      }
+
+      if (location.startsWith('/system-admin')) {
+        if (!isLoggedIn) return '/login?returnUrl=${Uri.encodeComponent(location)}';
+        if (authState.currentUser != null && !authState.hasRole([UserRole.SYSTEM_ADMIN])) return '/system-admin';
+      }
+
+      return null;
+    },
+    routes: [
+      GoRoute(
+        path: '/',
+        builder: (context, state) => const LandingScreen(),
+      ),
+      GoRoute(
+        path: '/login',
+        builder: (context, state) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: '/register',
+        builder: (context, state) => const RegisterScreen(),
+      ),
+
+      // Protected Shell Routes with AppLayout
+      ShellRoute(
+        builder: (context, state, child) => AppLayout(child: child),
+        routes: [
+          // Patient Routes
+          GoRoute(
+            path: '/patient',
+            redirect: (context, state) => '/patient/home',
+          ),
+          GoRoute(
+            path: '/patient/home',
+            builder: (context, state) => const PatientHomeScreen(),
+          ),
+          GoRoute(
+            path: '/patient/profile',
+            builder: (context, state) => const PatientProfileScreen(),
+          ),
+          GoRoute(
+            path: '/patient/health-profile',
+            builder: (context, state) => const PatientHealthProfileScreen(),
+          ),
+          GoRoute(
+            path: '/patient/book-appointment',
+            builder: (context, state) => const BookAppointmentScreen(),
+          ),
+          GoRoute(
+            path: '/patient/emr',
+            builder: (context, state) => const PatientEmrScreen(),
+          ),
+          GoRoute(
+            path: '/patient/consultations',
+            builder: (context, state) => const PatientConsultationsScreen(),
+          ),
+
+          // Doctor Routes
+          GoRoute(
+            path: '/doctor',
+            redirect: (context, state) => '/doctor/schedule',
+          ),
+          GoRoute(
+            path: '/doctor/schedule',
+            builder: (context, state) => const DoctorScheduleScreen(),
+          ),
+          GoRoute(
+            path: '/doctor/profile',
+            builder: (context, state) => const DoctorProfileScreen(),
+          ),
+          GoRoute(
+            path: '/doctor/patients',
+            builder: (context, state) => const DoctorPatientsScreen(),
+          ),
+          GoRoute(
+            path: '/doctor/availability',
+            builder: (context, state) => const DoctorAvailabilityScreen(),
+          ),
+          GoRoute(
+            path: '/doctor/consultations',
+            builder: (context, state) => const DoctorConsultationsScreen(),
+          ),
+          GoRoute(
+            path: '/doctor/caserooms',
+            builder: (context, state) => const DoctorCaseRoomsScreen(),
+          ),
+
+          // Clinic Admin Routes
+          GoRoute(
+            path: '/clinic-admin',
+            redirect: (context, state) => '/clinic-admin/clinics',
+          ),
+          GoRoute(
+            path: '/clinic-admin/clinics',
+            builder: (context, state) => const ClinicsScreen(),
+          ),
+          GoRoute(
+            path: '/clinic-admin/doctors',
+            builder: (context, state) => const DoctorsScreen(),
+          ),
+
+          // System Admin Routes
+          GoRoute(
+            path: '/system-admin',
+            builder: (context, state) => const SystemAdminScreen(),
+          ),
+        ],
+      ),
+    ],
+  );
+});
+
+class _RiverpodRefreshStream extends ChangeNotifier {
+  _RiverpodRefreshStream(Ref ref) {
+    ref.listen<AuthState>(authNotifierProvider, (_, __) => notifyListeners());
+  }
+}
