@@ -25,7 +25,8 @@ class DoctorService {
   }
 
   Future<DoctorModel> updateDoctor(String id, Map<String, dynamic> dto) async {
-    final res = await dio.patch('/api/medconsult/doctors/$id/update', data: dto);
+    final res =
+        await dio.patch('/api/medconsult/doctors/$id/update', data: dto);
     return DoctorModel.fromJson(res.data);
   }
 
@@ -50,7 +51,15 @@ class DoctorService {
   }
 
   Future<DoctorClinicModel> addDoctorClinic(Map<String, dynamic> dto) async {
-    final res = await dio.post('/api/medconsult/doctors/clinics/add', data: dto);
+    final res =
+        await dio.post('/api/medconsult/doctors/clinics/add', data: dto);
+    return DoctorClinicModel.fromJson(res.data);
+  }
+
+  Future<DoctorClinicModel> updateDoctorClinic(
+      String dcId, Map<String, dynamic> dto) async {
+    final res = await dio.patch('/api/medconsult/doctors/clinics/$dcId/update',
+        data: dto);
     return DoctorClinicModel.fromJson(res.data);
   }
 
@@ -59,14 +68,23 @@ class DoctorService {
   }
 
   // ── Specialties ─────────────────────────────────────────────────────
-  Future<List<DoctorSpecialtyModel>> getDoctorSpecialties(String doctorId) async {
+  Future<List<DoctorSpecialtyModel>> getDoctorSpecialties(
+      String doctorId) async {
     final res = await dio.get('/api/medconsult/doctors/$doctorId/specialties');
     final List list = res.data ?? [];
     return list.map((e) => DoctorSpecialtyModel.fromJson(e)).toList();
   }
 
   Future<DoctorSpecialtyModel> addSpecialty(Map<String, dynamic> dto) async {
-    final res = await dio.post('/api/medconsult/doctors/specialties/add', data: dto);
+    final res =
+        await dio.post('/api/medconsult/doctors/specialties/add', data: dto);
+    return DoctorSpecialtyModel.fromJson(res.data);
+  }
+
+  Future<DoctorSpecialtyModel> updateSpecialty(
+      String id, Map<String, dynamic> dto) async {
+    final res = await dio
+        .patch('/api/medconsult/doctors/specialties/$id/update', data: dto);
     return DoctorSpecialtyModel.fromJson(res.data);
   }
 
@@ -82,7 +100,8 @@ class DoctorService {
   }
 
   Future<DoctorLanguageModel> addLanguage(Map<String, dynamic> dto) async {
-    final res = await dio.post('/api/medconsult/doctors/languages/add', data: dto);
+    final res =
+        await dio.post('/api/medconsult/doctors/languages/add', data: dto);
     return DoctorLanguageModel.fromJson(res.data);
   }
 
@@ -91,14 +110,18 @@ class DoctorService {
   }
 
   // ── Qualifications ──────────────────────────────────────────────────
-  Future<List<DoctorQualificationModel>> getDoctorQualifications(String doctorId) async {
-    final res = await dio.get('/api/medconsult/doctors/$doctorId/qualifications');
+  Future<List<DoctorQualificationModel>> getDoctorQualifications(
+      String doctorId) async {
+    final res =
+        await dio.get('/api/medconsult/doctors/$doctorId/qualifications');
     final List list = res.data ?? [];
     return list.map((e) => DoctorQualificationModel.fromJson(e)).toList();
   }
 
-  Future<DoctorQualificationModel> addQualification(Map<String, dynamic> dto) async {
-    final res = await dio.post('/api/medconsult/doctors/qualifications/add', data: dto);
+  Future<DoctorQualificationModel> addQualification(
+      Map<String, dynamic> dto) async {
+    final res =
+        await dio.post('/api/medconsult/doctors/qualifications/add', data: dto);
     return DoctorQualificationModel.fromJson(res.data);
   }
 
