@@ -7,13 +7,35 @@ enum UserRole {
   final String value;
   const UserRole(this.value);
 
-  static UserRole fromString(String? role) {
-    if (role == null || role.isEmpty) return UserRole.PATIENT;
-    final clean = role.toUpperCase().trim();
-    return UserRole.values.firstWhere(
+  static UserRole fromString(dynamic role) {
+    if (role == null) return UserRole.PATIENT;
+    final String clean = role.toString().toUpperCase().trim();
+    if (clean.contains('SYSTEM') || clean.contains('SYS_ADMIN'))
+      return UserRole.SYSTEM_ADMIN;
+    if (clean.contains('CLINIC')) return UserRole.CLINIC_ADMIN;
+    // Plain "ADMIN" (no SYSTEM/CLINIC prefix) was falling through to the
+    // orElse below and silently defaulting to PATIENT — that's what sent
+    // admin logins into the patient dashboard, which then failed to load
+    // patient-only data with an admin token.
+    if (clean == 'ADMIN' ||
+        clean.contains('SUPER_ADMIN') ||
+        clean.contains('SUPERADMIN')) {
+      return UserRole.SYSTEM_ADMIN;
+    }
+    if (clean.contains('DOCTOR') || clean.contains('DOC'))
+      return UserRole.DOCTOR;
+    if (clean.contains('PATIENT')) return UserRole.PATIENT;
+    final match = UserRole.values.firstWhere(
       (e) => e.value == clean || e.name == clean,
       orElse: () => UserRole.PATIENT,
     );
+    // ignore: avoid_print
+    if (match == UserRole.PATIENT && clean != 'PATIENT') {
+      print(
+          'UserRole.fromString: unrecognized role "$clean", defaulted to PATIENT. '
+          'Check what your backend actually sends for this user and add a case for it above.');
+    }
+    return match;
   }
 }
 
@@ -25,9 +47,9 @@ enum Gender {
   final String value;
   const Gender(this.value);
 
-  static Gender fromString(String? val) {
-    if (val == null || val.isEmpty) return Gender.PREFER_NOT_TO_SAY;
-    final clean = val.toUpperCase().trim();
+  static Gender fromString(dynamic val) {
+    if (val == null) return Gender.PREFER_NOT_TO_SAY;
+    final String clean = val.toString().toUpperCase().trim();
     return Gender.values.firstWhere(
       (e) => e.value == clean || e.name == clean,
       orElse: () => Gender.PREFER_NOT_TO_SAY,
@@ -55,11 +77,24 @@ class UserModel {
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
+    dynamic roleVal = json['role'] ?? json['userRole'] ?? json['roleName'];
+    if (roleVal == null &&
+        json['roles'] is List &&
+        (json['roles'] as List).isNotEmpty) {
+      roleVal = json['roles'][0];
+    }
     return UserModel(
-      id: json['id']?.toString() ?? json['_id']?.toString() ?? json['userId']?.toString() ?? '',
-      email: json['email'] ?? '',
-      fullName: json['fullName'] ?? json['name'] ?? json['username'] ?? '',
-      role: UserRole.fromString(json['role'] ?? json['userRole']),
+      id: json['id']?.toString() ??
+          json['_id']?.toString() ??
+          json['userId']?.toString() ??
+          '',
+      email: json['email'] ?? json['emailAddress'] ?? '',
+      fullName: json['fullName'] ??
+          json['name'] ??
+          json['username'] ??
+          json['displayName'] ??
+          '',
+      role: UserRole.fromString(roleVal),
       avatarUrl: json['avatarUrl'] ?? json['avatar'],
       gender: json['gender'] != null ? Gender.fromString(json['gender']) : null,
       phone: json['phone'] ?? json['phoneNumber'] ?? json['mobile'],
@@ -148,7 +183,9 @@ class AuthResponseDto {
       final userData = json['user'] ?? json['data']?['user'] ?? json['userDto'];
       return AuthResponseDto(
         token: token.toString(),
-        user: userData is Map<String, dynamic> ? UserModel.fromJson(userData) : null,
+        user: userData is Map<String, dynamic>
+            ? UserModel.fromJson(userData)
+            : null,
       );
     }
     return AuthResponseDto(token: '');

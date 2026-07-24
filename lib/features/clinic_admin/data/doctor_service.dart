@@ -33,6 +33,15 @@ class DoctorService {
     await dio.delete('/api/medconsult/doctors/$id/delete');
   }
 
+  // ── Slots ───────────────────────────────────────────────────────────
+  Future<List<dynamic>> getAvailableSlots(String dcId, {String? date}) async {
+    final res = await dio.get(
+      '/api/medconsult/doctors/clinics/$dcId/slots',
+      queryParameters: {if (date != null) 'date': date},
+    );
+    return res.data ?? [];
+  }
+
   // ── Doctor Clinics Placements ───────────────────────────────────────
   Future<List<DoctorClinicModel>> getDoctorClinics(String doctorId) async {
     final res = await dio.get('/api/medconsult/doctors/$doctorId/clinics');

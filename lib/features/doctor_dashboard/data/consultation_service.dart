@@ -15,6 +15,20 @@ class ConsultationService {
     return res.data ?? [];
   }
 
+  Future<dynamic> openConsultation(Map<String, dynamic> dto) async {
+    final res = await dio.post('/api/medconsult/consultations/book', data: dto);
+    return res.data;
+  }
+
+  Future<List<dynamic>> getConsultationsByPatient(String patientId, {int page = 0, int size = 50}) async {
+    final res = await dio.get(
+      '/api/medconsult/consultations/patient/$patientId',
+      queryParameters: {'page': page, 'size': size},
+    );
+    if (res.data is Map && res.data['content'] != null) return res.data['content'];
+    return res.data ?? [];
+  }
+
   Future<dynamic> getConsultationById(String id) async {
     final res = await dio.get('/api/medconsult/consultations/$id');
     return res.data;

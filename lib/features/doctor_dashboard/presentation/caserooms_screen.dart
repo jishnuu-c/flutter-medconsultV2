@@ -139,12 +139,8 @@ class _DoctorCaseRoomsScreenState extends ConsumerState<DoctorCaseRoomsScreen> {
             const SizedBox(height: 20),
 
             Expanded(
-              child: Row(
-                children: [
-                  // Case Rooms List
-                  Expanded(
-                    flex: 2,
-                    child: Card(
+              child: _selectedRoom == null
+                  ? Card(
                       child: _isLoading
                           ? const Center(child: CircularProgressIndicator())
                           : ListView.separated(
@@ -152,10 +148,7 @@ class _DoctorCaseRoomsScreenState extends ConsumerState<DoctorCaseRoomsScreen> {
                               separatorBuilder: (context, index) => const Divider(height: 1),
                               itemBuilder: (context, index) {
                                 final cr = _caseRooms[index];
-                                final isSelected = _selectedRoom?['caseRoomId'] == cr['caseRoomId'];
                                 return ListTile(
-                                  selected: isSelected,
-                                  selectedTileColor: AppTheme.primaryLightTeal,
                                   title: Text(cr['title'], style: const TextStyle(fontWeight: FontWeight.bold)),
                                   subtitle: Text('${cr['specialty']} • ${cr['doctorCount']} Doctors'),
                                   trailing: Chip(
@@ -166,89 +159,91 @@ class _DoctorCaseRoomsScreenState extends ConsumerState<DoctorCaseRoomsScreen> {
                                 );
                               },
                             ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-
-                  // Room Posts & Discussion
-                  Expanded(
-                    flex: 3,
-                    child: Card(
-                      child: _selectedRoom == null
-                          ? const Center(child: Text('Select a case room to view discussion posts.'))
-                          : Column(
+                    )
+                  : Card(
+                      child: Column(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            color: AppTheme.primaryLightTeal,
+                            child: Row(
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.all(16),
-                                  color: AppTheme.primaryLightTeal,
+                                IconButton(
+                                  icon: const Icon(Icons.arrow_back, size: 20),
+                                  onPressed: () => setState(() => _selectedRoom = null),
+                                ),
+                                Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         _selectedRoom!['title'],
                                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                       const SizedBox(height: 4),
                                       Text('Specialty: ${_selectedRoom!['specialty']}'),
                                     ],
                                   ),
                                 ),
-                                Expanded(
-                                  child: ListView.builder(
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            child: ListView.builder(
+                              padding: const EdgeInsets.all(16),
+                              itemCount: _posts.length,
+                              itemBuilder: (context, idx) {
+                                final post = _posts[idx];
+                                return Card(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  child: Padding(
                                     padding: const EdgeInsets.all(16),
-                                    itemCount: _posts.length,
-                                    itemBuilder: (context, idx) {
-                                      final post = _posts[idx];
-                                      return Card(
-                                        margin: const EdgeInsets.only(bottom: 12),
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(16),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Row(
-                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                children: [
-                                                  Text(
-                                                    post['authorName'],
-                                                    style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primaryTeal),
-                                                  ),
-                                                  Text(post['createdAt'], style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-                                                ],
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                post['authorName'],
+                                                style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primaryTeal),
                                               ),
-                                              const SizedBox(height: 8),
-                                              Text(post['content']),
-                                            ],
-                                          ),
+                                            ),
+                                            Text(post['createdAt'], style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                                          ],
                                         ),
-                                      );
-                                    },
+                                        const SizedBox(height: 8),
+                                        Text(post['content']),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _postController,
+                                    decoration: const InputDecoration(hintText: 'Share clinical insight or observation...'),
                                   ),
                                 ),
-                                Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: TextField(
-                                          controller: _postController,
-                                          decoration: const InputDecoration(hintText: 'Share clinical insight or observation...'),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      ElevatedButton(
-                                        onPressed: _createPost,
-                                        child: const Text('Post'),
-                                      ),
-                                    ],
-                                  ),
+                                const SizedBox(width: 8),
+                                ElevatedButton(
+                                  onPressed: _createPost,
+                                  child: const Text('Post'),
                                 ),
                               ],
                             ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
             ),
           ],
         ),

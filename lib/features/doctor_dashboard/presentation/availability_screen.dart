@@ -37,27 +37,26 @@ class _DoctorAvailabilityScreenState extends ConsumerState<DoctorAvailabilityScr
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
-                      'Availability & Time Slots',
-                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.textMain),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Configure your weekly recurring consultation hours and slot durations.',
-                      style: TextStyle(fontSize: 14, color: AppTheme.textMuted),
-                    ),
-                  ],
+                const Text(
+                  'Availability & Time Slots',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.textMain),
                 ),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.save, size: 18),
-                  label: const Text('Save Schedule'),
-                  onPressed: _isSaving ? null : _saveAvailability,
+                const SizedBox(height: 4),
+                const Text(
+                  'Configure your weekly recurring consultation hours and slot durations.',
+                  style: TextStyle(fontSize: 14, color: AppTheme.textMuted),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.save, size: 18),
+                    label: const Text('Save Schedule'),
+                    onPressed: _isSaving ? null : _saveAvailability,
+                  ),
                 ),
               ],
             ),
@@ -75,37 +74,51 @@ class _DoctorAvailabilityScreenState extends ConsumerState<DoctorAvailabilityScr
 
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Row(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Switch(
-                            value: isActive,
-                            onChanged: (val) => setState(() => _activeDays[index] = val),
+                          Row(
+                            children: [
+                              Switch(
+                                value: isActive,
+                                onChanged: (val) => setState(() => _activeDays[index] = val),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                dayName,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: isActive ? AppTheme.textMain : AppTheme.textMuted,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 12),
-                          SizedBox(
-                            width: 120,
-                            child: Text(
-                              dayName,
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                                color: isActive ? AppTheme.textMain : AppTheme.textMuted,
+                          if (isActive) ...[
+                            const SizedBox(height: 6),
+                            Padding(
+                              padding: const EdgeInsets.only(left: 56),
+                              child: Wrap(
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 12,
+                                runSpacing: 8,
+                                children: [
+                                  Text(
+                                    'Hours: ${_startTimes[index] ?? "09:00 AM"} - ${_endTimes[index] ?? "05:00 PM"}',
+                                    style: const TextStyle(fontWeight: FontWeight.w500),
+                                  ),
+                                  OutlinedButton(
+                                    onPressed: () {},
+                                    child: const Text('Edit Hours'),
+                                  ),
+                                ],
                               ),
                             ),
-                          ),
-                          const Spacer(),
-                          if (isActive) ...[
-                            Text(
-                              'Hours: ${_startTimes[index] ?? "09:00 AM"} - ${_endTimes[index] ?? "05:00 PM"}',
-                              style: const TextStyle(fontWeight: FontWeight.w500),
-                            ),
-                            const SizedBox(width: 16),
-                            OutlinedButton(
-                              onPressed: () {},
-                              child: const Text('Edit Hours'),
-                            ),
                           ] else
-                            const Text('Unavailable / Off', style: TextStyle(color: AppTheme.textMuted)),
+                            const Padding(
+                              padding: EdgeInsets.only(left: 56),
+                              child: Text('Unavailable / Off', style: TextStyle(color: AppTheme.textMuted)),
+                            ),
                         ],
                       ),
                     );

@@ -314,117 +314,100 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> with SingleTicker
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
-                        'Clinics Management',
-                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.textMain),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Manage clinic profiles, branches, operating hours, insurance links, and specialties.',
-                        style: TextStyle(fontSize: 14, color: AppTheme.textMuted),
-                      ),
-                    ],
-                  ),
+                const Text(
+                  'Clinics Management',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.textMain),
                 ),
-                const SizedBox(width: 12),
-                ElevatedButton.icon(
-                  key: const Key('add_clinic_btn'),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add New Clinic'),
-                  onPressed: () => _openClinicDialog(null),
+                const SizedBox(height: 4),
+                const Text(
+                  'Manage clinic profiles, branches, operating hours, insurance links, and specialties.',
+                  style: TextStyle(fontSize: 14, color: AppTheme.textMuted),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    key: const Key('add_clinic_btn'),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add New Clinic'),
+                    onPressed: () => _openClinicDialog(null),
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 20),
 
             Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Clinics Table
-                  Expanded(
-                    flex: 3,
-                    child: Card(
-                      child: _isLoading
-                          ? const Center(child: CircularProgressIndicator())
-                          : SingleChildScrollView(
-                              child: DataTable(
-                                columns: const [
-                                  DataColumn(label: Text('Clinic Name')),
-                                  DataColumn(label: Text('MOH License')),
-                                  DataColumn(label: Text('Primary Phone')),
-                                  DataColumn(label: Text('Status')),
-                                  DataColumn(label: Text('Actions')),
-                                ],
-                                rows: _clinics.map((clinic) {
-                                  final isSelected = _selectedClinic?.clinicId == clinic.clinicId;
-                                  return DataRow(
-                                    selected: isSelected,
-                                    cells: [
-                                      DataCell(
-                                        SizedBox(
-                                          height: 44,
+              child: _selectedClinic == null
+                  ? (_isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : ListView.separated(
+                          itemCount: _clinics.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 10),
+                          itemBuilder: (context, index) {
+                            final clinic = _clinics[index];
+                            return Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
                                           child: Column(
-                                            mainAxisAlignment: MainAxisAlignment.center,
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
-                                              Text(clinic.nameEn, style: const TextStyle(fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
-                                              Text(clinic.nameAr, style: const TextStyle(fontSize: 11, color: AppTheme.textMuted), overflow: TextOverflow.ellipsis),
+                                              Text(clinic.nameEn, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                              Text(clinic.nameAr, style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
                                             ],
                                           ),
                                         ),
-                                      ),
-                                      DataCell(Text(clinic.mohLicenseNumber)),
-                                      DataCell(Text(clinic.phonePrimary)),
-                                      DataCell(
                                         Chip(
-                                          label: Text(clinic.isActive ? 'Active' : 'Inactive'),
+                                          label: Text(clinic.isActive ? 'Active' : 'Inactive', style: const TextStyle(fontSize: 12)),
                                           backgroundColor: clinic.isActive ? AppTheme.primaryLightTeal : Colors.grey[200],
+                                          visualDensity: VisualDensity.compact,
+                                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                         ),
-                                      ),
-                                      DataCell(
-                                        Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            TextButton(
-                                              onPressed: () => _selectClinic(clinic),
-                                              child: Text(isSelected ? 'Selected' : 'Manage'),
-                                            ),
-                                            IconButton(icon: const Icon(Icons.edit, size: 18), onPressed: () => _openClinicDialog(clinic)),
-                                            IconButton(icon: const Icon(Icons.delete, size: 18, color: AppTheme.dangerRed), onPressed: () => _deleteClinic(clinic.clinicId)),
-                                          ],
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text('MOH: ${clinic.mohLicenseNumber}  ·  ${clinic.phonePrimary}',
+                                        style: const TextStyle(fontSize: 13, color: AppTheme.textMain)),
+                                    const SizedBox(height: 10),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: OutlinedButton(
+                                            onPressed: () => _selectClinic(clinic),
+                                            child: const Text('Manage'),
+                                          ),
                                         ),
-                                      ),
-                                    ],
-                                  );
-                                }).toList(),
+                                        IconButton(icon: const Icon(Icons.edit, size: 18), onPressed: () => _openClinicDialog(clinic)),
+                                        IconButton(icon: const Icon(Icons.delete, size: 18, color: AppTheme.dangerRed), onPressed: () => _deleteClinic(clinic.clinicId)),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                    ),
-                  ),
-
-                  // Detail Drawer (when a clinic is selected)
-                  if (_selectedClinic != null) ...[
-                    const SizedBox(width: 16),
-                    Expanded(
-                      flex: 2,
-                      child: Card(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
+                            );
+                          },
+                        ))
+                  : Card(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
                               padding: const EdgeInsets.all(16),
                               color: AppTheme.primaryLightTeal,
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
+                                  IconButton(icon: const Icon(Icons.arrow_back, size: 20), onPressed: () => setState(() => _selectedClinic = null)),
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -434,12 +417,12 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> with SingleTicker
                                       ],
                                     ),
                                   ),
-                                  IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => setState(() => _selectedClinic = null)),
                                 ],
                               ),
                             ),
                             TabBar(
                               controller: _subTabController,
+                              isScrollable: true,
                               labelColor: AppTheme.primaryTeal,
                               unselectedLabelColor: AppTheme.textMuted,
                               tabs: const [
@@ -551,10 +534,6 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> with SingleTicker
                           ],
                         ),
                       ),
-                    ),
-                  ],
-                ],
-              ),
             ),
           ],
         ),

@@ -13,6 +13,11 @@ class PatientService {
     return res.data;
   }
 
+  Future<dynamic> createProfile(Map<String, dynamic> dto) async {
+    final res = await dio.post('/api/patients/add-profile', data: dto);
+    return res.data;
+  }
+
   Future<dynamic> updateProfile(Map<String, dynamic> dto) async {
     final res = await dio.patch('/api/patients/me/update', data: dto);
     return res.data;
@@ -21,6 +26,11 @@ class PatientService {
   // Health Profile
   Future<dynamic> getMyHealthProfile() async {
     final res = await dio.get('/api/patients/me/health-profile');
+    return res.data;
+  }
+
+  Future<dynamic> addHealthProfile(Map<String, dynamic> dto) async {
+    final res = await dio.post('/api/patients/me/health-profile/add', data: dto);
     return res.data;
   }
 

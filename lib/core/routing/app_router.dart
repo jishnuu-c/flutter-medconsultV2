@@ -38,18 +38,30 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       final isLoggedIn = authState.isLoggedIn;
       final location = state.uri.toString();
-      final isAuthRoute = location == '/login' || location.startsWith('/login?') || location == '/register' || location.startsWith('/register?');
+      final isAuthRoute = location == '/login' ||
+          location.startsWith('/login?') ||
+          location == '/register' ||
+          location.startsWith('/register?');
 
       // 1. noAuthGuard logic for /login and /register
       if (isAuthRoute && isLoggedIn) {
         final user = authState.currentUser;
-        if (user?.role == UserRole.PATIENT) {
+        // IMPORTANT: don't redirect until we actually know the role. Right
+        // after login the token is set a beat before /users/me resolves and
+        // currentUser is still null — redirecting on that null used to fall
+        // into the `else` below and send EVERY role to /patient/home for a
+        // split second, firing a patient-only API call (401) that force-
+        // logged the user straight back out. Just stay put until it's known.
+        if (user == null) {
+          return null;
+        }
+        if (user.role == UserRole.PATIENT) {
           return '/patient/home';
-        } else if (user?.role == UserRole.DOCTOR) {
+        } else if (user.role == UserRole.DOCTOR) {
           return '/doctor/schedule';
-        } else if (user?.role == UserRole.CLINIC_ADMIN) {
+        } else if (user.role == UserRole.CLINIC_ADMIN) {
           return '/clinic-admin/clinics';
-        } else if (user?.role == UserRole.SYSTEM_ADMIN) {
+        } else if (user.role == UserRole.SYSTEM_ADMIN) {
           return '/system-admin';
         } else {
           return '/patient/home';
@@ -58,23 +70,32 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // 2. authGuard & roleGuard logic for protected section routes
       if (location.startsWith('/patient')) {
-        if (!isLoggedIn) return '/login?returnUrl=${Uri.encodeComponent(location)}';
-        if (authState.currentUser != null && !authState.hasRole([UserRole.PATIENT])) return '/patient/home';
+        if (!isLoggedIn)
+          return '/login?returnUrl=${Uri.encodeComponent(location)}';
+        if (authState.currentUser != null &&
+            !authState.hasRole([UserRole.PATIENT])) return '/patient/home';
       }
 
       if (location.startsWith('/doctor')) {
-        if (!isLoggedIn) return '/login?returnUrl=${Uri.encodeComponent(location)}';
-        if (authState.currentUser != null && !authState.hasRole([UserRole.DOCTOR])) return '/doctor/schedule';
+        if (!isLoggedIn)
+          return '/login?returnUrl=${Uri.encodeComponent(location)}';
+        if (authState.currentUser != null &&
+            !authState.hasRole([UserRole.DOCTOR])) return '/doctor/schedule';
       }
 
       if (location.startsWith('/clinic-admin')) {
-        if (!isLoggedIn) return '/login?returnUrl=${Uri.encodeComponent(location)}';
-        if (authState.currentUser != null && !authState.hasRole([UserRole.CLINIC_ADMIN])) return '/clinic-admin/clinics';
+        if (!isLoggedIn)
+          return '/login?returnUrl=${Uri.encodeComponent(location)}';
+        if (authState.currentUser != null &&
+            !authState.hasRole([UserRole.CLINIC_ADMIN]))
+          return '/clinic-admin/clinics';
       }
 
       if (location.startsWith('/system-admin')) {
-        if (!isLoggedIn) return '/login?returnUrl=${Uri.encodeComponent(location)}';
-        if (authState.currentUser != null && !authState.hasRole([UserRole.SYSTEM_ADMIN])) return '/system-admin';
+        if (!isLoggedIn)
+          return '/login?returnUrl=${Uri.encodeComponent(location)}';
+        if (authState.currentUser != null &&
+            !authState.hasRole([UserRole.SYSTEM_ADMIN])) return '/system-admin';
       }
 
       return null;

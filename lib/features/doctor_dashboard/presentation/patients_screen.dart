@@ -10,6 +10,28 @@ class DoctorPatientsScreen extends ConsumerStatefulWidget {
   ConsumerState<DoctorPatientsScreen> createState() => _DoctorPatientsScreenState();
 }
 
+class _PatientInfoRow extends StatelessWidget {
+  final String label;
+  final String value;
+  const _PatientInfoRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 90,
+          child: Text(label, style: const TextStyle(fontSize: 12, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
+        ),
+        Expanded(
+          child: Text(value, style: const TextStyle(fontSize: 13, color: AppTheme.textMain)),
+        ),
+      ],
+    );
+  }
+}
+
 class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
   final _searchController = TextEditingController();
   bool _isLoading = false;
@@ -106,35 +128,52 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
             const SizedBox(height: 20),
 
             Expanded(
-              child: Card(
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : SingleChildScrollView(
-                        child: DataTable(
-                          columns: const [
-                            DataColumn(label: Text('Patient Name')),
-                            DataColumn(label: Text('Medication')),
-                            DataColumn(label: Text('Dosage & Instructions')),
-                            DataColumn(label: Text('Duration')),
-                            DataColumn(label: Text('Status')),
-                          ],
-                          rows: _prescriptions.map((rx) {
-                            return DataRow(cells: [
-                              DataCell(Text(rx['patientName'] ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.bold))),
-                              DataCell(Text(rx['medication'] ?? '')),
-                              DataCell(Text(rx['dosage'] ?? '')),
-                              DataCell(Text(rx['duration'] ?? '')),
-                              DataCell(
-                                Chip(
-                                  label: Text(rx['status'] ?? 'ACTIVE'),
-                                  backgroundColor: AppTheme.primaryLightTeal,
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _prescriptions.isEmpty
+                      ? const Center(
+                          child: Text('No prescriptions found.', style: TextStyle(color: AppTheme.textMuted)),
+                        )
+                      : ListView.separated(
+                          itemCount: _prescriptions.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 10),
+                          itemBuilder: (context, index) {
+                            final rx = _prescriptions[index];
+                            return Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            rx['patientName'] ?? 'Patient',
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textMain),
+                                          ),
+                                        ),
+                                        Chip(
+                                          label: Text(rx['status'] ?? 'ACTIVE', style: const TextStyle(fontSize: 12)),
+                                          backgroundColor: AppTheme.primaryLightTeal,
+                                          visualDensity: VisualDensity.compact,
+                                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    _PatientInfoRow(label: 'Medication', value: rx['medication'] ?? ''),
+                                    const SizedBox(height: 6),
+                                    _PatientInfoRow(label: 'Dosage', value: rx['dosage'] ?? ''),
+                                    const SizedBox(height: 6),
+                                    _PatientInfoRow(label: 'Duration', value: rx['duration'] ?? ''),
+                                  ],
                                 ),
                               ),
-                            ]);
-                          }).toList(),
+                            );
+                          },
                         ),
-                      ),
-              ),
             ),
           ],
         ),

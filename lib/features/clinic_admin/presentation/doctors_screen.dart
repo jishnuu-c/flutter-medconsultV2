@@ -157,31 +157,27 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> with SingleTicker
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
-                        'Doctors Management',
-                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.textMain),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Manage doctor clinic placements, schedules, qualifications, and specialties.',
-                        style: TextStyle(fontSize: 14, color: AppTheme.textMuted),
-                      ),
-                    ],
-                  ),
+                const Text(
+                  'Doctors Management',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.textMain),
                 ),
-                const SizedBox(width: 12),
-                ElevatedButton.icon(
-                  key: const Key('add_placement_btn'),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add Doctor Placement'),
-                  onPressed: _openPlacementDialog,
+                const SizedBox(height: 4),
+                const Text(
+                  'Manage doctor clinic placements, schedules, qualifications, and specialties.',
+                  style: TextStyle(fontSize: 14, color: AppTheme.textMuted),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    key: const Key('add_placement_btn'),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add Doctor Placement'),
+                    onPressed: _openPlacementDialog,
+                  ),
                 ),
               ],
             ),
@@ -210,48 +206,57 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> with SingleTicker
                 controller: _mainTabController,
                 children: [
                   // Tab 1: Placements
-                  Card(
-                    child: _isLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : SingleChildScrollView(
-                            child: DataTable(
-                              columns: const [
-                                DataColumn(label: Text('Doctor')),
-                                DataColumn(label: Text('Clinic & Branch')),
-                                DataColumn(label: Text('Department')),
-                                DataColumn(label: Text('Fee (SAR)')),
-                                DataColumn(label: Text('Status')),
-                                DataColumn(label: Text('Actions')),
-                              ],
-                              rows: _placements.map((p) {
+                  _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _placements.isEmpty
+                          ? const Center(child: Text('No placements found.', style: TextStyle(color: AppTheme.textMuted)))
+                          : ListView.separated(
+                              itemCount: _placements.length,
+                              separatorBuilder: (_, __) => const SizedBox(height: 10),
+                              itemBuilder: (context, index) {
+                                final p = _placements[index];
                                 final docName = _doctors.firstWhere((d) => d.doctorId == p.doctorId, orElse: () => DoctorModel(doctorId: '', userId: '', fullName: 'Dr. Tariq', mohRegistrationNumber: '', mohVerified: true, title: DoctorTitle.DR, experienceYears: 5, overallRating: 5, reviewCount: 0, consultationFeeSar: 150, isActive: true)).fullName;
-                                return DataRow(cells: [
-                                  DataCell(Text(docName, style: const TextStyle(fontWeight: FontWeight.bold))),
-                                  DataCell(Text('${p.clinicNameEn ?? 'Al-Habib Center'} (${p.branchNameEn ?? 'Main Branch'})')),
-                                  DataCell(Text(p.department)),
-                                  DataCell(Text('SAR ${p.consultationFeeSar.toStringAsFixed(0)}')),
-                                  DataCell(
-                                    Chip(
-                                      label: Text(p.isActive ? 'Active' : 'Inactive'),
-                                      backgroundColor: p.isActive ? AppTheme.primaryLightTeal : Colors.grey[200],
+                                return Card(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Expanded(
+                                              child: Text(docName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                            ),
+                                            Chip(
+                                              label: Text(p.isActive ? 'Active' : 'Inactive', style: const TextStyle(fontSize: 12)),
+                                              backgroundColor: p.isActive ? AppTheme.primaryLightTeal : Colors.grey[200],
+                                              visualDensity: VisualDensity.compact,
+                                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(Icons.delete, size: 18, color: AppTheme.dangerRed),
+                                              onPressed: () async {
+                                                try {
+                                                  await ref.read(doctorServiceProvider).removeDoctorClinic(p.dcId);
+                                                } catch (_) {}
+                                                _loadDoctorsData();
+                                              },
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text('${p.clinicNameEn ?? 'Al-Habib Center'} (${p.branchNameEn ?? 'Main Branch'})',
+                                            style: const TextStyle(fontSize: 13, color: AppTheme.textMain)),
+                                        const SizedBox(height: 4),
+                                        Text('${p.department} · SAR ${p.consultationFeeSar.toStringAsFixed(0)}',
+                                            style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                                      ],
                                     ),
                                   ),
-                                  DataCell(
-                                    IconButton(
-                                      icon: const Icon(Icons.delete, size: 18, color: AppTheme.dangerRed),
-                                      onPressed: () async {
-                                        try {
-                                          await ref.read(doctorServiceProvider).removeDoctorClinic(p.dcId);
-                                        } catch (_) {}
-                                        _loadDoctorsData();
-                                      },
-                                    ),
-                                  ),
-                                ]);
-                              }).toList(),
+                                );
+                              },
                             ),
-                          ),
-                  ),
 
                   // Tab 2: Doctor Profiles
                   Card(

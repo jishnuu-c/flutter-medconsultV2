@@ -61,31 +61,27 @@ class _DoctorScheduleScreenState extends ConsumerState<DoctorScheduleScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text(
-                        'Consultation Schedule',
-                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.textMain),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'View and manage your upcoming patient appointments for today and this week.',
-                        style: TextStyle(fontSize: 14, color: AppTheme.textMuted),
-                      ),
-                    ],
-                  ),
+                const Text(
+                  'Consultation Schedule',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.textMain),
                 ),
-                const SizedBox(width: 12),
-                ElevatedButton.icon(
-                  key: const Key('refresh_schedule_btn'),
-                  icon: const Icon(Icons.refresh, size: 18),
-                  label: const Text('Refresh Schedule'),
-                  onPressed: _loadSchedule,
+                const SizedBox(height: 4),
+                const Text(
+                  'View and manage your upcoming patient appointments for today and this week.',
+                  style: TextStyle(fontSize: 14, color: AppTheme.textMuted),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    key: const Key('refresh_schedule_btn'),
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Refresh Schedule'),
+                    onPressed: _loadSchedule,
+                  ),
                 ),
               ],
             ),

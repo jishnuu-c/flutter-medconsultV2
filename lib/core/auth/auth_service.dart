@@ -10,16 +10,35 @@ class AuthService {
   AuthService({required this.dio});
 
   Future<AuthResponseDto> login(Map<String, dynamic> credentials) async {
-    final response = await dio.post(
-      '/api/medconsult/auth/login',
-      data: credentials,
-    );
-    print('Status: ${response.statusCode}');
-    print('Headers: ${response.headers}');
-    print('Data: ${response.data}');
+    print('Login credentials: $credentials');
+    try {
+      final response = await dio.post(
+        '/api/medconsult/auth/login',
+        data: credentials,
+      );
+      print('Status: ${response.statusCode}');
+      print('Headers: ${response.headers}');
+      print('Data: ${response.data}');
 
-    debugPrint('Response: ${response.data}');
-    return AuthResponseDto.fromJson(response.data);
+      debugPrint('Response: ${response.data}');
+      return AuthResponseDto.fromJson(response.data);
+    } on DioException catch (e) {
+      print('--- LOGIN DIO EXCEPTION ---');
+      print('Message: ${e.message}');
+      print('Type: ${e.type}');
+      print('Status Code: ${e.response?.statusCode}');
+      print('Headers: ${e.response?.headers}');
+      print('Response Data: ${e.response?.data}');
+      print('Error: ${e.error}');
+      print('---------------------------');
+      rethrow;
+    } catch (e, stack) {
+      print('--- LOGIN ERROR ---');
+      print('Error: $e');
+      print('Stack: $stack');
+      print('-------------------');
+      rethrow;
+    }
   }
 
   Future<AuthResponseDto> register(Map<String, dynamic> payload) async {
@@ -31,8 +50,21 @@ class AuthService {
   }
 
   Future<UserModel> fetchCurrentUser() async {
-    final response = await dio.get('/api/medconsult/users/me');
-    return UserModel.fromJson(response.data);
+    try {
+      final response = await dio.get('/api/medconsult/users/me');
+      print('--- /users/me RESPONSE ---');
+      print('Status: ${response.statusCode}');
+      print('Data: ${response.data}');
+      print('--------------------------');
+      return UserModel.fromJson(response.data);
+    } on DioException catch (e) {
+      print('--- /users/me DIO EXCEPTION ---');
+      print('Status Code: ${e.response?.statusCode}');
+      print('Response Data: ${e.response?.data}');
+      print('Message: ${e.message}');
+      print('-------------------------------');
+      rethrow;
+    }
   }
 }
 

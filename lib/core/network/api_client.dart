@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'auth_interceptor.dart';
-import '../auth/auth_provider.dart';
+import '../auth/auth_session.dart';
 
 const String kBaseUrl = String.fromEnvironment(
   'API_URL',
@@ -22,8 +22,8 @@ final apiClientProvider = Provider<Dio>((ref) {
 
   dio.interceptors.add(
     AuthInterceptor(
-      getToken: () => ref.read(authNotifierProvider).token,
-      onUnauthorized: () => ref.read(authNotifierProvider.notifier).logout(),
+      getToken: () => AuthSession.token,
+      onUnauthorized: () => AuthSession.onUnauthorized?.call(),
     ),
   );
 

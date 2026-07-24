@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/auth_models.dart';
 import 'auth_service.dart';
+import 'auth_session.dart';
 
 const String kTokenKey = 'medconsult_token';
 const String kCurrentUserKey = 'medconsult_user';
@@ -50,6 +52,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       : _authService = authService,
         _prefs = prefs,
         super(AuthState()) {
+    AuthSession.onUnauthorized = logout;
     init();
   }
 
@@ -60,6 +63,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final storedUserRaw = prefs.getString(kCurrentUserKey);
 
       if (storedToken != null && storedToken.isNotEmpty) {
+        AuthSession.token = storedToken;
         UserModel? user;
         if (storedUserRaw != null && storedUserRaw.isNotEmpty) {
           try {
@@ -85,20 +89,23 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> login(String email, String password) async {
-    if (_authService == null) return;
     state = state.copyWith(isLoading: true);
     try {
-      final res = await _authService!.login({'email': email, 'password': password});
-      saveSession(res.token);
+      if (_authService != null) {
+        final res =
+            await _authService!.login({'email': email, 'password': password});
+        saveSession(res.token);
 
-      if (res.user != null) {
-        state = state.copyWith(currentUser: res.user, isLoading: false);
-        try {
-          final prefs = _prefs ?? await SharedPreferences.getInstance();
-          await prefs.setString(kCurrentUserKey, jsonEncode(res.user!.toJson()));
-        } catch (_) {}
-      } else {
+        // NOTE: don't trust `res.user` even when present — some roles (e.g.
+        // CLINIC_ADMIN / SYSTEM_ADMIN) can come back from /auth/login with a
+        // partial user object that has no `role` field, which UserModel then
+        // silently defaults to UserRole.PATIENT. That was routing admins
+        // into the patient dashboard. /users/me is the source of truth for
+        // the full profile (role included), same as the Angular reference
+        // (auth.service.ts always does login().pipe(switchMap(fetchCurrentUser))),
+        // so always resolve it here instead of branching on res.user.
         await fetchCurrentUser();
+        return;
       }
     } catch (e) {
       state = state.copyWith(isLoading: false);
@@ -107,20 +114,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> register(Map<String, dynamic> payload) async {
-    if (_authService == null) return;
     state = state.copyWith(isLoading: true);
     try {
-      final res = await _authService!.register(payload);
-      saveSession(res.token);
+      if (_authService != null) {
+        final res = await _authService!.register(payload);
+        saveSession(res.token);
 
-      if (res.user != null) {
-        state = state.copyWith(currentUser: res.user, isLoading: false);
-        try {
-          final prefs = _prefs ?? await SharedPreferences.getInstance();
-          await prefs.setString(kCurrentUserKey, jsonEncode(res.user!.toJson()));
-        } catch (_) {}
-      } else {
+        // Same reasoning as login(): always hydrate from /users/me so role
+        // is never silently defaulted.
         await fetchCurrentUser();
+        return;
       }
     } catch (e) {
       state = state.copyWith(isLoading: false);
@@ -138,12 +141,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
         await prefs.setString(kCurrentUserKey, jsonEncode(user.toJson()));
       } catch (_) {}
     } catch (e) {
+      print('AuthNotifier.fetchCurrentUser failed, currentUser stays null: $e');
       state = state.copyWith(isLoading: false);
     }
   }
 
   Future<void> logout() async {
     state = AuthState(isInitialized: true);
+    AuthSession.token = null;
     try {
       final prefs = _prefs ?? await SharedPreferences.getInstance();
       await prefs.remove(kTokenKey);
@@ -153,6 +158,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   void saveSession(String token) {
     state = state.copyWith(token: token);
+    AuthSession.token = token;
     SharedPreferences.getInstance().then((prefs) {
       prefs.setString(kTokenKey, token);
     }).catchError((_) {});

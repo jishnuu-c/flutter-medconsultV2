@@ -127,12 +127,8 @@ class _DoctorConsultationsScreenState extends ConsumerState<DoctorConsultationsS
             const SizedBox(height: 20),
 
             Expanded(
-              child: Row(
-                children: [
-                  // Consultation List
-                  Expanded(
-                    flex: 2,
-                    child: Card(
+              child: _selectedConsultation == null
+                  ? Card(
                       child: _isLoading
                           ? const Center(child: CircularProgressIndicator())
                           : ListView.separated(
@@ -140,15 +136,12 @@ class _DoctorConsultationsScreenState extends ConsumerState<DoctorConsultationsS
                               separatorBuilder: (context, index) => const Divider(height: 1),
                               itemBuilder: (context, index) {
                                 final c = _consultations[index];
-                                final isSelected = _selectedConsultation?['id'] == c['id'];
                                 return ListTile(
-                                  selected: isSelected,
-                                  selectedTileColor: AppTheme.primaryLightTeal,
                                   leading: CircleAvatar(
-                                    backgroundColor: isSelected ? AppTheme.primaryTeal : Colors.grey[300],
+                                    backgroundColor: Colors.grey[300],
                                     child: Text(
                                       (c['patientName'] as String)[0],
-                                      style: TextStyle(color: isSelected ? Colors.white : AppTheme.textMain, fontWeight: FontWeight.bold),
+                                      style: const TextStyle(color: AppTheme.textMain, fontWeight: FontWeight.bold),
                                     ),
                                   ),
                                   title: Text(c['patientName'], style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -158,89 +151,84 @@ class _DoctorConsultationsScreenState extends ConsumerState<DoctorConsultationsS
                                 );
                               },
                             ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-
-                  // Chat View / Detail
-                  Expanded(
-                    flex: 3,
-                    child: Card(
-                      child: _selectedConsultation == null
-                          ? const Center(child: Text('Select a consultation to view messages.'))
-                          : Column(
+                    )
+                  : Card(
+                      child: Column(
+                        children: [
+                          // Chat Header
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            color: AppTheme.primaryLightTeal,
+                            child: Row(
                               children: [
-                                // Chat Header
-                                Container(
-                                  padding: const EdgeInsets.all(16),
-                                  color: AppTheme.primaryLightTeal,
-                                  child: Row(
-                                    children: [
-                                      Text(
-                                        _selectedConsultation!['patientName'],
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                                      ),
-                                      const Spacer(),
-                                      Chip(
-                                        label: Text(_selectedConsultation!['status']),
-                                        backgroundColor: AppTheme.successGreen.withValues(alpha: 0.2),
-                                      ),
-                                    ],
-                                  ),
+                                IconButton(
+                                  icon: const Icon(Icons.arrow_back, size: 20),
+                                  onPressed: () => setState(() => _selectedConsultation = null),
                                 ),
-
-                                // Chat Messages
                                 Expanded(
-                                  child: ListView.builder(
-                                    padding: const EdgeInsets.all(16),
-                                    itemCount: _messages.length,
-                                    itemBuilder: (context, idx) {
-                                      final msg = _messages[idx];
-                                      final isDoctor = msg['sender'] == 'DOCTOR';
-                                      return Align(
-                                        alignment: isDoctor ? Alignment.centerRight : Alignment.centerLeft,
-                                        child: Container(
-                                          margin: const EdgeInsets.symmetric(vertical: 4),
-                                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                          decoration: BoxDecoration(
-                                            color: isDoctor ? AppTheme.primaryTeal : Colors.grey[200],
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          child: Text(
-                                            msg['text'],
-                                            style: TextStyle(color: isDoctor ? Colors.white : AppTheme.textMain),
-                                          ),
-                                        ),
-                                      );
-                                    },
+                                  child: Text(
+                                    _selectedConsultation!['patientName'],
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-
-                                // Input row
-                                Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: TextField(
-                                          controller: _messageController,
-                                          decoration: const InputDecoration(hintText: 'Type your response...'),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      IconButton(
-                                        icon: const Icon(Icons.send, color: AppTheme.primaryTeal),
-                                        onPressed: _sendMessage,
-                                      ),
-                                    ],
-                                  ),
+                                Chip(
+                                  label: Text(_selectedConsultation!['status']),
+                                  backgroundColor: AppTheme.successGreen.withValues(alpha: 0.2),
                                 ),
                               ],
                             ),
+                          ),
+
+                          // Chat Messages
+                          Expanded(
+                            child: ListView.builder(
+                              padding: const EdgeInsets.all(16),
+                              itemCount: _messages.length,
+                              itemBuilder: (context, idx) {
+                                final msg = _messages[idx];
+                                final isDoctor = msg['sender'] == 'DOCTOR';
+                                return Align(
+                                  alignment: isDoctor ? Alignment.centerRight : Alignment.centerLeft,
+                                  child: Container(
+                                    margin: const EdgeInsets.symmetric(vertical: 4),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: isDoctor ? AppTheme.primaryTeal : Colors.grey[200],
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      msg['text'],
+                                      style: TextStyle(color: isDoctor ? Colors.white : AppTheme.textMain),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+
+                          // Input row
+                          Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _messageController,
+                                    decoration: const InputDecoration(hintText: 'Type your response...'),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: const Icon(Icons.send, color: AppTheme.primaryTeal),
+                                  onPressed: _sendMessage,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
             ),
           ],
         ),

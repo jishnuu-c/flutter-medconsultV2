@@ -12,6 +12,34 @@ class AppointmentService {
     return res.data ?? [];
   }
 
+  Future<List<dynamic>> getMyUpcomingAppointments() async {
+    final res = await dio.get('/api/medconsult/appointments/my/upcoming');
+    return res.data ?? [];
+  }
+
+  Future<dynamic> bookAppointment(Map<String, dynamic> dto) async {
+    final res = await dio.post('/api/medconsult/appointments/book', data: dto);
+    return res.data;
+  }
+
+  Future<dynamic> getAppointmentById(String appointmentId) async {
+    final res = await dio.get('/api/medconsult/appointments/$appointmentId');
+    return res.data;
+  }
+
+  Future<dynamic> searchAppointments(Map<String, dynamic> searchRequest) async {
+    final res = await dio.post('/api/medconsult/appointments/search', data: searchRequest);
+    return res.data;
+  }
+
+  Future<List<dynamic>> getAppointmentsByPatient(String patientId, {int page = 0, int size = 10}) async {
+    final res = await dio.get(
+      '/api/medconsult/appointments/patient/$patientId',
+      queryParameters: {'page': page, 'size': size},
+    );
+    return res.data ?? [];
+  }
+
   Future<List<dynamic>> getAppointmentsByDoctor(String doctorId, {int page = 0, int size = 10}) async {
     final res = await dio.get(
       '/api/medconsult/appointments/doctor/$doctorId',
