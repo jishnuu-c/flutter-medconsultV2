@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
+import 'package:http_parser/http_parser.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 
@@ -21,7 +23,8 @@ class ClinicalRecordService {
     String sortBy = 'issuedDate',
     String sortDir = 'desc',
   }) async {
-    final res = await dio.get('/api/medconsult/prescriptions/search', queryParameters: {
+    final res =
+        await dio.get('/api/medconsult/prescriptions/search', queryParameters: {
       if (patientId != null) 'patientId': patientId,
       if (doctorId != null) 'doctorId': doctorId,
       if (status != null) 'status': status,
@@ -33,6 +36,24 @@ class ClinicalRecordService {
     return _extractList(res.data);
   }
 
+  Future<dynamic> createPrescription(Map<String, dynamic> dto) async {
+    final res = await dio.post('/api/medconsult/prescriptions/add', data: dto);
+    return res.data;
+  }
+
+  Future<List<dynamic>> getPrescriptionItems(String prescriptionId) async {
+    final res =
+        await dio.get('/api/medconsult/prescriptions/$prescriptionId/items');
+    return _extractList(res.data);
+  }
+
+  Future<dynamic> addPrescriptionItem(
+      String prescriptionId, Map<String, dynamic> dto) async {
+    final res = await dio
+        .post('/api/medconsult/prescriptions/$prescriptionId/items', data: dto);
+    return res.data;
+  }
+
   Future<List<dynamic>> searchVitals({
     String? patientId,
     String? source,
@@ -41,7 +62,8 @@ class ClinicalRecordService {
     String sortBy = 'recordedAt',
     String sortDir = 'desc',
   }) async {
-    final res = await dio.get('/api/medconsult/vitals/search', queryParameters: {
+    final res =
+        await dio.get('/api/medconsult/vitals/search', queryParameters: {
       if (patientId != null) 'patientId': patientId,
       if (source != null) 'source': source,
       'page': page,
@@ -67,7 +89,8 @@ class ClinicalRecordService {
     String sortBy = 'reportDate',
     String sortDir = 'desc',
   }) async {
-    final res = await dio.get('/api/medconsult/lab-results/search', queryParameters: {
+    final res =
+        await dio.get('/api/medconsult/lab-results/search', queryParameters: {
       if (patientId != null) 'patientId': patientId,
       if (orderedById != null) 'orderedById': orderedById,
       if (status != null) 'status': status,
@@ -78,6 +101,18 @@ class ClinicalRecordService {
       'sortDir': sortDir,
     });
     return _extractList(res.data);
+  }
+
+  Future<dynamic> createLabResult(Map<String, dynamic> dto) async {
+    final formData = FormData.fromMap({
+      'dto': MultipartFile.fromString(
+        jsonEncode(dto),
+        contentType: MediaType('application', 'json'),
+      ),
+    });
+    final res =
+        await dio.post('/api/medconsult/lab-results/add', data: formData);
+    return res.data;
   }
 }
 

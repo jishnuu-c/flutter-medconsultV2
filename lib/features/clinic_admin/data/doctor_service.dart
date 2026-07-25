@@ -43,6 +43,21 @@ class DoctorService {
     return res.data ?? [];
   }
 
+  Future<dynamic> addSlot(Map<String, dynamic> dto) async {
+    final res = await dio.post('/api/medconsult/doctors/slots/add', data: dto);
+    return res.data;
+  }
+
+  Future<dynamic> updateSlot(String id, Map<String, dynamic> dto) async {
+    final res =
+        await dio.patch('/api/medconsult/doctors/slots/$id/update', data: dto);
+    return res.data;
+  }
+
+  Future<void> removeSlot(String id) async {
+    await dio.delete('/api/medconsult/doctors/slots/$id/remove');
+  }
+
   // ── Doctor Clinics Placements ───────────────────────────────────────
   Future<List<DoctorClinicModel>> getDoctorClinics(String doctorId) async {
     final res = await dio.get('/api/medconsult/doctors/$doctorId/clinics');

@@ -30,12 +30,14 @@ class PatientService {
   }
 
   Future<dynamic> addHealthProfile(Map<String, dynamic> dto) async {
-    final res = await dio.post('/api/patients/me/health-profile/add', data: dto);
+    final res =
+        await dio.post('/api/patients/me/health-profile/add', data: dto);
     return res.data;
   }
 
   Future<dynamic> updateHealthProfile(Map<String, dynamic> dto) async {
-    final res = await dio.put('/api/patients/me/health-profile/update', data: dto);
+    final res =
+        await dio.put('/api/patients/me/health-profile/update', data: dto);
     return res.data;
   }
 
@@ -54,6 +56,22 @@ class PatientService {
     await dio.delete('/api/patients/me/allergies/$allergyId');
   }
 
+  // Doctor-facing: view another patient's EMR by patientId
+  Future<dynamic> getPatientHealthProfile(String patientId) async {
+    final res = await dio.get('/api/patients/$patientId/health-profile');
+    return res.data;
+  }
+
+  Future<List<dynamic>> getPatientAllergies(String patientId) async {
+    final res = await dio.get('/api/patients/$patientId/allergies');
+    return res.data is List ? res.data : [];
+  }
+
+  Future<List<dynamic>> getPatientChronicConditions(String patientId) async {
+    final res = await dio.get('/api/patients/$patientId/chronic-conditions');
+    return res.data is List ? res.data : [];
+  }
+
   // Chronic Conditions
   Future<List<dynamic>> getMyChronicConditions() async {
     final res = await dio.get('/api/patients/me/chronic-conditions');
@@ -61,7 +79,8 @@ class PatientService {
   }
 
   Future<dynamic> addChronicCondition(Map<String, dynamic> dto) async {
-    final res = await dio.post('/api/patients/me/add-chronic-condition', data: dto);
+    final res =
+        await dio.post('/api/patients/me/add-chronic-condition', data: dto);
     return res.data;
   }
 
