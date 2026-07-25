@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
@@ -7,7 +8,8 @@ class DoctorCaseRoomsScreen extends ConsumerStatefulWidget {
   const DoctorCaseRoomsScreen({super.key});
 
   @override
-  ConsumerState<DoctorCaseRoomsScreen> createState() => _DoctorCaseRoomsScreenState();
+  ConsumerState<DoctorCaseRoomsScreen> createState() =>
+      _DoctorCaseRoomsScreenState();
 }
 
 class _DoctorCaseRoomsScreenState extends ConsumerState<DoctorCaseRoomsScreen> {
@@ -29,37 +31,34 @@ class _DoctorCaseRoomsScreenState extends ConsumerState<DoctorCaseRoomsScreen> {
     super.dispose();
   }
 
+  String _errorMessage(Object e) {
+    if (e is DioException) {
+      return e.response?.statusMessage ?? e.message ?? 'Network error';
+    }
+    return e.toString();
+  }
+
   Future<void> _loadCaseRooms() async {
     setState(() => _isLoading = true);
     try {
-      final res = await ref.read(caseRoomServiceProvider).searchCaseRooms({});
+      final res = await ref.read(caseRoomServiceProvider).searchCaseRooms({
+        'page': 0,
+        'size': 50,
+        'sortBy': 'createdAt',
+        'sortDir': 'DESC',
+      });
       setState(() => _caseRooms = res);
-    } catch (_) {
-      _populateMockCaseRooms();
+    } catch (e) {
+      setState(() => _caseRooms = []);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Failed to load case rooms: ${_errorMessage(e)}')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  void _populateMockCaseRooms() {
-    _caseRooms = [
-      {
-        'caseRoomId': 'cr-101',
-        'title': 'Complex Cardiac Case Review - Patient 409',
-        'specialty': 'Cardiology',
-        'status': 'OPEN',
-        'doctorCount': 4,
-        'lastPost': 'New ECG results uploaded for review.',
-      },
-      {
-        'caseRoomId': 'cr-102',
-        'title': 'Pediatric Respiratory Consultation',
-        'specialty': 'Pediatrics',
-        'status': 'OPEN',
-        'doctorCount': 3,
-        'lastPost': 'Treatment plan confirmed by Dr. Tariq.',
-      },
-    ];
   }
 
   Future<void> _selectCaseRoom(Map<String, dynamic> room) async {
@@ -69,19 +68,17 @@ class _DoctorCaseRoomsScreenState extends ConsumerState<DoctorCaseRoomsScreen> {
     });
 
     try {
-      final res = await ref.read(caseRoomServiceProvider).getPostsForRoom(room['caseRoomId']);
+      final res = await ref
+          .read(caseRoomServiceProvider)
+          .getPostsForRoom(room['caseRoomId'], size: 100);
       setState(() => _posts = res);
-    } catch (_) {
-      setState(() {
-        _posts = [
-          {
-            'authorName': 'Dr. Tariq Al-Mansoor',
-            'role': 'Cardiologist',
-            'content': 'Patient shows ST elevation in lead II and III. Requesting second opinion on catheterization protocol.',
-            'createdAt': '2 hours ago',
-          },
-        ];
-      });
+    } catch (e) {
+      setState(() => _posts = []);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load posts: ${_errorMessage(e)}')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -91,22 +88,21 @@ class _DoctorCaseRoomsScreenState extends ConsumerState<DoctorCaseRoomsScreen> {
     final text = _postController.text.trim();
     if (text.isEmpty || _selectedRoom == null) return;
 
-    setState(() {
-      _posts.add({
-        'authorName': 'Dr. Practitioner',
-        'role': 'Consultant',
-        'content': text,
-        'createdAt': 'Just now',
-      });
-      _postController.clear();
-    });
+    _postController.clear();
 
-    try {
-      ref.read(caseRoomServiceProvider).createPost({
-        'caseRoomId': _selectedRoom!['caseRoomId'],
-        'content': text,
-      });
-    } catch (_) {}
+    ref.read(caseRoomServiceProvider).createPost({
+      'caseRoomId': _selectedRoom!['caseRoomId'],
+      'postType': 'NOTE',
+      'body': text,
+    }).then((post) {
+      if (mounted) setState(() => _posts.add(post));
+    }).catchError((e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to post: ${_errorMessage(e)}')),
+        );
+      }
+    });
   }
 
   @override
@@ -125,7 +121,10 @@ class _DoctorCaseRoomsScreenState extends ConsumerState<DoctorCaseRoomsScreen> {
                   children: const [
                     Text(
                       'Clinical Case Rooms',
-                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.textMain),
+                      style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textMain),
                     ),
                     SizedBox(height: 4),
                     Text(
@@ -137,28 +136,35 @@ class _DoctorCaseRoomsScreenState extends ConsumerState<DoctorCaseRoomsScreen> {
               ],
             ),
             const SizedBox(height: 20),
-
             Expanded(
               child: _selectedRoom == null
                   ? Card(
                       child: _isLoading
                           ? const Center(child: CircularProgressIndicator())
-                          : ListView.separated(
-                              itemCount: _caseRooms.length,
-                              separatorBuilder: (context, index) => const Divider(height: 1),
-                              itemBuilder: (context, index) {
-                                final cr = _caseRooms[index];
-                                return ListTile(
-                                  title: Text(cr['title'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                                  subtitle: Text('${cr['specialty']} • ${cr['doctorCount']} Doctors'),
-                                  trailing: Chip(
-                                    label: Text(cr['status']),
-                                    backgroundColor: AppTheme.primaryLightTeal,
-                                  ),
-                                  onTap: () => _selectCaseRoom(cr),
-                                );
-                              },
-                            ),
+                          : _caseRooms.isEmpty
+                              ? const Center(
+                                  child: Text('No case rooms found.'))
+                              : ListView.separated(
+                                  itemCount: _caseRooms.length,
+                                  separatorBuilder: (context, index) =>
+                                      const Divider(height: 1),
+                                  itemBuilder: (context, index) {
+                                    final cr = _caseRooms[index];
+                                    return ListTile(
+                                      title: Text(cr['title'] ?? '',
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold)),
+                                      subtitle: Text(
+                                          'Patient: ${cr['patientName'] ?? ''} • Priority: ${cr['priority'] ?? ''}'),
+                                      trailing: Chip(
+                                        label: Text(cr['status'] ?? ''),
+                                        backgroundColor:
+                                            AppTheme.primaryLightTeal,
+                                      ),
+                                      onTap: () => _selectCaseRoom(cr),
+                                    );
+                                  },
+                                ),
                     )
                   : Card(
                       child: Column(
@@ -170,19 +176,24 @@ class _DoctorCaseRoomsScreenState extends ConsumerState<DoctorCaseRoomsScreen> {
                               children: [
                                 IconButton(
                                   icon: const Icon(Icons.arrow_back, size: 20),
-                                  onPressed: () => setState(() => _selectedRoom = null),
+                                  onPressed: () =>
+                                      setState(() => _selectedRoom = null),
                                 ),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        _selectedRoom!['title'],
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                        _selectedRoom!['title'] ?? '',
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16),
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                       const SizedBox(height: 4),
-                                      Text('Specialty: ${_selectedRoom!['specialty']}'),
+                                      Text(
+                                          'Patient: ${_selectedRoom!['patientName'] ?? ''}'),
                                     ],
                                   ),
                                 ),
@@ -190,38 +201,53 @@ class _DoctorCaseRoomsScreenState extends ConsumerState<DoctorCaseRoomsScreen> {
                             ),
                           ),
                           Expanded(
-                            child: ListView.builder(
-                              padding: const EdgeInsets.all(16),
-                              itemCount: _posts.length,
-                              itemBuilder: (context, idx) {
-                                final post = _posts[idx];
-                                return Card(
-                                  margin: const EdgeInsets.only(bottom: 12),
-                                  child: Padding(
+                            child: _isLoading
+                                ? const Center(
+                                    child: CircularProgressIndicator())
+                                : ListView.builder(
                                     padding: const EdgeInsets.all(16),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Expanded(
-                                              child: Text(
-                                                post['authorName'],
-                                                style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primaryTeal),
+                                    itemCount: _posts.length,
+                                    itemBuilder: (context, idx) {
+                                      final post = _posts[idx];
+                                      return Card(
+                                        margin:
+                                            const EdgeInsets.only(bottom: 12),
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(16),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment
+                                                        .spaceBetween,
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      post['authorName'] ?? '',
+                                                      style: const TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          color: AppTheme
+                                                              .primaryTeal),
+                                                    ),
+                                                  ),
+                                                  Text(post['postedAt'] ?? '',
+                                                      style: const TextStyle(
+                                                          fontSize: 12,
+                                                          color: AppTheme
+                                                              .textMuted)),
+                                                ],
                                               ),
-                                            ),
-                                            Text(post['createdAt'], style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-                                          ],
+                                              const SizedBox(height: 8),
+                                              Text(post['body'] ?? ''),
+                                            ],
+                                          ),
                                         ),
-                                        const SizedBox(height: 8),
-                                        Text(post['content']),
-                                      ],
-                                    ),
+                                      );
+                                    },
                                   ),
-                                );
-                              },
-                            ),
                           ),
                           Padding(
                             padding: const EdgeInsets.all(12),
@@ -230,7 +256,9 @@ class _DoctorCaseRoomsScreenState extends ConsumerState<DoctorCaseRoomsScreen> {
                                 Expanded(
                                   child: TextField(
                                     controller: _postController,
-                                    decoration: const InputDecoration(hintText: 'Share clinical insight or observation...'),
+                                    decoration: const InputDecoration(
+                                        hintText:
+                                            'Share clinical insight or observation...'),
                                   ),
                                 ),
                                 const SizedBox(width: 8),

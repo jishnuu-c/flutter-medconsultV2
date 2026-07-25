@@ -7,25 +7,30 @@ class ConsultationService {
 
   ConsultationService({required this.dio});
 
-  Future<List<dynamic>> getMyDoctorConsultations({int page = 0, int size = 10}) async {
-    final res = await dio.get(
-      '/api/medconsult/consultations/my/doctor',
-      queryParameters: {'page': page, 'size': size},
-    );
-    return res.data ?? [];
-  }
-
   Future<dynamic> openConsultation(Map<String, dynamic> dto) async {
     final res = await dio.post('/api/medconsult/consultations/book', data: dto);
     return res.data;
   }
 
-  Future<List<dynamic>> getConsultationsByPatient(String patientId, {int page = 0, int size = 50}) async {
+  Future<List<dynamic>> getConsultationsByPatient(String patientId,
+      {int page = 0, int size = 50}) async {
     final res = await dio.get(
       '/api/medconsult/consultations/patient/$patientId',
       queryParameters: {'page': page, 'size': size},
     );
-    if (res.data is Map && res.data['content'] != null) return res.data['content'];
+    if (res.data is Map && res.data['content'] != null)
+      return res.data['content'];
+    return res.data ?? [];
+  }
+
+  Future<List<dynamic>> getConsultationsByDoctor(String doctorId,
+      {int page = 0, int size = 10}) async {
+    final res = await dio.get(
+      '/api/medconsult/consultations/doctor/$doctorId',
+      queryParameters: {'page': page, 'size': size},
+    );
+    if (res.data is Map && res.data['content'] != null)
+      return res.data['content'];
     return res.data ?? [];
   }
 
@@ -42,13 +47,16 @@ class ConsultationService {
     return res.data;
   }
 
-  Future<List<dynamic>> getMessagesForConsultation(String consultationId) async {
-    final res = await dio.get('/api/medconsult/consultations/messages/consultation/$consultationId');
+  Future<List<dynamic>> getMessagesForConsultation(
+      String consultationId) async {
+    final res = await dio.get(
+        '/api/medconsult/consultations/messages/consultation/$consultationId');
     return res.data ?? [];
   }
 
   Future<dynamic> sendMessage(Map<String, dynamic> dto) async {
-    final res = await dio.post('/api/medconsult/consultations/messages/', data: dto);
+    final res =
+        await dio.post('/api/medconsult/consultations/messages/', data: dto);
     return res.data;
   }
 }
