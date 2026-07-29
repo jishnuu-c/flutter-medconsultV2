@@ -119,6 +119,41 @@ class ClinicalRecordService {
         await dio.post('/api/medconsult/lab-results/add', data: formData);
     return res.data;
   }
+
+  // ── Adherence ─────────────────────────────────────────────────────
+  Future<List<dynamic>> searchAdherence({
+    String? patientId,
+    String? rxItemId,
+    int page = 0,
+    int size = 10,
+    String sortBy = 'logDate',
+    String sortDir = 'desc',
+  }) async {
+    final res =
+        await dio.get('/api/medconsult/adherence/search', queryParameters: {
+      if (patientId != null) 'patientId': patientId,
+      if (rxItemId != null) 'rxItemId': rxItemId,
+      'page': page,
+      'size': size,
+      'sortBy': sortBy,
+      'sortDir': sortDir,
+    });
+    return _extractList(res.data);
+  }
+
+  Future<dynamic> createAdherence(Map<String, dynamic> dto) async {
+    final res = await dio.post('/api/medconsult/adherence/add', data: dto);
+    return res.data;
+  }
+
+  // Mirrors clinical-record.service.ts's downloadFile (blob response).
+  Future<List<int>> downloadFile(String fileId) async {
+    final res = await dio.get<List<int>>(
+      '/api/medconsult/files/$fileId/download',
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return res.data ?? [];
+  }
 }
 
 final clinicalRecordServiceProvider = Provider<ClinicalRecordService>((ref) {
