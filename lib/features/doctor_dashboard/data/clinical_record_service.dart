@@ -103,12 +103,17 @@ class ClinicalRecordService {
     return _extractList(res.data);
   }
 
-  Future<dynamic> createLabResult(Map<String, dynamic> dto) async {
+  // Backend expects multipart/form-data here: the DTO as a JSON blob under
+  // field "dto", plus an optional "file" part. Mirrors clinical-record.service.ts's
+  // createLabResult (FormData + Blob). Sending plain JSON silently fails.
+  Future<dynamic> createLabResult(Map<String, dynamic> dto,
+      {String? filePath}) async {
     final formData = FormData.fromMap({
       'dto': MultipartFile.fromString(
         jsonEncode(dto),
         contentType: MediaType('application', 'json'),
       ),
+      if (filePath != null) 'file': await MultipartFile.fromFile(filePath),
     });
     final res =
         await dio.post('/api/medconsult/lab-results/add', data: formData);

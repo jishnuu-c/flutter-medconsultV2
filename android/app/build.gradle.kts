@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.example.medconsult_qa"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

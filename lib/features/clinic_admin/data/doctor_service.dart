@@ -34,6 +34,54 @@ class DoctorService {
     await dio.delete('/api/medconsult/doctors/$id/delete');
   }
 
+  // ── Schedules ───────────────────────────────────────────────────────
+  Future<List<DoctorScheduleModel>> getDcSchedules(String dcId) async {
+    final res =
+        await dio.get('/api/medconsult/doctors/clinics/$dcId/schedules');
+    final List list = res.data ?? [];
+    return list.map((e) => DoctorScheduleModel.fromJson(e)).toList();
+  }
+
+  Future<DoctorScheduleModel> addSchedule(Map<String, dynamic> dto) async {
+    final res =
+        await dio.post('/api/medconsult/doctors/schedules/add', data: dto);
+    return DoctorScheduleModel.fromJson(res.data);
+  }
+
+  Future<DoctorScheduleModel> updateSchedule(
+      String id, Map<String, dynamic> dto) async {
+    final res = await dio.patch('/api/medconsult/doctors/schedules/$id/update',
+        data: dto);
+    return DoctorScheduleModel.fromJson(res.data);
+  }
+
+  Future<void> removeSchedule(String id) async {
+    await dio.delete('/api/medconsult/doctors/schedules/$id/remove');
+  }
+
+  // ── Leave ───────────────────────────────────────────────────────────
+  Future<List<DoctorLeaveModel>> getDcLeave(String dcId) async {
+    final res = await dio.get('/api/medconsult/doctors/clinics/$dcId/leave');
+    final List list = res.data ?? [];
+    return list.map((e) => DoctorLeaveModel.fromJson(e)).toList();
+  }
+
+  Future<DoctorLeaveModel> addLeave(Map<String, dynamic> dto) async {
+    final res = await dio.post('/api/medconsult/doctors/leave/add', data: dto);
+    return DoctorLeaveModel.fromJson(res.data);
+  }
+
+  Future<DoctorLeaveModel> updateLeave(
+      String id, Map<String, dynamic> dto) async {
+    final res =
+        await dio.patch('/api/medconsult/doctors/leave/$id/update', data: dto);
+    return DoctorLeaveModel.fromJson(res.data);
+  }
+
+  Future<void> removeLeave(String id) async {
+    await dio.delete('/api/medconsult/doctors/leave/$id/remove');
+  }
+
   // ── Slots ───────────────────────────────────────────────────────────
   Future<List<dynamic>> getAvailableSlots(String dcId, {String? date}) async {
     final res = await dio.get(

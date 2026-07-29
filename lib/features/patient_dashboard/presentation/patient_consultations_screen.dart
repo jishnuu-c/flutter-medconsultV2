@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/auth/auth_provider.dart';
@@ -12,10 +11,12 @@ class PatientConsultationsScreen extends ConsumerStatefulWidget {
   const PatientConsultationsScreen({super.key});
 
   @override
-  ConsumerState<PatientConsultationsScreen> createState() => _PatientConsultationsScreenState();
+  ConsumerState<PatientConsultationsScreen> createState() =>
+      _PatientConsultationsScreenState();
 }
 
-class _PatientConsultationsScreenState extends ConsumerState<PatientConsultationsScreen> {
+class _PatientConsultationsScreenState
+    extends ConsumerState<PatientConsultationsScreen> {
   final _msgController = TextEditingController();
   bool _isLoading = false;
   String? _patientId;
@@ -63,7 +64,9 @@ class _PatientConsultationsScreenState extends ConsumerState<PatientConsultation
 
   Future<void> _loadConsultations() async {
     if (_patientId == null) return;
-    final res = await ref.read(consultationServiceProvider).getConsultationsByPatient(_patientId!, page: 0, size: 50);
+    final res = await ref
+        .read(consultationServiceProvider)
+        .getConsultationsByPatient(_patientId!, page: 0, size: 50);
     if (mounted) setState(() => _consultations = res);
   }
 
@@ -79,7 +82,9 @@ class _PatientConsultationsScreenState extends ConsumerState<PatientConsultation
     }
 
     try {
-      final msgs = await ref.read(consultationServiceProvider).getMessagesForConsultation(c['consultationId']);
+      final msgs = await ref
+          .read(consultationServiceProvider)
+          .getMessagesForConsultation(c['consultationId']);
       if (mounted) setState(() => _messages = msgs);
     } catch (_) {
       if (mounted) setState(() => _messages = []);
@@ -127,7 +132,10 @@ class _PatientConsultationsScreenState extends ConsumerState<PatientConsultation
                 DropdownButtonFormField<String>(
                   initialValue: doctorId,
                   decoration: const InputDecoration(labelText: 'Doctor'),
-                  items: _doctors.map((d) => DropdownMenuItem<String>(value: d.doctorId, child: Text(d.fullName))).toList(),
+                  items: _doctors
+                      .map((d) => DropdownMenuItem<String>(
+                          value: d.doctorId, child: Text(d.fullName)))
+                      .toList(),
                   onChanged: (val) => setDialogState(() => doctorId = val),
                 ),
                 const SizedBox(height: 12),
@@ -140,20 +148,27 @@ class _PatientConsultationsScreenState extends ConsumerState<PatientConsultation
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Mark as urgent'),
                   value: isUrgent,
-                  onChanged: (val) => setDialogState(() => isUrgent = val ?? false),
+                  onChanged: (val) =>
+                      setDialogState(() => isUrgent = val ?? false),
                 ),
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
             ElevatedButton(
-              onPressed: submitting || doctorId == null || subjectController.text.trim().isEmpty
+              onPressed: submitting ||
+                      doctorId == null ||
+                      subjectController.text.trim().isEmpty
                   ? null
                   : () async {
                       setDialogState(() => submitting = true);
                       try {
-                        await ref.read(consultationServiceProvider).openConsultation({
+                        await ref
+                            .read(consultationServiceProvider)
+                            .openConsultation({
                           'patientId': _patientId,
                           'doctorId': doctorId,
                           'subject': subjectController.text.trim(),
@@ -165,7 +180,8 @@ class _PatientConsultationsScreenState extends ConsumerState<PatientConsultation
                         setDialogState(() => submitting = false);
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Failed to book consultation.')),
+                            const SnackBar(
+                                content: Text('Failed to book consultation.')),
                           );
                         }
                       }
@@ -194,10 +210,16 @@ class _PatientConsultationsScreenState extends ConsumerState<PatientConsultation
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: const [
-                    Text('My Tele-Consultations', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                    Text('My Tele-Consultations',
+                        style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.textMain)),
                     SizedBox(height: 4),
-                    Text('Virtual consultation sessions and direct doctor messaging portal.',
-                        style: TextStyle(fontSize: 14, color: AppTheme.textMuted)),
+                    Text(
+                        'Virtual consultation sessions and direct doctor messaging portal.',
+                        style:
+                            TextStyle(fontSize: 14, color: AppTheme.textMuted)),
                   ],
                 ),
                 if (_selectedConsultation == null)
@@ -209,29 +231,37 @@ class _PatientConsultationsScreenState extends ConsumerState<PatientConsultation
               ],
             ),
             const SizedBox(height: 20),
-
             Expanded(
               child: _selectedConsultation == null
                   ? Card(
                       child: _isLoading
                           ? const Center(child: CircularProgressIndicator())
                           : _consultations.isEmpty
-                              ? const Center(child: Text('No consultations yet. Start one above.'))
+                              ? const Center(
+                                  child: Text(
+                                      'No consultations yet. Start one above.'))
                               : ListView.separated(
                                   itemCount: _consultations.length,
-                                  separatorBuilder: (context, index) => const Divider(height: 1),
+                                  separatorBuilder: (context, index) =>
+                                      const Divider(height: 1),
                                   itemBuilder: (context, index) {
                                     final c = _consultations[index];
                                     return ListTile(
                                       leading: CircleAvatar(
                                         backgroundColor: Colors.grey[300],
-                                        child: Icon(Icons.video_call, color: AppTheme.textMain),
+                                        child: Icon(Icons.video_call,
+                                            color: AppTheme.textMain),
                                       ),
-                                      title: Text(c['doctorName'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                      subtitle: Text(c['subject'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
+                                      title: Text(c['doctorName'] ?? '',
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold)),
+                                      subtitle: Text(c['subject'] ?? '',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis),
                                       trailing: Chip(
                                         label: Text(c['status'] ?? ''),
-                                        backgroundColor: AppTheme.primaryLightTeal,
+                                        backgroundColor:
+                                            AppTheme.primaryLightTeal,
                                       ),
                                       onTap: () => _selectConsultation(c),
                                     );
@@ -248,45 +278,67 @@ class _PatientConsultationsScreenState extends ConsumerState<PatientConsultation
                               children: [
                                 IconButton(
                                   icon: const Icon(Icons.arrow_back, size: 20),
-                                  onPressed: () => setState(() => _selectedConsultation = null),
+                                  onPressed: () => setState(
+                                      () => _selectedConsultation = null),
                                 ),
                                 Expanded(
                                   child: Text(
                                     '${_selectedConsultation!['doctorName']} — ${_selectedConsultation!['subject'] ?? ''}',
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                                 Chip(
-                                  label: Text(_selectedConsultation!['status'] ?? ''),
-                                  backgroundColor: AppTheme.successGreen.withValues(alpha: 0.2),
+                                  label: Text(
+                                      _selectedConsultation!['status'] ?? ''),
+                                  backgroundColor: AppTheme.successGreen
+                                      .withValues(alpha: 0.2),
                                 ),
                               ],
                             ),
                           ),
                           Expanded(
                             child: _isLoading
-                                ? const Center(child: CircularProgressIndicator())
+                                ? const Center(
+                                    child: CircularProgressIndicator())
                                 : _messages.isEmpty
-                                    ? const Center(child: Text('No messages yet. Say hello!'))
+                                    ? const Center(
+                                        child:
+                                            Text('No messages yet. Say hello!'))
                                     : ListView.builder(
                                         padding: const EdgeInsets.all(16),
                                         itemCount: _messages.length,
                                         itemBuilder: (context, idx) {
                                           final msg = _messages[idx];
-                                          final isMine = msg['senderId'] == currentUserId;
+                                          final isMine =
+                                              msg['senderId'] == currentUserId;
                                           return Align(
-                                            alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+                                            alignment: isMine
+                                                ? Alignment.centerRight
+                                                : Alignment.centerLeft,
                                             child: Container(
-                                              margin: const EdgeInsets.symmetric(vertical: 4),
-                                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                              margin:
+                                                  const EdgeInsets.symmetric(
+                                                      vertical: 4),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 14,
+                                                      vertical: 10),
                                               decoration: BoxDecoration(
-                                                color: isMine ? AppTheme.primaryTeal : Colors.grey[200],
-                                                borderRadius: BorderRadius.circular(12),
+                                                color: isMine
+                                                    ? AppTheme.primaryTeal
+                                                    : Colors.grey[200],
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
                                               ),
                                               child: Text(
                                                 msg['body'] ?? '',
-                                                style: TextStyle(color: isMine ? Colors.white : AppTheme.textMain),
+                                                style: TextStyle(
+                                                    color: isMine
+                                                        ? Colors.white
+                                                        : AppTheme.textMain),
                                               ),
                                             ),
                                           );
@@ -300,13 +352,16 @@ class _PatientConsultationsScreenState extends ConsumerState<PatientConsultation
                                 Expanded(
                                   child: TextField(
                                     controller: _msgController,
-                                    decoration: const InputDecoration(hintText: 'Type your message to doctor...'),
+                                    decoration: const InputDecoration(
+                                        hintText:
+                                            'Type your message to doctor...'),
                                     onSubmitted: (_) => _sendMessage(),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
                                 IconButton(
-                                  icon: const Icon(Icons.send, color: AppTheme.primaryTeal),
+                                  icon: const Icon(Icons.send,
+                                      color: AppTheme.primaryTeal),
                                   onPressed: _sendMessage,
                                 ),
                               ],

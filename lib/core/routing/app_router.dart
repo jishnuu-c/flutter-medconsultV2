@@ -10,7 +10,7 @@ import '../../features/doctor_dashboard/presentation/availability_screen.dart';
 import '../../features/doctor_dashboard/presentation/caserooms_screen.dart';
 import '../../features/doctor_dashboard/presentation/consultations_screen.dart';
 import '../../features/doctor_dashboard/presentation/doctor_profile_screen.dart';
-import '../../features/doctor_dashboard/presentation/patients_screen.dart';
+import '../../features/doctor_dashboard/presentation/doctor_patients_screen.dart';
 import '../../features/doctor_dashboard/presentation/schedule_screen.dart';
 import '../../features/landing/presentation/landing_screen.dart';
 import '../../features/patient_dashboard/presentation/book_appointment_screen.dart';

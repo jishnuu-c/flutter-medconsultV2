@@ -129,7 +129,8 @@ class DoctorModel {
       experienceYears: json['experienceYears'] ?? 5,
       overallRating: (json['overallRating'] as num?)?.toDouble() ?? 5.0,
       reviewCount: json['reviewCount'] ?? 0,
-      consultationFeeSar: (json['consultationFeeSar'] as num?)?.toDouble() ?? 150.0,
+      consultationFeeSar:
+          (json['consultationFeeSar'] as num?)?.toDouble() ?? 150.0,
       isActive: json['isActive'] ?? true,
       createdAt: json['createdAt'],
       updatedAt: json['updatedAt'],
@@ -185,7 +186,8 @@ class DoctorClinicModel {
       clinicId: json['clinicId']?.toString() ?? '',
       branchId: json['branchId']?.toString() ?? '',
       department: json['department'] ?? 'General Practice',
-      consultationFeeSar: (json['consultationFeeSar'] as num?)?.toDouble() ?? 150.0,
+      consultationFeeSar:
+          (json['consultationFeeSar'] as num?)?.toDouble() ?? 150.0,
       isPrimary: json['isPrimary'] ?? true,
       startDate: json['startDate'] ?? DateTime.now().toString().split(' ')[0],
       endDate: json['endDate'],
@@ -206,6 +208,82 @@ class DoctorClinicModel {
         if (endDate != null) 'endDate': endDate,
         'isActive': isActive,
       };
+}
+
+class DoctorScheduleModel {
+  final String scheduleId;
+  final String dcId;
+  final int dayOfWeek;
+  final String startTime;
+  final String endTime;
+  final int slotDurationMin;
+  final int maxPatients;
+  final SessionType sessionType;
+  final bool isActive;
+  final String validFrom;
+  final String? validUntil;
+
+  DoctorScheduleModel({
+    required this.scheduleId,
+    required this.dcId,
+    required this.dayOfWeek,
+    required this.startTime,
+    required this.endTime,
+    required this.slotDurationMin,
+    required this.maxPatients,
+    required this.sessionType,
+    required this.isActive,
+    required this.validFrom,
+    this.validUntil,
+  });
+
+  factory DoctorScheduleModel.fromJson(Map<String, dynamic> json) {
+    return DoctorScheduleModel(
+      scheduleId: json['scheduleId']?.toString() ?? '',
+      dcId: json['dcId']?.toString() ?? '',
+      dayOfWeek: (json['dayOfWeek'] as num?)?.toInt() ?? 1,
+      startTime: json['startTime'] ?? '09:00:00',
+      endTime: json['endTime'] ?? '17:00:00',
+      slotDurationMin: (json['slotDurationMin'] as num?)?.toInt() ?? 30,
+      maxPatients: (json['maxPatients'] as num?)?.toInt() ?? 20,
+      sessionType: SessionType.fromString(json['sessionType'] ?? 'IN_CLINIC'),
+      isActive: json['isActive'] ?? true,
+      validFrom: json['validFrom'] ?? DateTime.now().toString().split(' ')[0],
+      validUntil: json['validUntil'],
+    );
+  }
+}
+
+class DoctorLeaveModel {
+  final String leaveId;
+  final String dcId;
+  final LeaveType leaveType;
+  final String startDate;
+  final String endDate;
+  final bool isApproved;
+  final String? notes;
+
+  DoctorLeaveModel({
+    required this.leaveId,
+    required this.dcId,
+    required this.leaveType,
+    required this.startDate,
+    required this.endDate,
+    required this.isApproved,
+    this.notes,
+  });
+
+  factory DoctorLeaveModel.fromJson(Map<String, dynamic> json) {
+    return DoctorLeaveModel(
+      leaveId: json['leaveId']?.toString() ?? '',
+      dcId: json['dcId']?.toString() ?? '',
+      leaveType: LeaveType.fromString(json['leaveType'] ?? 'ANNUAL'),
+      startDate: json['startDate'] ?? '',
+      endDate: json['endDate'] ?? '',
+      isApproved: json['isApproved'] ?? false,
+      notes: json['notes'],
+    );
+  }
 }
 
 class DoctorSpecialtyModel {
@@ -259,7 +337,8 @@ class DoctorLanguageModel {
       id: json['id']?.toString() ?? '',
       doctorId: json['doctorId']?.toString() ?? '',
       languageId: json['languageId']?.toString() ?? '',
-      proficiency: LanguageProficiency.fromString(json['proficiency'] ?? 'FLUENT'),
+      proficiency:
+          LanguageProficiency.fromString(json['proficiency'] ?? 'FLUENT'),
     );
   }
 
@@ -359,10 +438,18 @@ class DoctorDetailResponse extends DoctorModel {
       isActive: base.isActive,
       createdAt: base.createdAt,
       updatedAt: base.updatedAt,
-      clinics: (json['clinics'] as List? ?? []).map((e) => DoctorClinicModel.fromJson(e)).toList(),
-      specialties: (json['specialties'] as List? ?? []).map((e) => DoctorSpecialtyModel.fromJson(e)).toList(),
-      languages: (json['languages'] as List? ?? []).map((e) => DoctorLanguageModel.fromJson(e)).toList(),
-      qualifications: (json['qualifications'] as List? ?? []).map((e) => DoctorQualificationModel.fromJson(e)).toList(),
+      clinics: (json['clinics'] as List? ?? [])
+          .map((e) => DoctorClinicModel.fromJson(e))
+          .toList(),
+      specialties: (json['specialties'] as List? ?? [])
+          .map((e) => DoctorSpecialtyModel.fromJson(e))
+          .toList(),
+      languages: (json['languages'] as List? ?? [])
+          .map((e) => DoctorLanguageModel.fromJson(e))
+          .toList(),
+      qualifications: (json['qualifications'] as List? ?? [])
+          .map((e) => DoctorQualificationModel.fromJson(e))
+          .toList(),
     );
   }
 }
