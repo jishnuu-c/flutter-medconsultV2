@@ -1,5 +1,7 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/patient_service.dart';
 
@@ -23,19 +25,26 @@ class _PatientHealthProfileScreenState
 
   static const _smokingStatuses = ['NEVER', 'FORMER', 'CURRENT'];
   static const _alcoholStatuses = ['NONE', 'OCCASIONAL', 'REGULAR'];
+  static const _conditionStatuses = ['ACTIVE', 'IN_REMISSION', 'RESOLVED'];
+  static final _icd10Pattern =
+      RegExp(r'^[A-Za-z][0-9][0-9AB](?:\.[0-9A-Za-z]{1,4})?$');
+
+  // Gate: patient must have a General Profile before health metrics unlock.
+  bool _needProfileInit = false;
 
   bool _healthProfileExists = false;
+  bool _isEditMode = false;
   double? _bmi;
 
   List<dynamic> _allergies = [];
   List<dynamic> _chronicConditions = [];
-  bool _isLoading = false;
+  bool _isLoading = true;
   bool _isSavingMetrics = false;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadAll();
   }
 
   @override
@@ -48,54 +57,98 @@ class _PatientHealthProfileScreenState
     super.dispose();
   }
 
-  Future<void> _loadData() async {
+  // ── Load ──────────────────────────────────────────────────────────
+  Future<void> _loadAll() async {
     setState(() => _isLoading = true);
     final pService = ref.read(patientServiceProvider);
-    try {
-      final healthProfile = await pService.getMyHealthProfile();
-      if (mounted) {
-        setState(() {
-          _healthProfileExists = true;
-          _heightController.text = '${healthProfile['heightCm'] ?? ''}';
-          _weightController.text = '${healthProfile['weightKg'] ?? ''}';
-          _surgicalHistoryController.text =
-              healthProfile['surgicalHistory'] ?? '';
-          _familyHistoryController.text = healthProfile['familyHistory'] ?? '';
-          _notesController.text = healthProfile['additionalNotes'] ?? '';
-          _smokingStatus = healthProfile['smokingStatus'] ?? 'NEVER';
-          _alcoholStatus = healthProfile['alcoholStatus'] ?? 'NONE';
-          _bmi = (healthProfile['bmi'] as num?)?.toDouble();
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _healthProfileExists = false);
-    }
 
     try {
-      final allergiesRes = await pService.getMyAllergies();
-      final conditionsRes = await pService.getMyChronicConditions();
-      if (mounted) {
+      await pService.getMyProfile();
+      _needProfileInit = false;
+    } catch (e) {
+      final status = e is DioException ? e.response?.statusCode : null;
+      if (status == 404) {
+        if (mounted) setState(() => _needProfileInit = true);
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
+    }
+
+    await Future.wait([
+      _loadHealthProfile(),
+      _loadAllergies(),
+      _loadChronicConditions(),
+    ]);
+
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _loadHealthProfile() async {
+    final pService = ref.read(patientServiceProvider);
+    try {
+      final profile = await pService.getMyHealthProfile();
+      if (!mounted) return;
+      setState(() {
+        _healthProfileExists = true;
+        _isEditMode = false;
+        _heightController.text = '${profile['heightCm'] ?? ''}';
+        _weightController.text = '${profile['weightKg'] ?? ''}';
+        _surgicalHistoryController.text = profile['surgicalHistory'] ?? '';
+        _familyHistoryController.text = profile['familyHistory'] ?? '';
+        _notesController.text = profile['additionalNotes'] ?? '';
+        _smokingStatus = profile['smokingStatus'] ?? 'NEVER';
+        _alcoholStatus = profile['alcoholStatus'] ?? 'NONE';
+        _bmi = (profile['bmi'] as num?)?.toDouble();
+      });
+    } catch (e) {
+      final status = e is DioException ? e.response?.statusCode : null;
+      if (status == 404 && mounted) {
         setState(() {
-          _allergies = allergiesRes;
-          _chronicConditions = conditionsRes;
+          _healthProfileExists = false;
+          _isEditMode = true; // auto-open for first-time creation
         });
       }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to load allergies/conditions.')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  Future<void> _loadAllergies() async {
+    try {
+      final data = await ref.read(patientServiceProvider).getMyAllergies();
+      if (mounted) setState(() => _allergies = data);
+    } catch (_) {}
+  }
+
+  Future<void> _loadChronicConditions() async {
+    try {
+      final data =
+          await ref.read(patientServiceProvider).getMyChronicConditions();
+      if (mounted) setState(() => _chronicConditions = data);
+    } catch (_) {}
+  }
+
+  // ── Metrics form: edit lock ────────────────────────────────────────
+  void _enableEdit() => setState(() => _isEditMode = true);
+
+  void _cancelEdit() {
+    if (!_healthProfileExists) return; // nothing to cancel back to
+    setState(() => _isEditMode = false);
+    _loadHealthProfile();
+  }
+
   Future<void> _saveMetrics() async {
+    final height = double.tryParse(_heightController.text);
+    final weight = double.tryParse(_weightController.text);
+    if (height == null || height <= 0 || weight == null || weight <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter valid height and weight.')),
+      );
+      return;
+    }
+
     setState(() => _isSavingMetrics = true);
     final dto = {
-      'heightCm': double.tryParse(_heightController.text) ?? 0,
-      'weightKg': double.tryParse(_weightController.text) ?? 0,
+      'heightCm': height,
+      'weightKg': weight,
       'smokingStatus': _smokingStatus,
       'alcoholStatus': _alcoholStatus,
       'surgicalHistory': _surgicalHistoryController.text.trim(),
@@ -108,13 +161,13 @@ class _PatientHealthProfileScreenState
         await pService.updateHealthProfile(dto);
       } else {
         await pService.addHealthProfile(dto);
-        _healthProfileExists = true;
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Health metrics saved successfully.')),
         );
       }
+      await _loadHealthProfile();
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -126,11 +179,13 @@ class _PatientHealthProfileScreenState
     }
   }
 
+  // ── Allergy modal ───────────────────────────────────────────────────
   void _openAddAllergyDialog() {
     final allergenController = TextEditingController();
     final reactionController = TextEditingController();
-    String severity = 'MODERATE';
+    String severity = 'MILD';
     String allergyType = 'DRUG';
+    final formKey = GlobalKey<FormState>();
 
     showDialog(
       context: context,
@@ -138,47 +193,60 @@ class _PatientHealthProfileScreenState
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('Add Known Allergy'),
           content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
                     controller: allergenController,
+                    maxLength: 100,
                     decoration: const InputDecoration(
-                        labelText: 'Allergen (e.g. Penicillin)')),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: allergyType,
-                  decoration: const InputDecoration(labelText: 'Allergy Type'),
-                  items: const [
-                    DropdownMenuItem(value: 'DRUG', child: Text('DRUG')),
-                    DropdownMenuItem(value: 'FOOD', child: Text('FOOD')),
-                    DropdownMenuItem(
-                        value: 'ENVIRONMENTAL', child: Text('ENVIRONMENTAL')),
-                    DropdownMenuItem(value: 'OTHER', child: Text('OTHER')),
-                  ],
-                  onChanged: (val) {
-                    if (val != null) setDialogState(() => allergyType = val);
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextField(
+                        labelText: 'Allergen (e.g. Penicillin)'),
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: allergyType,
+                    decoration:
+                        const InputDecoration(labelText: 'Allergy Type'),
+                    items: const [
+                      DropdownMenuItem(value: 'DRUG', child: Text('DRUG')),
+                      DropdownMenuItem(value: 'FOOD', child: Text('FOOD')),
+                      DropdownMenuItem(
+                          value: 'ENVIRONMENTAL', child: Text('ENVIRONMENTAL')),
+                      DropdownMenuItem(value: 'OTHER', child: Text('OTHER')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) setDialogState(() => allergyType = val);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
                     controller: reactionController,
-                    decoration: const InputDecoration(labelText: 'Reaction')),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: severity,
-                  decoration: const InputDecoration(labelText: 'Severity'),
-                  items: const [
-                    DropdownMenuItem(value: 'MILD', child: Text('MILD')),
-                    DropdownMenuItem(
-                        value: 'MODERATE', child: Text('MODERATE')),
-                    DropdownMenuItem(value: 'SEVERE', child: Text('SEVERE')),
-                  ],
-                  onChanged: (val) {
-                    if (val != null) setDialogState(() => severity = val);
-                  },
-                ),
-              ],
+                    maxLength: 255,
+                    decoration: const InputDecoration(
+                        labelText: 'Reaction (e.g. Skin rash, Anaphylaxis)'),
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: severity,
+                    decoration: const InputDecoration(labelText: 'Severity'),
+                    items: const [
+                      DropdownMenuItem(value: 'MILD', child: Text('MILD')),
+                      DropdownMenuItem(
+                          value: 'MODERATE', child: Text('MODERATE')),
+                      DropdownMenuItem(value: 'SEVERE', child: Text('SEVERE')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) setDialogState(() => severity = val);
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
           actions: [
@@ -187,6 +255,7 @@ class _PatientHealthProfileScreenState
                 child: const Text('Cancel')),
             ElevatedButton(
               onPressed: () async {
+                if (!(formKey.currentState?.validate() ?? false)) return;
                 try {
                   await ref.read(patientServiceProvider).addAllergy({
                     'allergen': allergenController.text.trim(),
@@ -195,6 +264,8 @@ class _PatientHealthProfileScreenState
                     'severity': severity,
                     'confirmed': true,
                   });
+                  if (mounted) Navigator.pop(ctx);
+                  _loadAllergies();
                 } catch (_) {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -202,8 +273,6 @@ class _PatientHealthProfileScreenState
                     );
                   }
                 }
-                if (mounted) Navigator.pop(ctx);
-                _loadData();
               },
               child: const Text('Add Allergy'),
             ),
@@ -214,51 +283,120 @@ class _PatientHealthProfileScreenState
   }
 
   Future<void> _deleteAllergy(String allergyId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove allergy?'),
+        content: const Text('Are you sure you want to remove this allergy?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Remove')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     try {
       await ref.read(patientServiceProvider).deleteAllergy(allergyId);
-      _loadData();
-    } catch (_) {}
+      _loadAllergies();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to delete allergy.')),
+        );
+      }
+    }
   }
 
+  // ── Chronic condition modal ──────────────────────────────────────────
   void _openAddConditionDialog() {
     final conditionController = TextEditingController();
     final icdController = TextEditingController();
+    final notesController = TextEditingController();
     String status = 'ACTIVE';
+    DateTime? diagnosisDate;
+    final formKey = GlobalKey<FormState>();
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Add Chronic Condition'),
+          title: const Text('Register Chronic Condition'),
           content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
                     controller: conditionController,
-                    decoration:
-                        const InputDecoration(labelText: 'Condition Name')),
-                const SizedBox(height: 12),
-                TextField(
+                    maxLength: 150,
+                    decoration: const InputDecoration(
+                        labelText:
+                            'Condition Name (e.g. Diabetes Mellitus Type II)'),
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
                     controller: icdController,
                     decoration: const InputDecoration(
-                        labelText: 'ICD-10 Code (optional)')),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: status,
-                  decoration: const InputDecoration(labelText: 'Status'),
-                  items: const [
-                    DropdownMenuItem(value: 'ACTIVE', child: Text('ACTIVE')),
-                    DropdownMenuItem(
-                        value: 'IN_REMISSION', child: Text('IN_REMISSION')),
-                    DropdownMenuItem(
-                        value: 'RESOLVED', child: Text('RESOLVED')),
-                  ],
-                  onChanged: (val) {
-                    if (val != null) setDialogState(() => status = val);
-                  },
-                ),
-              ],
+                        labelText: 'ICD-10 Code (e.g. E11.9)'),
+                    validator: (v) {
+                      final val = v?.trim() ?? '';
+                      if (val.isEmpty) return 'Required';
+                      if (!_icd10Pattern.hasMatch(val)) {
+                        return 'Must be a valid ICD-10 format.';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: diagnosisDate ?? DateTime.now(),
+                        firstDate: DateTime(1900),
+                        lastDate: DateTime.now(),
+                      );
+                      if (picked != null) {
+                        setDialogState(() => diagnosisDate = picked);
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration:
+                          const InputDecoration(labelText: 'Diagnosis Date'),
+                      child: Text(
+                        diagnosisDate == null
+                            ? 'Select date'
+                            : '${diagnosisDate!.year}-${diagnosisDate!.month.toString().padLeft(2, '0')}-${diagnosisDate!.day.toString().padLeft(2, '0')}',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: status,
+                    decoration: const InputDecoration(labelText: 'Status'),
+                    items: _conditionStatuses
+                        .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                        .toList(),
+                    onChanged: (val) {
+                      if (val != null) setDialogState(() => status = val);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: notesController,
+                    maxLines: 2,
+                    decoration:
+                        const InputDecoration(labelText: 'Notes (optional)'),
+                  ),
+                ],
+              ),
             ),
           ),
           actions: [
@@ -267,21 +405,32 @@ class _PatientHealthProfileScreenState
                 child: const Text('Cancel')),
             ElevatedButton(
               onPressed: () async {
+                if (!(formKey.currentState?.validate() ?? false)) return;
+                if (diagnosisDate == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Select a diagnosis date.')),
+                  );
+                  return;
+                }
                 try {
                   await ref.read(patientServiceProvider).addChronicCondition({
                     'conditionName': conditionController.text.trim(),
                     'icd10Code': icdController.text.trim(),
+                    'diagnosisDate':
+                        diagnosisDate!.toIso8601String().split('T').first,
                     'status': status,
+                    'notes': notesController.text.trim(),
                   });
+                  if (mounted) Navigator.pop(ctx);
+                  _loadChronicConditions();
                 } catch (_) {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Failed to add condition.')),
+                      const SnackBar(
+                          content: Text('Failed to register condition.')),
                     );
                   }
                 }
-                if (mounted) Navigator.pop(ctx);
-                _loadData();
               },
               child: const Text('Add Condition'),
             ),
@@ -292,284 +441,527 @@ class _PatientHealthProfileScreenState
   }
 
   Future<void> _deleteCondition(String conditionId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove condition?'),
+        content: const Text('Are you sure you want to remove this condition?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Remove')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     try {
       await ref
           .read(patientServiceProvider)
           .deleteChronicCondition(conditionId);
-      _loadData();
-    } catch (_) {}
+      _loadChronicConditions();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to remove condition.')),
+        );
+      }
+    }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
+  // ── Shared styling helpers (mirrors Angular .badge / .item-list-card / .group-card) ──
+  static const _offWhite = Color(0xFFF9FAFB);
+  static const _borderColor = Color(0xFFE5E7EB);
+
+  Widget _badge(String text, {required Color bg, required Color fg}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
+      child: Text(text,
+          style:
+              TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w600)),
+    );
+  }
+
+  // Card header with title + optional action button that WRAPS instead of
+  // overflowing when space is tight (fixes the overflow on narrow phones).
+  Widget _groupCardHeader(String title, {Widget? action}) {
+    return Container(
+      padding: const EdgeInsets.only(bottom: 14),
+      margin: const EdgeInsets.only(bottom: 18),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: _borderColor)),
+      ),
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 8,
+        children: [
+          Text(title,
+              style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.primaryTeal)),
+          if (action != null) action,
+        ],
+      ),
+    );
+  }
+
+  // Two fields side-by-side on normal width, stacked on very narrow screens —
+  // this is what actually removes the RenderFlex overflow risk on small devices.
+  Widget _responsiveFieldPair(Widget a, Widget b) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 340) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [a, const SizedBox(height: 16), b],
+          );
+        }
+        return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Personal Health Metrics & History',
-              style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textMain),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Keep your allergies, chronic conditions, and body metrics updated for your care team.',
-              style: TextStyle(fontSize: 14, color: AppTheme.textMuted),
-            ),
-            const SizedBox(height: 24),
+            Expanded(child: a),
+            const SizedBox(width: 16),
+            Expanded(child: b),
+          ],
+        );
+      },
+    );
+  }
 
-            // Metrics Section
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
+  // ── Build ────────────────────────────────────────────────────────────
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (_needProfileInit) {
+      return Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFFBEB),
+                  borderRadius: BorderRadius.circular(12),
+                  border: const Border(
+                      left: BorderSide(color: AppTheme.warningAmber, width: 5)),
+                ),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Height (cm)',
-                                  style:
-                                      TextStyle(fontWeight: FontWeight.bold)),
-                              const SizedBox(height: 8),
-                              TextField(
-                                  controller: _heightController,
-                                  keyboardType: TextInputType.number),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Weight (kg)',
-                                  style:
-                                      TextStyle(fontWeight: FontWeight.bold)),
-                              const SizedBox(height: 8),
-                              TextField(
-                                  controller: _weightController,
-                                  keyboardType: TextInputType.number),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (_bmi != null) ...[
-                      const SizedBox(height: 12),
-                      Text('BMI: ${_bmi!.toStringAsFixed(2)}',
-                          style: const TextStyle(color: AppTheme.textMuted)),
-                    ],
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            initialValue: _smokingStatus,
-                            decoration: const InputDecoration(
-                                labelText: 'Smoking Status'),
-                            items: _smokingStatuses
-                                .map((s) =>
-                                    DropdownMenuItem(value: s, child: Text(s)))
-                                .toList(),
-                            onChanged: (val) => setState(
-                                () => _smokingStatus = val ?? _smokingStatus),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            initialValue: _alcoholStatus,
-                            decoration: const InputDecoration(
-                                labelText: 'Alcohol Status'),
-                            items: _alcoholStatuses
-                                .map((s) =>
-                                    DropdownMenuItem(value: s, child: Text(s)))
-                                .toList(),
-                            onChanged: (val) => setState(
-                                () => _alcoholStatus = val ?? _alcoholStatus),
-                          ),
-                        ),
-                      ],
+                    const Text('Registration Required',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFB45309))),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Please initialize your General Patient Profile before entering your medical metrics.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Color(0xFF78350F)),
                     ),
                     const SizedBox(height: 16),
-                    const Text('Surgical History',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    TextField(
-                        controller: _surgicalHistoryController, maxLines: 2),
-                    const SizedBox(height: 16),
-                    const Text('Family History',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    TextField(
-                        controller: _familyHistoryController, maxLines: 2),
-                    const SizedBox(height: 16),
-                    const Text('Additional Notes',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    TextField(controller: _notesController, maxLines: 2),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: 200,
-                      height: 44,
-                      child: ElevatedButton(
-                        onPressed: _isSavingMetrics ? null : _saveMetrics,
-                        child: _isSavingMetrics
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
-                            : const Text('Save Metrics'),
-                      ),
+                    ElevatedButton(
+                      onPressed: () => context.go('/patient/profile'),
+                      child: const Text('Setup Profile'),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 24),
+          ),
+        ),
+      );
+    }
 
-            // Allergies Section
+    return Scaffold(
+      backgroundColor: _offWhite,
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: _loadAll,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Health Metrics & History',
+                  style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textMain),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Keep your allergies, chronic conditions, and body metrics updated for your care team.',
+                  style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
+                ),
+                const SizedBox(height: 20),
+                _buildMetricsCard(),
+                const SizedBox(height: 20),
+                _buildAllergiesSection(),
+                const SizedBox(height: 20),
+                _buildConditionsSection(),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMetricsCard() {
+    final locked = _healthProfileExists && !_isEditMode;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _groupCardHeader(
+            '🩺 Health Metrics & Medical History',
+            action: locked
+                ? OutlinedButton(
+                    onPressed: _enableEdit, child: const Text('Edit Metrics'))
+                : null,
+          ),
+          _responsiveFieldPair(
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Known Allergies',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text('Height (cm)',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.add, size: 16),
-                    label: const Text('Add Allergy'),
-                    onPressed: _openAddAllergyDialog,
-                  ),
-                ),
+                TextField(
+                    controller: _heightController,
+                    enabled: !locked,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true)),
               ],
             ),
-            const SizedBox(height: 12),
-            Card(
-              child: _isLoading
-                  ? const Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Center(child: CircularProgressIndicator()))
-                  : _allergies.isEmpty
-                      ? const Padding(
-                          padding: EdgeInsets.all(24),
-                          child: Center(child: Text('No allergies recorded.')))
-                      : ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _allergies.length,
-                          separatorBuilder: (context, index) =>
-                              const Divider(height: 1),
-                          itemBuilder: (context, idx) {
-                            final alg = _allergies[idx];
-                            return ListTile(
-                              leading: const Icon(Icons.warning_amber_outlined,
-                                  color: AppTheme.dangerRed),
-                              title: Text(alg['allergen'] ?? '',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold)),
-                              subtitle: Text(
-                                  'Reaction: ${alg['reaction'] ?? "None"}'),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Chip(
-                                      label: Text(alg['severity'] ?? ''),
-                                      backgroundColor: Colors.red[100]),
-                                  IconButton(
-                                    icon: const Icon(Icons.delete_outline,
-                                        size: 18),
-                                    onPressed: () =>
-                                        _deleteAllergy(alg['allergyId']),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-            ),
-            const SizedBox(height: 24),
-
-            // Chronic Conditions Section
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Chronic Conditions',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text('Weight (kg)',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.add, size: 16),
-                    label: const Text('Add Condition'),
-                    onPressed: _openAddConditionDialog,
-                  ),
-                ),
+                TextField(
+                    controller: _weightController,
+                    enabled: !locked,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true)),
               ],
             ),
+          ),
+          if (_bmi != null) ...[
             const SizedBox(height: 12),
-            Card(
-              child: _isLoading
-                  ? const Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Center(child: CircularProgressIndicator()))
-                  : _chronicConditions.isEmpty
-                      ? const Padding(
-                          padding: EdgeInsets.all(24),
-                          child: Center(
-                              child: Text('No chronic conditions recorded.')))
-                      : ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _chronicConditions.length,
-                          separatorBuilder: (context, index) =>
-                              const Divider(height: 1),
-                          itemBuilder: (context, idx) {
-                            final cc = _chronicConditions[idx];
-                            return ListTile(
-                              leading: const Icon(
-                                  Icons.medical_information_outlined,
-                                  color: AppTheme.primaryTeal),
-                              title: Text(cc['conditionName'] ?? '',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold)),
-                              subtitle:
-                                  Text('ICD-10: ${cc['icd10Code'] ?? 'N/A'}'),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Chip(
-                                      label: Text(cc['status'] ?? ''),
-                                      backgroundColor:
-                                          AppTheme.primaryLightTeal),
-                                  IconButton(
-                                    icon: const Icon(Icons.delete_outline,
-                                        size: 18),
-                                    onPressed: () =>
-                                        _deleteCondition(cc['conditionId']),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                  color: _offWhite, borderRadius: BorderRadius.circular(8)),
+              child: Text('Calculated BMI: ${_bmi!.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                      color: AppTheme.textMain, fontWeight: FontWeight.bold)),
             ),
           ],
-        ),
+          const SizedBox(height: 16),
+          _responsiveFieldPair(
+            DropdownButtonFormField<String>(
+              initialValue: _smokingStatus,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Smoking Status'),
+              items: _smokingStatuses
+                  .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                  .toList(),
+              onChanged: locked
+                  ? null
+                  : (val) =>
+                      setState(() => _smokingStatus = val ?? _smokingStatus),
+            ),
+            DropdownButtonFormField<String>(
+              initialValue: _alcoholStatus,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Alcohol Status'),
+              items: _alcoholStatuses
+                  .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                  .toList(),
+              onChanged: locked
+                  ? null
+                  : (val) =>
+                      setState(() => _alcoholStatus = val ?? _alcoholStatus),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text('Surgical History',
+              style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          TextField(
+              controller: _surgicalHistoryController,
+              enabled: !locked,
+              minLines: 2,
+              maxLines: 4),
+          const SizedBox(height: 16),
+          const Text('Family Medical History',
+              style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          TextField(
+              controller: _familyHistoryController,
+              enabled: !locked,
+              minLines: 2,
+              maxLines: 4),
+          const SizedBox(height: 16),
+          const Text('Additional Notes',
+              style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          TextField(
+              controller: _notesController,
+              enabled: !locked,
+              minLines: 2,
+              maxLines: 4),
+          if (!locked) ...[
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.only(top: 14),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: _borderColor)),
+              ),
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  if (_healthProfileExists)
+                    OutlinedButton(
+                        onPressed: _isSavingMetrics ? null : _cancelEdit,
+                        child: const Text('Cancel')),
+                  ElevatedButton(
+                    onPressed: _isSavingMetrics ? null : _saveMetrics,
+                    child: _isSavingMetrics
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Text('Save Changes'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAllergiesSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _groupCardHeader(
+            '⚠️ Known Allergies',
+            action: OutlinedButton.icon(
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Add'),
+              onPressed: _openAddAllergyDialog,
+            ),
+          ),
+          if (_allergies.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                  child: Text('No allergies listed on record.',
+                      style: TextStyle(color: AppTheme.textMuted))),
+            )
+          else
+            Column(
+              children: [
+                for (int i = 0; i < _allergies.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 10),
+                  _allergyCard(_allergies[i]),
+                ],
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _allergyCard(dynamic al) {
+    final severity = al['severity'] ?? '';
+    Color bg, fg;
+    switch (severity) {
+      case 'SEVERE':
+        bg = const Color(0xFFFEE2E2);
+        fg = const Color(0xFFB91C1C);
+        break;
+      case 'MODERATE':
+        bg = const Color(0xFFFEF3C7);
+        fg = const Color(0xFFB45309);
+        break;
+      default:
+        bg = const Color(0xFFDCFCE7);
+        fg = const Color(0xFF15803D);
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _offWhite,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(al['allergen'] ?? '',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+              ),
+              SizedBox(
+                width: 32,
+                height: 32,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  icon: const Icon(Icons.delete_outline,
+                      size: 18, color: AppTheme.dangerRed),
+                  onPressed: () => _deleteAllergy(al['allergyId']),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _badge(severity, bg: bg, fg: fg),
+              _badge(al['allergyType'] ?? '',
+                  bg: const Color(0xFFE1F5EE), fg: AppTheme.primaryTeal),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text('Reaction: ${al['reaction'] ?? "None"}',
+              style: const TextStyle(fontSize: 13, color: AppTheme.textMuted)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConditionsSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _groupCardHeader(
+            '📋 Chronic Conditions',
+            action: OutlinedButton.icon(
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Add'),
+              onPressed: _openAddConditionDialog,
+            ),
+          ),
+          if (_chronicConditions.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                  child: Text('No chronic conditions listed.',
+                      style: TextStyle(color: AppTheme.textMuted))),
+            )
+          else
+            Column(
+              children: [
+                for (int i = 0; i < _chronicConditions.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 10),
+                  _conditionCard(_chronicConditions[i]),
+                ],
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _conditionCard(dynamic cc) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _offWhite,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(cc['conditionName'] ?? '',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+              ),
+              SizedBox(
+                width: 32,
+                height: 32,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  icon: const Icon(Icons.delete_outline,
+                      size: 18, color: AppTheme.dangerRed),
+                  onPressed: () => _deleteCondition(cc['conditionId']),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'ICD-10: ${cc['icd10Code'] ?? 'N/A'} · Diagnosed: ${cc['diagnosisDate'] ?? 'N/A'}',
+            style: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
+          ),
+          const SizedBox(height: 6),
+          _badge(cc['status'] ?? '',
+              bg: const Color(0xFFE1F5EE), fg: AppTheme.primaryTeal),
+        ],
       ),
     );
   }
