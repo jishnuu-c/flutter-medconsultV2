@@ -194,6 +194,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             redirect: (context, state) => '/clinic-admin/clinics',
           ),
           GoRoute(
+            path: '/clinic-admin/dashboard',
+            builder: (context, state) => const ClinicsScreen(),
+          ),
+          GoRoute(
             path: '/clinic-admin/clinics',
             builder: (context, state) => const ClinicsScreen(),
           ),

@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/reference_models.dart';
 import '../data/reference_service.dart';
+import '../../clinic_admin/data/doctor_models.dart';
+import '../../clinic_admin/data/doctor_service.dart';
 
 class SystemAdminScreen extends ConsumerStatefulWidget {
   const SystemAdminScreen({super.key});
@@ -23,6 +25,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
   List<SpecialtyModel> _specialties = [];
   List<LanguageModel> _languages = [];
   List<InsuranceProviderModel> _insurances = [];
+  List<DoctorModel> _doctors = [];
 
   // Drill-down State
   CityModel? _selectedCityForLocalities;
@@ -34,7 +37,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _tabController.addListener(_onTabChanged);
     _loadData();
   }
@@ -78,6 +81,10 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
         case 3:
           final res = await refService.getAllInsuranceProviders();
           setState(() => _insurances = res);
+          break;
+        case 4:
+          final res = await ref.read(doctorServiceProvider).getAllDoctors();
+          setState(() => _doctors = res);
           break;
       }
     } catch (e) {
@@ -167,6 +174,9 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
         break;
       case 3:
         _openInsuranceDialog(null);
+        break;
+      case 4:
+        _openDoctorDialog(null);
         break;
     }
   }
@@ -369,6 +379,9 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                     DropdownMenuItem(
                         value: 'PEDIATRICS', child: Text('PEDIATRICS')),
                     DropdownMenuItem(value: 'OBGYN', child: Text('OBGYN')),
+                    DropdownMenuItem(
+                        value: 'PSYCHIATRY', child: Text('PSYCHIATRY')),
+                    DropdownMenuItem(value: 'OTHER', child: Text('OTHER')),
                   ],
                   onChanged: (val) {
                     if (val != null) setDialogState(() => category = val);
@@ -624,6 +637,172 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
     );
   }
 
+  void _openDoctorDialog(DoctorModel? doc) {
+    final isEdit = doc != null;
+    final fullNameController = TextEditingController(text: doc?.fullName ?? '');
+    final mohController =
+        TextEditingController(text: doc?.mohRegistrationNumber ?? '');
+    final experienceController =
+        TextEditingController(text: (doc?.experienceYears ?? 5).toString());
+    final feeController = TextEditingController(
+        text: (doc?.consultationFeeSar ?? 150).toString());
+    final bioController = TextEditingController(text: doc?.bioEn ?? '');
+    String title = doc?.title.value ?? 'DR';
+    bool isActive = doc?.isActive ?? true;
+
+    const titleOptions = [
+      {'label': 'Dr. (Doctor)', 'value': 'DR'},
+      {'label': 'Prof. (Professor)', 'value': 'PROF'},
+      {'label': 'Consultant', 'value': 'CONSULTANT'},
+      {'label': 'Specialist', 'value': 'SPECIALIST'},
+    ];
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(isEdit ? 'Edit Doctor Record' : 'Register New Doctor'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: title,
+                  decoration:
+                      const InputDecoration(labelText: 'Professional Title'),
+                  items: titleOptions
+                      .map((o) => DropdownMenuItem(
+                            value: o['value'],
+                            child: Text(o['label']!),
+                          ))
+                      .toList(),
+                  onChanged: (val) {
+                    if (val != null) setDialogState(() => title = val);
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                    controller: fullNameController,
+                    decoration:
+                        const InputDecoration(labelText: 'Doctor Full Name')),
+                const SizedBox(height: 12),
+                TextField(
+                    controller: mohController,
+                    decoration:
+                        const InputDecoration(labelText: 'MOH Registration #')),
+                const SizedBox(height: 12),
+                TextField(
+                    controller: experienceController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: 'Years of Experience')),
+                const SizedBox(height: 12),
+                TextField(
+                    controller: feeController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: 'Consultation Fee (SAR)')),
+                const SizedBox(height: 12),
+                TextField(
+                    controller: bioController,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                        labelText: 'Bio / Profile Summary')),
+                const SizedBox(height: 12),
+                SwitchListTile(
+                  title: const Text('Active Doctor Status'),
+                  value: isActive,
+                  onChanged: (val) => setDialogState(() => isActive = val),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () async {
+                try {
+                  if (isEdit) {
+                    final payload = {
+                      'fullName': fullNameController.text.trim(),
+                      'title': title,
+                      'mohRegistrationNumber': mohController.text.trim(),
+                      'experienceYears':
+                          int.tryParse(experienceController.text) ?? 0,
+                      'consultationFeeSar':
+                          double.tryParse(feeController.text) ?? 150,
+                      'bioEn': bioController.text.trim(),
+                      'isActive': isActive,
+                    };
+                    await ref
+                        .read(doctorServiceProvider)
+                        .updateDoctor(doc.doctorId, payload);
+                  } else {
+                    final payload = {
+                      'userId': '',
+                      'fullName': fullNameController.text.trim(),
+                      'title': title,
+                      'mohRegistrationNumber': mohController.text.trim().isEmpty
+                          ? 'MOH-${100000 + DateTime.now().millisecond}'
+                          : mohController.text.trim(),
+                      'mohVerified': true,
+                      'bioEn': bioController.text.trim().isEmpty
+                          ? 'Specialist medical professional'
+                          : bioController.text.trim(),
+                      'bioAr': '',
+                      'experienceYears':
+                          int.tryParse(experienceController.text) ?? 0,
+                      'overallRating': 5.0,
+                      'reviewCount': 0,
+                      'consultationFeeSar':
+                          double.tryParse(feeController.text) ?? 150,
+                      'isActive': isActive,
+                    };
+                    await ref.read(doctorServiceProvider).addDoctor(payload);
+                  }
+                } catch (_) {}
+                if (mounted) Navigator.pop(ctx);
+                _loadData();
+              },
+              child: Text(isEdit ? 'Save Changes' : 'Register Doctor'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _toggleDoctorStatus(DoctorModel doc) {
+    final newStatus = !doc.isActive;
+    final actionText = newStatus ? 'activate' : 'deactivate';
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirm Status Change'),
+        content:
+            Text('Are you sure you want to $actionText Dr. ${doc.fullName}?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await ref
+                    .read(doctorServiceProvider)
+                    .updateDoctor(doc.doctorId, {'isActive': newStatus});
+              } catch (_) {}
+              _loadData();
+            },
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _deleteItem(String id) {
     showDialog(
       context: context,
@@ -668,6 +847,10 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                     await refService.deleteInsuranceProvider(id);
                     _loadData();
                     break;
+                  case 4:
+                    await ref.read(doctorServiceProvider).deleteDoctor(id);
+                    _loadData();
+                    break;
                 }
               } catch (_) {}
             },
@@ -680,20 +863,24 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isNarrow = MediaQuery.of(context).size.width < 700;
     return Scaffold(
       body: Container(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.all(isNarrow ? 12 : 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: const [
                     Text(
-                      'Global Reference Configurations',
+                      'Platform Reference Registries',
                       style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
@@ -701,7 +888,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                     ),
                     SizedBox(height: 4),
                     Text(
-                      'Manage system-wide reference data, cities, medical specialties, and insurance options.',
+                      'Stripe-style data management for core system parameters',
                       style: TextStyle(fontSize: 14, color: AppTheme.textMuted),
                     ),
                   ],
@@ -709,7 +896,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                 ElevatedButton.icon(
                   key: const Key('add_reference_item_btn'),
                   icon: const Icon(Icons.add, size: 18),
-                  label: Text(_getAddButtonLabel()),
+                  label: const Text('+ Add Entry'),
                   onPressed: _handleAddClick,
                 ),
               ],
@@ -724,14 +911,17 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
               ),
               child: TabBar(
                 controller: _tabController,
+                isScrollable: true,
                 labelColor: AppTheme.primaryTeal,
                 unselectedLabelColor: AppTheme.textMuted,
                 indicatorColor: AppTheme.primaryTeal,
+                tabAlignment: TabAlignment.start,
                 tabs: const [
-                  Tab(text: 'Cities & Localities'),
-                  Tab(text: 'Medical Specialties'),
-                  Tab(text: 'Supported Languages'),
-                  Tab(text: 'Insurance Providers'),
+                  Tab(text: '🇸🇦 Cities & Regions'),
+                  Tab(text: '🩺 Medical Specialties'),
+                  Tab(text: '🗣️ Spoken Languages'),
+                  Tab(text: '🛡️ Insurance Panels'),
+                  Tab(text: '👨‍⚕️ Doctors Roster'),
                 ],
               ),
             ),
@@ -751,21 +941,20 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
     );
   }
 
-  String _getAddButtonLabel() {
-    switch (_tabController.index) {
-      case 0:
-        return _selectedCityForLocalities != null ? 'Add Locality' : 'Add City';
-      case 1:
-        return _selectedSpecialtyForSub != null
-            ? 'Add Sub-Specialty'
-            : 'Add Specialty';
-      case 2:
-        return 'Add Language';
-      case 3:
-        return 'Add Provider';
-      default:
-        return 'Add Item';
-    }
+  // Wraps a DataTable so it scrolls horizontally instead of overflowing on
+  // narrow / mobile screens, while still filling the available width.
+  Widget _scrollableTable(Widget table) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: constraints.maxWidth),
+            child: table,
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildCurrentTabContent() {
@@ -778,6 +967,8 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
         return _buildLanguagesTab();
       case 3:
         return _buildInsurancesTab();
+      case 4:
+        return _buildDoctorsTab();
       default:
         return const SizedBox.shrink();
     }
@@ -791,7 +982,10 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
-            child: Row(
+            child: Wrap(
+              spacing: 16,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 OutlinedButton.icon(
                   icon: const Icon(Icons.arrow_back, size: 16),
@@ -799,7 +993,6 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                   onPressed: () =>
                       setState(() => _selectedCityForLocalities = null),
                 ),
-                const SizedBox(width: 16),
                 Text(
                   'Localities for ${_selectedCityForLocalities!.nameEn} (${_selectedCityForLocalities!.nameAr})',
                   style: const TextStyle(
@@ -811,7 +1004,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
           const Divider(height: 1),
           Expanded(
             child: SingleChildScrollView(
-              child: DataTable(
+              child: _scrollableTable(DataTable(
                 columns: const [
                   DataColumn(label: Text('Locality (EN)')),
                   DataColumn(label: Text('Locality (AR)')),
@@ -845,7 +1038,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                     )),
                   ]);
                 }).toList(),
-              ),
+              )),
             ),
           ),
         ],
@@ -853,7 +1046,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
     }
 
     return SingleChildScrollView(
-      child: DataTable(
+      child: _scrollableTable(DataTable(
         columns: const [
           DataColumn(label: Text('City Name (EN)')),
           DataColumn(label: Text('City Name (AR)')),
@@ -894,7 +1087,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
             )),
           ]);
         }).toList(),
-      ),
+      )),
     );
   }
 
@@ -906,7 +1099,10 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
-            child: Row(
+            child: Wrap(
+              spacing: 16,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 OutlinedButton.icon(
                   icon: const Icon(Icons.arrow_back, size: 16),
@@ -914,7 +1110,6 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                   onPressed: () =>
                       setState(() => _selectedSpecialtyForSub = null),
                 ),
-                const SizedBox(width: 16),
                 Text(
                   'Sub-Specialties for ${_selectedSpecialtyForSub!.nameEn}',
                   style: const TextStyle(
@@ -926,7 +1121,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
           const Divider(height: 1),
           Expanded(
             child: SingleChildScrollView(
-              child: DataTable(
+              child: _scrollableTable(DataTable(
                 columns: const [
                   DataColumn(label: Text('Sub-Specialty (EN)')),
                   DataColumn(label: Text('Sub-Specialty (AR)')),
@@ -958,7 +1153,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                     )),
                   ]);
                 }).toList(),
-              ),
+              )),
             ),
           ),
         ],
@@ -966,7 +1161,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
     }
 
     return SingleChildScrollView(
-      child: DataTable(
+      child: _scrollableTable(DataTable(
         columns: const [
           DataColumn(label: Text('Code')),
           DataColumn(label: Text('Specialty Name (EN)')),
@@ -1007,14 +1202,14 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
             )),
           ]);
         }).toList(),
-      ),
+      )),
     );
   }
 
   // ── Tab 2: Languages ────────────────────────────────────────────────
   Widget _buildLanguagesTab() {
     return SingleChildScrollView(
-      child: DataTable(
+      child: _scrollableTable(DataTable(
         columns: const [
           DataColumn(label: Text('Code')),
           DataColumn(label: Text('Language (EN)')),
@@ -1049,14 +1244,14 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
             )),
           ]);
         }).toList(),
-      ),
+      )),
     );
   }
 
   // ── Tab 3: Insurance Providers ──────────────────────────────────────
   Widget _buildInsurancesTab() {
     return SingleChildScrollView(
-      child: DataTable(
+      child: _scrollableTable(DataTable(
         columns: const [
           DataColumn(label: Text('Provider Name (EN)')),
           DataColumn(label: Text('Provider Name (AR)')),
@@ -1088,7 +1283,70 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
             )),
           ]);
         }).toList(),
-      ),
+      )),
+    );
+  }
+
+  // ── Tab 4: Doctors Roster ────────────────────────────────────────────
+  Widget _buildDoctorsTab() {
+    if (_doctors.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text('No doctors found in system database.'),
+        ),
+      );
+    }
+    return SingleChildScrollView(
+      child: _scrollableTable(DataTable(
+        columns: const [
+          DataColumn(label: Text('Doctor Name')),
+          DataColumn(label: Text('Title')),
+          DataColumn(label: Text('MOH Reg #')),
+          DataColumn(label: Text('Experience')),
+          DataColumn(label: Text('Consultation Fee')),
+          DataColumn(label: Text('Rating')),
+          DataColumn(label: Text('Status')),
+          DataColumn(label: Text('Actions')),
+        ],
+        rows: _doctors.map((doc) {
+          return DataRow(cells: [
+            DataCell(Text('${doc.title.value}. ${doc.fullName}',
+                style: const TextStyle(fontWeight: FontWeight.bold))),
+            DataCell(Chip(label: Text(doc.title.value))),
+            DataCell(Text(doc.mohRegistrationNumber.isEmpty
+                ? 'N/A'
+                : doc.mohRegistrationNumber)),
+            DataCell(Text('${doc.experienceYears} yrs')),
+            DataCell(Text('SAR ${doc.consultationFeeSar}',
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, color: Colors.green))),
+            DataCell(Text('⭐ ${doc.overallRating} (${doc.reviewCount})')),
+            DataCell(
+              Chip(
+                label: Text(doc.isActive ? 'Active' : 'Inactive'),
+                backgroundColor:
+                    doc.isActive ? AppTheme.primaryLightTeal : Colors.grey[200],
+              ),
+            ),
+            DataCell(Row(
+              children: [
+                IconButton(
+                    icon: const Icon(Icons.edit, size: 18),
+                    onPressed: () => _openDoctorDialog(doc)),
+                TextButton(
+                  onPressed: () => _toggleDoctorStatus(doc),
+                  child: Text(doc.isActive ? 'Deactivate' : 'Activate'),
+                ),
+                IconButton(
+                    icon: const Icon(Icons.delete,
+                        size: 18, color: AppTheme.dangerRed),
+                    onPressed: () => _deleteItem(doc.doctorId)),
+              ],
+            )),
+          ]);
+        }).toList(),
+      )),
     );
   }
 }

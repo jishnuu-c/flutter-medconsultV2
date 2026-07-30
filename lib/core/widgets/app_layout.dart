@@ -50,6 +50,7 @@ class AppLayout extends ConsumerWidget {
         ];
       case UserRole.CLINIC_ADMIN:
         return const [
+          MenuItemData(label: 'Dashboard', route: '/clinic-admin/dashboard'),
           MenuItemData(label: 'Manage Clinics', route: '/clinic-admin/clinics'),
           MenuItemData(label: 'Manage Doctors', route: '/clinic-admin/doctors'),
         ];

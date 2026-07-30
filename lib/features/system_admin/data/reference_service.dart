@@ -37,12 +37,15 @@ class ReferenceService {
   }
 
   Future<LocalityModel> addLocality(Map<String, dynamic> data) async {
-    final res = await dio.post('/api/medconsult/cities/locality/add', data: data);
+    final res =
+        await dio.post('/api/medconsult/cities/locality/add', data: data);
     return LocalityModel.fromJson(res.data);
   }
 
-  Future<LocalityModel> updateLocality(String id, Map<String, dynamic> data) async {
-    final res = await dio.patch('/api/medconsult/cities/locality/$id/edit', data: data);
+  Future<LocalityModel> updateLocality(
+      String id, Map<String, dynamic> data) async {
+    final res =
+        await dio.patch('/api/medconsult/cities/locality/$id/edit', data: data);
     return LocalityModel.fromJson(res.data);
   }
 
@@ -62,8 +65,10 @@ class ReferenceService {
     return LanguageModel.fromJson(res.data);
   }
 
-  Future<LanguageModel> updateLanguage(String id, Map<String, dynamic> data) async {
-    final res = await dio.patch('/api/medconsult/languages/$id/edit', data: data);
+  Future<LanguageModel> updateLanguage(
+      String id, Map<String, dynamic> data) async {
+    final res =
+        await dio.patch('/api/medconsult/languages/$id/edit', data: data);
     return LanguageModel.fromJson(res.data);
   }
 
@@ -79,12 +84,15 @@ class ReferenceService {
   }
 
   Future<SpecialtyModel> addSpecialty(Map<String, dynamic> data) async {
-    final res = await dio.post('/api/medconsult/specialties/add', data: data);
+    final res =
+        await dio.post('/api/medconsult/specialties/add-specialty', data: data);
     return SpecialtyModel.fromJson(res.data);
   }
 
-  Future<SpecialtyModel> updateSpecialty(String id, Map<String, dynamic> data) async {
-    final res = await dio.patch('/api/medconsult/specialties/$id/edit', data: data);
+  Future<SpecialtyModel> updateSpecialty(
+      String id, Map<String, dynamic> data) async {
+    final res =
+        await dio.patch('/api/medconsult/specialties/$id/edit', data: data);
     return SpecialtyModel.fromJson(res.data);
   }
 
@@ -94,18 +102,22 @@ class ReferenceService {
 
   // ── SubSpecialties ──────────────────────────────────────────────────
   Future<List<SubSpecialtyModel>> getSubSpecialties(String specialtyId) async {
-    final res = await dio.get('/api/medconsult/specialties/$specialtyId/sub-specialities');
+    final res = await dio
+        .get('/api/medconsult/specialties/$specialtyId/sub-specialities');
     final List list = res.data ?? [];
     return list.map((e) => SubSpecialtyModel.fromJson(e)).toList();
   }
 
   Future<SubSpecialtyModel> addSubSpecialty(Map<String, dynamic> data) async {
-    final res = await dio.post('/api/medconsult/specialties/sub/add', data: data);
+    final res =
+        await dio.post('/api/medconsult/specialties/sub/add', data: data);
     return SubSpecialtyModel.fromJson(res.data);
   }
 
-  Future<SubSpecialtyModel> updateSubSpecialty(String id, Map<String, dynamic> data) async {
-    final res = await dio.patch('/api/medconsult/specialties/sub/$id/edit', data: data);
+  Future<SubSpecialtyModel> updateSubSpecialty(
+      String id, Map<String, dynamic> data) async {
+    final res =
+        await dio.patch('/api/medconsult/specialties/sub/$id/edit', data: data);
     return SubSpecialtyModel.fromJson(res.data);
   }
 
@@ -120,13 +132,17 @@ class ReferenceService {
     return list.map((e) => InsuranceProviderModel.fromJson(e)).toList();
   }
 
-  Future<InsuranceProviderModel> addInsuranceProvider(Map<String, dynamic> data) async {
-    final res = await dio.post('/api/medconsult/insurance-providers/add-provider', data: data);
+  Future<InsuranceProviderModel> addInsuranceProvider(
+      Map<String, dynamic> data) async {
+    final res = await dio
+        .post('/api/medconsult/insurance-providers/add-provider', data: data);
     return InsuranceProviderModel.fromJson(res.data);
   }
 
-  Future<InsuranceProviderModel> updateInsuranceProvider(String id, Map<String, dynamic> data) async {
-    final res = await dio.put('/api/medconsult/insurance-providers/$id/update', data: data);
+  Future<InsuranceProviderModel> updateInsuranceProvider(
+      String id, Map<String, dynamic> data) async {
+    final res = await dio.put('/api/medconsult/insurance-providers/$id/update',
+        data: data);
     return InsuranceProviderModel.fromJson(res.data);
   }
 
