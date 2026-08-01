@@ -11,6 +11,7 @@ class AuthService {
 
   Future<AuthResponseDto> login(Map<String, dynamic> credentials) async {
     print('Login credentials: $credentials');
+    print('🔗 API URL: ${dio.options.baseUrl}/api/medconsult/auth/login');
     try {
       final response = await dio.post(
         '/api/medconsult/auth/login',

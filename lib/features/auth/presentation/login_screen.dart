@@ -88,13 +88,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             errStr = data;
           } else {
             errStr =
-                'HTTP ${e.response?.statusCode}: Invalid credentials or unauthorized.';
+                'HTTP ${e.response?.statusCode}: ${e.response?.statusMessage ?? "Request failed"}';
+            // 'HTTP ${e.response?.statusCode}: Invalid credentials or unauthorized.';
           }
-        } else if (e.type == DioExceptionType.connectionTimeout ||
-            e.type == DioExceptionType.connectionError) {
-          errStr =
-              'Unable to connect to server backend at http://localhost:8080.';
+        } else {
+          // Show the actual Dio error instead of a hardcoded message.
+          errStr = e.message ?? e.toString();
         }
+      } else {
+        errStr = e.toString();
       }
       setState(() {
         _errorMessage = errStr;
