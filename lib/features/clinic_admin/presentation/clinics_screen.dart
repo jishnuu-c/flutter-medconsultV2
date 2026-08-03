@@ -1,9 +1,30 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/references_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/clinic_models.dart';
 import '../data/clinic_service.dart';
+
+// Shared visual polish for every popup dialog in this screen: rounded
+// corners consistent with the rest of the UI, and a max width that never
+// exceeds the available screen width (fixes horizontal overflow on small
+// screens where dialogs previously used a hard-coded width like 560).
+RoundedRectangleBorder _dialogShape() =>
+    RoundedRectangleBorder(borderRadius: BorderRadius.circular(16));
+
+double _dialogMaxHeight(BuildContext context, {double preferred = 560}) {
+  final screenHeight = MediaQuery.of(context).size.height;
+  return math.min(preferred, screenHeight * 0.8);
+}
+
+// Fixed, comfortable dialog width: capped by the screen on small devices,
+// but not left to shrink-wrap to tiny intrinsic content width on large
+// screens either (that's what made fields look squeezed together).
+double _dialogWidth(BuildContext context, {double preferred = 420}) {
+  final screenWidth = MediaQuery.of(context).size.width;
+  return math.min(preferred, screenWidth - 32);
+}
 
 class ClinicsScreen extends ConsumerStatefulWidget {
   const ClinicsScreen({super.key});
@@ -15,7 +36,8 @@ class ClinicsScreen extends ConsumerStatefulWidget {
 class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
   int _activeSubTab = 0; // 0=branches,1=specialties,2=insurances,3=languages
 
-  bool _isLoading = false;
+  bool _isLoading = false; // drives the "My Clinics" sidebar list only
+  bool _isDetailLoading = false; // drives the branches/specialties/etc tabs
   List<ClinicModel> _clinics = [];
   ClinicModel? _selectedClinic;
   String _searchTerm = '';
@@ -53,112 +75,140 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
       final specialties =
           await ref.read(referenceServiceProvider).getAllSpecialties();
       if (mounted) setState(() => _globalSpecialties = specialties);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ManageClinics] getAllSpecialties failed: $e');
+      if (mounted) _showError('Failed to load specialties list: $e');
+    }
     try {
       final insurances =
           await ref.read(referenceServiceProvider).getAllInsuranceProviders();
       if (mounted) setState(() => _globalInsurances = insurances);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ManageClinics] getAllInsuranceProviders failed: $e');
+      if (mounted) _showError('Failed to load insurance providers list: $e');
+    }
     try {
       final languages =
           await ref.read(referenceServiceProvider).getAllLanguages();
       if (mounted) setState(() => _globalLanguages = languages);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ManageClinics] getAllLanguages failed: $e');
+      if (mounted) _showError('Failed to load languages list: $e');
+    }
+  }
+
+  // ── Name resolvers, mirror clinics.component.ts's getSpecialtyName /
+  // getInsuranceName / getLanguageName. Clinic-specialty/insurance/language
+  // link records only carry the foreign-key id; the display name has to be
+  // looked up in the global reference lists loaded above.
+  String _getSpecialtyName(String specialtyId) {
+    final match = _globalSpecialties.where((s) => s.specialtyId == specialtyId);
+    return match.isEmpty ? 'Unknown Specialty' : match.first.nameEn;
+  }
+
+  String _getInsuranceName(String providerId) {
+    final match = _globalInsurances.where((i) => i.providerId == providerId);
+    return match.isEmpty ? 'Unknown Provider' : match.first.nameEn;
+  }
+
+  String _getLanguageName(String languageId) {
+    final match = _globalLanguages.where((l) => l.languageId == languageId);
+    return match.isEmpty ? 'Unknown Language' : match.first.nameEn;
   }
 
   Future<void> _loadClinics() async {
     setState(() => _isLoading = true);
     try {
       final res = await ref.read(clinicServiceProvider).getAllClinics();
+      debugPrint(
+          '[ManageClinics] getAllClinics -> ${res.length} clinics: ${res.map((c) => '${c.clinicId}:${c.nameEn}').join(', ')}');
       setState(() => _clinics = res);
-    } catch (_) {
-      _populateMockClinics();
+      if (res.isNotEmpty) {
+        await _selectClinic(res.first);
+      } else {
+        setState(() {
+          _selectedClinic = null;
+          _branches = [];
+          _specialties = [];
+          _insurances = [];
+          _languages = [];
+        });
+      }
+    } catch (e, st) {
+      debugPrint('[ManageClinics] getAllClinics failed: $e');
+      debugPrintStack(stackTrace: st);
+      if (mounted)
+        _showError('Failed to load clinics: $e', retry: _loadClinics);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _populateMockClinics() {
-    _clinics = [
-      ClinicModel(
-        clinicId: 'cl-1',
-        nameEn: 'Al-Habib Medical Center',
-        nameAr: 'مركز الحبيب الطبي',
-        email: 'info@alhabib.sa',
-        phonePrimary: '+966 11 400 1111',
-        mohLicenseNumber: 'MOH-77881',
-        vatNumber: '300123456700003',
-        isActive: true,
-      ),
-      ClinicModel(
-        clinicId: 'cl-2',
-        nameEn: 'Riyadh Care Hospital Clinic',
-        nameAr: 'عياادات رعاية الرياض',
-        email: 'contact@riyadhcare.sa',
-        phonePrimary: '+966 11 222 3333',
-        mohLicenseNumber: 'MOH-99210',
-        isActive: true,
-      ),
-    ];
-  }
-
+  // Mirrors clinics.component.ts's loadClinicDetails(): four independent
+  // calls against the real API, each updating its own section so a failure
+  // in one (e.g. insurance) doesn't blank out the others.
   Future<void> _selectClinic(ClinicModel clinic) async {
     setState(() {
       _selectedClinic = clinic;
-      _isLoading = true;
+      _isDetailLoading = true;
       _activeSubTab = 0;
     });
 
+    final service = ref.read(clinicServiceProvider);
+
     try {
-      final detail = await ref
-          .read(clinicServiceProvider)
-          .getClinicDetail(clinic.clinicId);
-      setState(() {
-        _branches = detail.branches;
-        _specialties = detail.specialties;
-        _insurances = detail.insurances;
-        _languages = detail.languages;
-      });
-    } catch (_) {
-      setState(() {
-        _branches = [
-          ClinicBranchModel(
-            branchId: 'b-1',
-            clinicId: clinic.clinicId,
-            branchNameEn: 'Olaya Main Branch',
-            branchNameAr: 'فرع العليا الرئيسي',
-            cityId: 'c1',
-            addressLine1: 'Olaya Main Road',
-            isPrimary: true,
-            isActive: true,
-          ),
-        ];
-        _specialties = [
-          ClinicSpecialtyModel(
-              id: 'cs-1',
-              clinicId: clinic.clinicId,
-              specialtyId: 'General Practice'),
-          ClinicSpecialtyModel(
-              id: 'cs-2', clinicId: clinic.clinicId, specialtyId: 'Cardiology'),
-        ];
-        _insurances = [
-          ClinicInsuranceModel(
-              id: 'ci-1',
-              clinicId: clinic.clinicId,
-              providerId: 'Tawuniya',
-              networkClass: 'Class A',
-              isActive: true),
-        ];
-        _languages = [
-          ClinicLanguageModel(
-              id: 'clg-1', clinicId: clinic.clinicId, languageId: 'English'),
-          ClinicLanguageModel(
-              id: 'clg-2', clinicId: clinic.clinicId, languageId: 'Arabic'),
-        ];
-      });
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+      final branches = await service.getClinicBranches(clinic.clinicId);
+      if (mounted) setState(() => _branches = branches);
+    } catch (e) {
+      debugPrint('[ManageClinics] getClinicBranches failed: $e');
+      if (mounted) setState(() => _branches = []);
     }
+
+    try {
+      final specialties = await service.getClinicSpecialties(clinic.clinicId);
+      if (mounted) setState(() => _specialties = specialties);
+    } catch (e) {
+      debugPrint('[ManageClinics] getClinicSpecialties failed: $e');
+      if (mounted) setState(() => _specialties = []);
+    }
+
+    try {
+      final insurances = await service.getClinicInsurances(clinic.clinicId);
+      if (mounted) setState(() => _insurances = insurances);
+    } catch (e) {
+      debugPrint('[ManageClinics] getClinicInsurances failed: $e');
+      if (mounted) setState(() => _insurances = []);
+    }
+
+    try {
+      final languages = await service.getClinicLanguages(clinic.clinicId);
+      if (mounted) setState(() => _languages = languages);
+    } catch (e) {
+      debugPrint('[ManageClinics] getClinicLanguages failed: $e');
+      if (mounted) setState(() => _languages = []);
+    }
+
+    if (mounted) setState(() => _isDetailLoading = false);
+  }
+
+  // Small helpers mirroring UiService.showSuccess/showError from Angular.
+  void _showError(String message, {VoidCallback? retry}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppTheme.dangerRed,
+        duration: const Duration(seconds: 5),
+        action: retry != null
+            ? SnackBarAction(label: 'Retry', onPressed: retry)
+            : null,
+      ),
+    );
+  }
+
+  void _showSuccess(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
+    );
   }
 
   void _openClinicDialog(ClinicModel? clinic) {
@@ -175,40 +225,51 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
+        shape: _dialogShape(),
         title: Text(isEdit ? 'Edit Clinic' : 'Add New Clinic'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                  controller: nameEnController,
-                  decoration:
-                      const InputDecoration(labelText: 'Clinic Name (EN)')),
-              const SizedBox(height: 12),
-              TextField(
-                  controller: nameArController,
-                  decoration:
-                      const InputDecoration(labelText: 'Clinic Name (AR)')),
-              const SizedBox(height: 12),
-              TextField(
-                  controller: emailController,
-                  decoration:
-                      const InputDecoration(labelText: 'Email Address')),
-              const SizedBox(height: 12),
-              TextField(
-                  controller: phoneController,
-                  decoration:
-                      const InputDecoration(labelText: 'Primary Phone')),
-              const SizedBox(height: 12),
-              TextField(
-                  controller: mohController,
-                  decoration:
-                      const InputDecoration(labelText: 'MOH License Number')),
-              const SizedBox(height: 12),
-              TextField(
-                  controller: vatController,
-                  decoration: const InputDecoration(labelText: 'VAT Number')),
-            ],
+        content: SizedBox(
+          width: _dialogWidth(ctx),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: _dialogMaxHeight(ctx),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                      controller: nameEnController,
+                      decoration:
+                          const InputDecoration(labelText: 'Clinic Name (EN)')),
+                  const SizedBox(height: 12),
+                  TextField(
+                      controller: nameArController,
+                      decoration:
+                          const InputDecoration(labelText: 'Clinic Name (AR)')),
+                  const SizedBox(height: 12),
+                  TextField(
+                      controller: emailController,
+                      decoration:
+                          const InputDecoration(labelText: 'Email Address')),
+                  const SizedBox(height: 12),
+                  TextField(
+                      controller: phoneController,
+                      decoration:
+                          const InputDecoration(labelText: 'Primary Phone')),
+                  const SizedBox(height: 12),
+                  TextField(
+                      controller: mohController,
+                      decoration: const InputDecoration(
+                          labelText: 'MOH License Number')),
+                  const SizedBox(height: 12),
+                  TextField(
+                      controller: vatController,
+                      decoration:
+                          const InputDecoration(labelText: 'VAT Number')),
+                ],
+              ),
+            ),
           ),
         ),
         actions: [
@@ -233,9 +294,20 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
                 } else {
                   await ref.read(clinicServiceProvider).createClinic(payload);
                 }
-              } catch (_) {}
-              if (mounted) Navigator.pop(ctx);
-              _loadClinics();
+                if (mounted) Navigator.pop(ctx);
+                if (mounted) {
+                  _showSuccess(isEdit
+                      ? 'Clinic profile updated successfully.'
+                      : 'Clinic created successfully.');
+                }
+                _loadClinics();
+              } catch (e) {
+                if (mounted) {
+                  _showError(isEdit
+                      ? 'Failed to update clinic: $e'
+                      : 'Failed to create clinic: $e');
+                }
+              }
             },
             child: Text(isEdit ? 'Save Changes' : 'Create Clinic'),
           ),
@@ -260,39 +332,49 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
+          shape: _dialogShape(),
           title: Text(isEdit
               ? 'Edit Branch'
               : 'Add Branch to ${_selectedClinic!.nameEn}'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                    controller: nameEnController,
-                    decoration:
-                        const InputDecoration(labelText: 'Branch Name (EN)')),
-                const SizedBox(height: 12),
-                TextField(
-                    controller: nameArController,
-                    decoration:
-                        const InputDecoration(labelText: 'Branch Name (AR)')),
-                const SizedBox(height: 12),
-                TextField(
-                    controller: addressController,
-                    decoration:
-                        const InputDecoration(labelText: 'Address Line 1')),
-                const SizedBox(height: 12),
-                TextField(
-                    controller: phoneController,
-                    decoration:
-                        const InputDecoration(labelText: 'Branch Phone')),
-                const SizedBox(height: 12),
-                SwitchListTile(
-                  title: const Text('Primary Branch'),
-                  value: isPrimary,
-                  onChanged: (val) => setDialogState(() => isPrimary = val),
+          content: SizedBox(
+            width: _dialogWidth(context),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: _dialogMaxHeight(context),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                        controller: nameEnController,
+                        decoration: const InputDecoration(
+                            labelText: 'Branch Name (EN)')),
+                    const SizedBox(height: 12),
+                    TextField(
+                        controller: nameArController,
+                        decoration: const InputDecoration(
+                            labelText: 'Branch Name (AR)')),
+                    const SizedBox(height: 12),
+                    TextField(
+                        controller: addressController,
+                        decoration:
+                            const InputDecoration(labelText: 'Address Line 1')),
+                    const SizedBox(height: 12),
+                    TextField(
+                        controller: phoneController,
+                        decoration:
+                            const InputDecoration(labelText: 'Branch Phone')),
+                    const SizedBox(height: 12),
+                    SwitchListTile(
+                      title: const Text('Primary Branch'),
+                      value: isPrimary,
+                      onChanged: (val) => setDialogState(() => isPrimary = val),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
           actions: [
@@ -320,9 +402,16 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
                         .read(clinicServiceProvider)
                         .createClinicBranch(_selectedClinic!.clinicId, payload);
                   }
-                } catch (_) {}
-                if (mounted) Navigator.pop(ctx);
-                _selectClinic(_selectedClinic!);
+                  if (mounted) Navigator.pop(ctx);
+                  if (mounted) {
+                    _showSuccess(isEdit
+                        ? 'Branch updated successfully.'
+                        : 'Branch created successfully.');
+                  }
+                  _selectClinic(_selectedClinic!);
+                } catch (e) {
+                  if (mounted) _showError('Failed to save branch: $e');
+                }
               },
               child: Text(isEdit ? 'Save Changes' : 'Add Branch'),
             ),
@@ -332,59 +421,197 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
     );
   }
 
+  // dayOfWeek convention matches Angular's branchHoursFormList: 1=Monday..7=Sunday.
+  static const _dayNames = {
+    1: 'Monday',
+    2: 'Tuesday',
+    3: 'Wednesday',
+    4: 'Thursday',
+    5: 'Friday',
+    6: 'Saturday',
+    7: 'Sunday',
+  };
+
   void _openHoursDialog(ClinicBranchModel branch) {
-    final days = [
-      'Sunday',
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday'
-    ];
+    List<ClinicOperatingHourModel> hoursForm = [];
+    bool loading = true;
+    bool saving = false;
+
+    Future<void> load(void Function(void Function()) setDialogState) async {
+      try {
+        final existing = await ref
+            .read(clinicServiceProvider)
+            .getBranchHours(branch.branchId);
+        final days = [1, 2, 3, 4, 5, 6, 7];
+        final built = days.map((day) {
+          final match = existing.where((h) => h.dayOfWeek == day);
+          final found = match.isEmpty ? null : match.first;
+          return ClinicOperatingHourModel(
+            branchId: branch.branchId,
+            dayOfWeek: day,
+            isClosed: found?.isClosed ?? false,
+            openTime: found?.openTime ?? '09:00',
+            closeTime: found?.closeTime ?? '17:00',
+            breakStart: found?.breakStart ?? '',
+            breakEnd: found?.breakEnd ?? '',
+          );
+        }).toList();
+        setDialogState(() {
+          hoursForm = built;
+          loading = false;
+        });
+      } catch (e) {
+        setDialogState(() => loading = false);
+        if (mounted) _showError('Failed to load branch hours: $e');
+      }
+    }
+
+    String? normalizeTime(String? t) {
+      if (t == null || t.isEmpty) return null;
+      return t.length == 5 ? '$t:00' : t;
+    }
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Operating Hours - ${branch.branchNameEn}'),
-        content: SizedBox(
-          width: 500,
-          child: ListView.separated(
-            shrinkWrap: true,
-            itemCount: 7,
-            separatorBuilder: (context, index) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              final dayName = days[index];
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Row(
-                  children: [
-                    SizedBox(
-                        width: 100,
-                        child: Text(dayName,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.bold))),
-                    const SizedBox(width: 12),
-                    const Text('09:00 AM - 05:00 PM',
-                        style:
-                            TextStyle(fontSize: 13, color: AppTheme.textMuted)),
-                    const Spacer(),
-                    const Chip(
-                        label: Text('Open'),
-                        backgroundColor: AppTheme.primaryLightTeal),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Save Hours')),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          if (loading && hoursForm.isEmpty) {
+            load(setDialogState);
+          }
+          return AlertDialog(
+            shape: _dialogShape(),
+            title: Text('Operating Hours - ${branch.branchNameEn}'),
+            content: SizedBox(
+              width: _dialogWidth(context, preferred: 560),
+              height: loading ? 120 : _dialogMaxHeight(context, preferred: 480),
+              child: loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : ListView.separated(
+                      itemCount: hoursForm.length,
+                      separatorBuilder: (context, index) =>
+                          const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final h = hoursForm[index];
+                        final openCtrl =
+                            TextEditingController(text: h.openTime);
+                        final closeCtrl =
+                            TextEditingController(text: h.closeTime);
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  SizedBox(
+                                      width: 100,
+                                      child: Text(_dayNames[h.dayOfWeek] ?? '',
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold))),
+                                  Checkbox(
+                                    value: h.isClosed,
+                                    onChanged: (val) => setDialogState(() {
+                                      hoursForm[index] =
+                                          ClinicOperatingHourModel(
+                                        branchId: h.branchId,
+                                        dayOfWeek: h.dayOfWeek,
+                                        isClosed: val ?? false,
+                                        openTime: h.openTime,
+                                        closeTime: h.closeTime,
+                                        breakStart: h.breakStart,
+                                        breakEnd: h.breakEnd,
+                                      );
+                                    }),
+                                  ),
+                                  const Text('Closed'),
+                                ],
+                              ),
+                              if (!h.isClosed)
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller: openCtrl,
+                                        decoration: const InputDecoration(
+                                            labelText: 'Open (HH:mm)'),
+                                        onChanged: (val) => hoursForm[index] =
+                                            ClinicOperatingHourModel(
+                                          branchId: h.branchId,
+                                          dayOfWeek: h.dayOfWeek,
+                                          isClosed: h.isClosed,
+                                          openTime: val,
+                                          closeTime: h.closeTime,
+                                          breakStart: h.breakStart,
+                                          breakEnd: h.breakEnd,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: TextField(
+                                        controller: closeCtrl,
+                                        decoration: const InputDecoration(
+                                            labelText: 'Close (HH:mm)'),
+                                        onChanged: (val) => hoursForm[index] =
+                                            ClinicOperatingHourModel(
+                                          branchId: h.branchId,
+                                          dayOfWeek: h.dayOfWeek,
+                                          isClosed: h.isClosed,
+                                          openTime: h.openTime,
+                                          closeTime: val,
+                                          breakStart: h.breakStart,
+                                          breakEnd: h.breakEnd,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Close')),
+              ElevatedButton(
+                onPressed: saving
+                    ? null
+                    : () async {
+                        setDialogState(() => saving = true);
+                        final dtos = hoursForm
+                            .map((h) => {
+                                  'branchId': h.branchId,
+                                  'dayOfWeek': h.dayOfWeek,
+                                  'isClosed': h.isClosed,
+                                  'openTime': normalizeTime(h.openTime),
+                                  'closeTime': normalizeTime(h.closeTime),
+                                  'breakStart': normalizeTime(h.breakStart),
+                                  'breakEnd': normalizeTime(h.breakEnd),
+                                })
+                            .toList();
+                        try {
+                          await ref
+                              .read(clinicServiceProvider)
+                              .updateBranchHours(branch.branchId, dtos);
+                          if (mounted) Navigator.pop(ctx);
+                          if (mounted) {
+                            _showSuccess('Branch hours updated successfully.');
+                          }
+                        } catch (e) {
+                          setDialogState(() => saving = false);
+                          if (mounted) {
+                            _showError('Failed to update branch hours: $e');
+                          }
+                        }
+                      },
+                child: Text(saving ? 'Saving...' : 'Save Hours'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -399,15 +626,23 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
+          shape: _dialogShape(),
           title: const Text('Link Medical Specialty'),
-          content: DropdownButtonFormField<String>(
-            value: selectedSpecialtyId,
-            decoration: const InputDecoration(labelText: 'Choose Specialty'),
-            items: _globalSpecialties
-                .map((s) => DropdownMenuItem(
-                    value: s.specialtyId, child: Text(s.nameEn)))
-                .toList(),
-            onChanged: (val) => setDialogState(() => selectedSpecialtyId = val),
+          content: SizedBox(
+            width: _dialogWidth(context),
+            child: DropdownButtonFormField<String>(
+              value: selectedSpecialtyId,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Choose Specialty'),
+              items: _globalSpecialties
+                  .map((s) => DropdownMenuItem(
+                      value: s.specialtyId,
+                      child: Text(s.nameEn,
+                          maxLines: 1, overflow: TextOverflow.ellipsis)))
+                  .toList(),
+              onChanged: (val) =>
+                  setDialogState(() => selectedSpecialtyId = val),
+            ),
           ),
           actions: [
             TextButton(
@@ -422,9 +657,16 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
                             .read(clinicServiceProvider)
                             .addClinicSpecialty(_selectedClinic!.clinicId,
                                 selectedSpecialtyId!);
-                      } catch (_) {}
-                      if (mounted) Navigator.pop(ctx);
-                      _selectClinic(_selectedClinic!);
+                        if (mounted) Navigator.pop(ctx);
+                        if (mounted) {
+                          _showSuccess('Specialty linked to clinic.');
+                        }
+                        _selectClinic(_selectedClinic!);
+                      } catch (e) {
+                        if (mounted) {
+                          _showError('Failed to link specialty: $e');
+                        }
+                      }
                     },
               child: const Text('Link Specialty'),
             ),
@@ -445,29 +687,36 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
+          shape: _dialogShape(),
           title: const Text('Associate Insurance Provider'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                value: selectedProviderId,
-                decoration:
-                    const InputDecoration(labelText: 'Insurance Provider'),
-                items: _globalInsurances
-                    .map((ins) => DropdownMenuItem(
-                        value: ins.providerId, child: Text(ins.nameEn)))
-                    .toList(),
-                onChanged: (val) =>
-                    setDialogState(() => selectedProviderId = val),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: networkClassController,
-                decoration: const InputDecoration(
-                    labelText: 'Network Class',
-                    hintText: 'E.g. VIP, Class A, Gold'),
-              ),
-            ],
+          content: SizedBox(
+            width: _dialogWidth(context),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: selectedProviderId,
+                  isExpanded: true,
+                  decoration:
+                      const InputDecoration(labelText: 'Insurance Provider'),
+                  items: _globalInsurances
+                      .map((ins) => DropdownMenuItem(
+                          value: ins.providerId,
+                          child: Text(ins.nameEn,
+                              maxLines: 1, overflow: TextOverflow.ellipsis)))
+                      .toList(),
+                  onChanged: (val) =>
+                      setDialogState(() => selectedProviderId = val),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: networkClassController,
+                  decoration: const InputDecoration(
+                      labelText: 'Network Class',
+                      hintText: 'E.g. VIP, Class A, Gold'),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -487,9 +736,16 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
                             .read(clinicServiceProvider)
                             .addClinicInsurance(_selectedClinic!.clinicId,
                                 selectedProviderId!, payload);
-                      } catch (_) {}
-                      if (mounted) Navigator.pop(ctx);
-                      _selectClinic(_selectedClinic!);
+                        if (mounted) Navigator.pop(ctx);
+                        if (mounted) {
+                          _showSuccess('Insurance provider associated.');
+                        }
+                        _selectClinic(_selectedClinic!);
+                      } catch (e) {
+                        if (mounted) {
+                          _showError('Failed to link insurance: $e');
+                        }
+                      }
                     },
               child: const Text('Associate Provider'),
             ),
@@ -508,15 +764,23 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
+          shape: _dialogShape(),
           title: const Text('Link Supported Language'),
-          content: DropdownButtonFormField<String>(
-            value: selectedLanguageId,
-            decoration: const InputDecoration(labelText: 'Choose Language'),
-            items: _globalLanguages
-                .map((l) => DropdownMenuItem(
-                    value: l.languageId, child: Text(l.nameEn)))
-                .toList(),
-            onChanged: (val) => setDialogState(() => selectedLanguageId = val),
+          content: SizedBox(
+            width: _dialogWidth(context),
+            child: DropdownButtonFormField<String>(
+              value: selectedLanguageId,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Choose Language'),
+              items: _globalLanguages
+                  .map((l) => DropdownMenuItem(
+                      value: l.languageId,
+                      child: Text(l.nameEn,
+                          maxLines: 1, overflow: TextOverflow.ellipsis)))
+                  .toList(),
+              onChanged: (val) =>
+                  setDialogState(() => selectedLanguageId = val),
+            ),
           ),
           actions: [
             TextButton(
@@ -529,9 +793,16 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
                       try {
                         await ref.read(clinicServiceProvider).addClinicLanguage(
                             _selectedClinic!.clinicId, selectedLanguageId!);
-                      } catch (_) {}
-                      if (mounted) Navigator.pop(ctx);
-                      _selectClinic(_selectedClinic!);
+                        if (mounted) Navigator.pop(ctx);
+                        if (mounted) {
+                          _showSuccess('Language linked to clinic.');
+                        }
+                        _selectClinic(_selectedClinic!);
+                      } catch (e) {
+                        if (mounted) {
+                          _showError('Failed to link language: $e');
+                        }
+                      }
                     },
               child: const Text('Link Language'),
             ),
@@ -545,6 +816,7 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
+        shape: _dialogShape(),
         title: const Text('Delete Clinic'),
         content:
             const Text('Are you sure you want to delete this clinic profile?'),
@@ -558,8 +830,11 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
               Navigator.pop(ctx);
               try {
                 await ref.read(clinicServiceProvider).deleteClinic(clinicId);
-              } catch (_) {}
-              _loadClinics();
+                if (mounted) _showSuccess('Clinic removed.');
+                _loadClinics();
+              } catch (e) {
+                if (mounted) _showError('Failed to delete clinic: $e');
+              }
             },
             child: const Text('Delete'),
           ),
@@ -573,6 +848,7 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        shape: _dialogShape(),
         title: const Text('Unlink Specialty'),
         content: const Text('Are you sure you want to unlink this specialty?'),
         actions: [
@@ -590,8 +866,11 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
       await ref
           .read(clinicServiceProvider)
           .deleteClinicSpecialty(_selectedClinic!.clinicId, specialtyId);
-    } catch (_) {}
-    _selectClinic(_selectedClinic!);
+      if (mounted) _showSuccess('Specialty unlinked.');
+      _selectClinic(_selectedClinic!);
+    } catch (e) {
+      if (mounted) _showError('Failed to unlink specialty: $e');
+    }
   }
 
   Future<void> _deleteInsurance(String providerId) async {
@@ -599,6 +878,7 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        shape: _dialogShape(),
         title: const Text('Unlink Insurance'),
         content: const Text(
             'Are you sure you want to unlink this insurance provider?'),
@@ -617,8 +897,11 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
       await ref
           .read(clinicServiceProvider)
           .deleteClinicInsurance(_selectedClinic!.clinicId, providerId);
-    } catch (_) {}
-    _selectClinic(_selectedClinic!);
+      if (mounted) _showSuccess('Insurance unlinked.');
+      _selectClinic(_selectedClinic!);
+    } catch (e) {
+      if (mounted) _showError('Failed to unlink insurance: $e');
+    }
   }
 
   Future<void> _deleteLanguage(String languageId) async {
@@ -626,6 +909,7 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        shape: _dialogShape(),
         title: const Text('Unlink Language'),
         content: const Text('Are you sure you want to unlink this language?'),
         actions: [
@@ -643,8 +927,11 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
       await ref
           .read(clinicServiceProvider)
           .deleteClinicLanguage(_selectedClinic!.clinicId, languageId);
-    } catch (_) {}
-    _selectClinic(_selectedClinic!);
+      if (mounted) _showSuccess('Language unlinked.');
+      _selectClinic(_selectedClinic!);
+    } catch (e) {
+      if (mounted) _showError('Failed to unlink language: $e');
+    }
   }
 
   Widget _buildSidebarCard() {
@@ -686,100 +973,136 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : _filteredClinics.isEmpty
-                      ? _emptyStateCard(
-                          icon: '🏥',
-                          text: 'No matching clinics found.',
-                          subtext:
-                              'Try adjusting your search terms or click "+ Add New Clinic".',
+                      ? RefreshIndicator(
+                          onRefresh: _loadClinics,
+                          child: ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              _emptyStateCard(
+                                icon: '🏥',
+                                text: 'No matching clinics found.',
+                                subtext:
+                                    'Try adjusting your search terms or click "+ Add New Clinic".',
+                              ),
+                            ],
+                          ),
                         )
-                      : ListView.separated(
-                          itemCount: _filteredClinics.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final clinic = _filteredClinics[index];
-                            final selected =
-                                _selectedClinic?.clinicId == clinic.clinicId;
-                            return InkWell(
-                              onTap: () => _selectClinic(clinic),
-                              borderRadius: BorderRadius.circular(12),
-                              child: Container(
-                                padding: const EdgeInsets.all(16),
+                      : RefreshIndicator(
+                          onRefresh: _loadClinics,
+                          child: ListView.separated(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            itemCount: _filteredClinics.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 12),
+                            itemBuilder: (context, index) {
+                              final clinic = _filteredClinics[index];
+                              final selected =
+                                  _selectedClinic?.clinicId == clinic.clinicId;
+                              // NOTE: BoxDecoration cannot combine a
+                              // borderRadius with a Border whose sides have
+                              // different colors/widths (Flutter throws "A
+                              // borderRadius can only be given on borders
+                              // with uniform colors" and the item silently
+                              // fails to paint). So the outer border stays
+                              // uniform, and the teal "selected" indicator
+                              // is drawn as a separate strip inside a
+                              // ClipRRect instead of being the container's
+                              // left BorderSide. IntrinsicHeight gives the
+                              // stretch Row a bounded height (ListView items
+                              // are otherwise unbounded), which the
+                              // indicator strip needs.
+                              final iconBox = Container(
+                                width: 48,
+                                height: 48,
+                                alignment: Alignment.center,
                                 decoration: BoxDecoration(
-                                  color: selected
-                                      ? AppTheme.primaryLightTeal
-                                      : AppTheme.surfaceWhite,
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border(
-                                    top: BorderSide(color: AppTheme.borderGray),
-                                    right:
-                                        BorderSide(color: AppTheme.borderGray),
-                                    bottom:
-                                        BorderSide(color: AppTheme.borderGray),
-                                    left: BorderSide(
-                                        color: selected
-                                            ? AppTheme.primaryTeal
-                                            : AppTheme.borderGray,
-                                        width: selected ? 5 : 1),
-                                  ),
+                                  color: AppTheme.backgroundApp,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border:
+                                      Border.all(color: AppTheme.borderGray),
                                 ),
-                                child: Row(
+                                child: const Text('🏥',
+                                    style: TextStyle(fontSize: 20)),
+                              );
+                              final nameColumn = Expanded(
+                                child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Container(
-                                      width: 48,
-                                      height: 48,
-                                      alignment: Alignment.center,
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.backgroundApp,
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(
-                                            color: AppTheme.borderGray),
-                                      ),
-                                      child: const Text('🏥',
-                                          style: TextStyle(fontSize: 20)),
+                                    Text(clinic.nameEn,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                            color: AppTheme.primaryTeal)),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                        'MOH: ${clinic.mohLicenseNumber.isEmpty ? 'N/A' : clinic.mohLicenseNumber}',
+                                        style: const TextStyle(
+                                            fontSize: 11,
+                                            color: AppTheme.textMuted)),
+                                  ],
+                                ),
+                              );
+                              final manageButton = OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 14, vertical: 10),
+                                  minimumSize: const Size(0, 40),
+                                  tapTargetSize: MaterialTapTargetSize.padded,
+                                  textStyle: const TextStyle(fontSize: 11),
+                                ),
+                                onPressed: () => _selectClinic(clinic),
+                                child: const Text('Manage'),
+                              );
+
+                              return ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: InkWell(
+                                  onTap: () => _selectClinic(clinic),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: selected
+                                          ? AppTheme.primaryLightTeal
+                                          : AppTheme.surfaceWhite,
+                                      border: Border.all(
+                                          color: AppTheme.borderGray),
                                     ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
+                                    child: IntrinsicHeight(
+                                      child: Row(
                                         crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                            CrossAxisAlignment.stretch,
                                         children: [
-                                          Text(clinic.nameEn,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 13,
-                                                  color: AppTheme.primaryTeal)),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                              'MOH: ${clinic.mohLicenseNumber.isEmpty ? 'N/A' : clinic.mohLicenseNumber}',
-                                              style: const TextStyle(
-                                                  fontSize: 11,
-                                                  color: AppTheme.textMuted)),
+                                          Container(
+                                            width: selected ? 5 : 1,
+                                            color: selected
+                                                ? AppTheme.primaryTeal
+                                                : Colors.transparent,
+                                          ),
+                                          Expanded(
+                                            child: Padding(
+                                              padding: const EdgeInsets.all(16),
+                                              child: Row(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  iconBox,
+                                                  const SizedBox(width: 12),
+                                                  nameColumn,
+                                                  const SizedBox(width: 8),
+                                                  manageButton,
+                                                ],
+                                              ),
+                                            ),
+                                          ),
                                         ],
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
-                                    OutlinedButton(
-                                      style: OutlinedButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 10, vertical: 6),
-                                        minimumSize: Size.zero,
-                                        tapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                        textStyle:
-                                            const TextStyle(fontSize: 11),
-                                      ),
-                                      onPressed: () => _selectClinic(clinic),
-                                      child: const Text('Manage'),
-                                    ),
-                                  ],
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
+                              );
+                            },
+                          ),
                         ),
             ),
           ],
@@ -829,7 +1152,8 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
           elevation: 0,
           side: BorderSide(
               color: active ? AppTheme.primaryTeal : AppTheme.borderGray),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          minimumSize: const Size(0, 44),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           textStyle: const TextStyle(fontSize: 13),
         ),
@@ -839,7 +1163,34 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
     );
   }
 
-  Widget _sectionHeader(String title, String actionLabel, VoidCallback onTap) {
+  Widget _sectionHeader(String title, String actionLabel, VoidCallback onTap,
+      {bool isMobile = false}) {
+    if (isMobile) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                  color: AppTheme.primaryTeal)),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                minimumSize: const Size(0, 44),
+                textStyle: const TextStyle(fontSize: 12),
+              ),
+              onPressed: onTap,
+              child: Text(actionLabel),
+            ),
+          ),
+        ],
+      );
+    }
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -879,271 +1230,318 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
     );
   }
 
-  Widget _buildBranchesTab() {
+  Widget _buildBranchesTab(bool isMobile) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionHeader('Facility Branch Locations', '+ Add Branch',
-            () => _openBranchDialog(null)),
+            () => _openBranchDialog(null),
+            isMobile: isMobile),
         const SizedBox(height: 16),
         Expanded(
           child: _branches.isEmpty
               ? _emptyStateCard(
                   icon: '🏢',
                   text: 'No branch locations added for this clinic yet.')
-              : ListView.separated(
-                  itemCount: _branches.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (context, idx) {
-                    final b = _branches[idx];
-                    return Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: AppTheme.borderGray),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text('📍 ${b.branchNameEn}',
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13,
-                                        color: AppTheme.primaryTeal)),
-                              ),
-                              _badge(b.isPrimary ? 'Primary' : 'Branch',
-                                  bg: b.isPrimary
-                                      ? AppTheme.successGreen.withOpacity(0.15)
-                                      : AppTheme.backgroundApp,
-                                  fg: b.isPrimary
-                                      ? AppTheme.successGreen
-                                      : AppTheme.textMuted),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Text(b.addressLine1,
-                              style: const TextStyle(
-                                  fontSize: 12, color: AppTheme.textMain)),
-                          const SizedBox(height: 2),
-                          Text(b.phone?.isNotEmpty == true ? b.phone! : 'N/A',
-                              style: const TextStyle(
-                                  fontSize: 12, color: AppTheme.textMuted)),
-                          const SizedBox(height: 10),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              OutlinedButton(
-                                onPressed: () => _openHoursDialog(b),
-                                child: const Text('⏰ Hours'),
-                              ),
-                              const SizedBox(width: 8),
-                              OutlinedButton(
-                                style: OutlinedButton.styleFrom(
-                                    foregroundColor: AppTheme.dangerRed,
-                                    side: const BorderSide(
-                                        color: AppTheme.dangerRed)),
-                                onPressed: () => _openBranchDialog(b),
-                                child: const Text('Edit'),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+              : RefreshIndicator(
+                  onRefresh: () => _selectClinic(_selectedClinic!),
+                  child: ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemCount: _branches.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (context, idx) {
+                      final b = _branches[idx];
+                      return Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: AppTheme.borderGray),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text('📍 ${b.branchNameEn}',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                          color: AppTheme.primaryTeal)),
+                                ),
+                                _badge(b.isPrimary ? 'Primary' : 'Branch',
+                                    bg: b.isPrimary
+                                        ? AppTheme.successGreen
+                                            .withOpacity(0.15)
+                                        : AppTheme.backgroundApp,
+                                    fg: b.isPrimary
+                                        ? AppTheme.successGreen
+                                        : AppTheme.textMuted),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(b.addressLine1,
+                                style: const TextStyle(
+                                    fontSize: 12, color: AppTheme.textMain)),
+                            const SizedBox(height: 2),
+                            Text(b.phone?.isNotEmpty == true ? b.phone! : 'N/A',
+                                style: const TextStyle(
+                                    fontSize: 12, color: AppTheme.textMuted)),
+                            const SizedBox(height: 10),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton(
+                                    style: OutlinedButton.styleFrom(
+                                      minimumSize: const Size(0, 44),
+                                    ),
+                                    onPressed: () => _openHoursDialog(b),
+                                    child: const Text('⏰ Hours'),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: OutlinedButton(
+                                    style: OutlinedButton.styleFrom(
+                                        minimumSize: const Size(0, 44),
+                                        foregroundColor: AppTheme.dangerRed,
+                                        side: const BorderSide(
+                                            color: AppTheme.dangerRed)),
+                                    onPressed: () => _openBranchDialog(b),
+                                    child: const Text('Edit'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 ),
         ),
       ],
     );
   }
 
-  Widget _buildSpecialtiesTab() {
+  Widget _buildSpecialtiesTab(bool isMobile) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionHeader('Offered Medical Specialties', '+ Link Specialty',
-            _openSpecialtyDialog),
+            _openSpecialtyDialog,
+            isMobile: isMobile),
         const SizedBox(height: 16),
         Expanded(
           child: _specialties.isEmpty
               ? _emptyStateCard(
                   icon: '🩺', text: 'No specialties linked to this clinic.')
-              : GridView.builder(
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 260,
-                    mainAxisExtent: 56,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
+              : RefreshIndicator(
+                  onRefresh: () => _selectClinic(_selectedClinic!),
+                  child: GridView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    gridDelegate:
+                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: 260,
+                      mainAxisExtent: 56,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                    ),
+                    itemCount: _specialties.length,
+                    itemBuilder: (context, idx) {
+                      final s = _specialties[idx];
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppTheme.backgroundApp,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+                            const Text('🩺', style: TextStyle(fontSize: 18)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(_getSpecialtyName(s.specialtyId),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.textMain)),
+                            ),
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              icon: const Icon(Icons.close,
+                                  size: 18, color: AppTheme.dangerRed),
+                              tooltip: 'Unlink',
+                              onPressed: () => _deleteSpecialty(s.specialtyId),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
-                  itemCount: _specialties.length,
-                  itemBuilder: (context, idx) {
-                    final s = _specialties[idx];
-                    return Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: AppTheme.backgroundApp,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        children: [
-                          const Text('🩺', style: TextStyle(fontSize: 18)),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(s.specialtyId,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.textMain)),
-                          ),
-                          IconButton(
-                            visualDensity: VisualDensity.compact,
-                            icon: const Icon(Icons.close,
-                                size: 16, color: AppTheme.dangerRed),
-                            tooltip: 'Unlink',
-                            onPressed: () => _deleteSpecialty(s.specialtyId),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
                 ),
         ),
       ],
     );
   }
 
-  Widget _buildInsurancesTab() {
+  Widget _buildInsurancesTab(bool isMobile) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionHeader('Accepted Insurance Networks', '+ Link Provider',
-            _openInsuranceDialog),
+            _openInsuranceDialog,
+            isMobile: isMobile),
         const SizedBox(height: 16),
         Expanded(
           child: _insurances.isEmpty
               ? _emptyStateCard(
                   icon: '🛡️',
                   text: 'No insurance providers linked to this clinic.')
-              : ListView.separated(
-                  itemCount: _insurances.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (context, idx) {
-                    final ins = _insurances[idx];
-                    return Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: AppTheme.borderGray),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
+              : RefreshIndicator(
+                  onRefresh: () => _selectClinic(_selectedClinic!),
+                  child: ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemCount: _insurances.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (context, idx) {
+                      final ins = _insurances[idx];
+                      return Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: AppTheme.borderGray),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('🛡️ ${ins.providerId}',
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13,
-                                        color: AppTheme.primaryTeal)),
-                                const SizedBox(height: 6),
-                                Wrap(
-                                  spacing: 8,
-                                  children: [
-                                    _badge(ins.networkClass.isEmpty
-                                        ? 'General'
-                                        : ins.networkClass),
-                                    _badge(
-                                        ins.isActive ? 'Active' : 'Suspended',
-                                        bg: ins.isActive
-                                            ? AppTheme.successGreen
-                                                .withOpacity(0.15)
-                                            : AppTheme.dangerRed
-                                                .withOpacity(0.12),
-                                        fg: ins.isActive
-                                            ? AppTheme.successGreen
-                                            : AppTheme.dangerRed),
-                                  ],
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                          '🛡️ ${_getInsuranceName(ins.providerId)}',
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13,
+                                              color: AppTheme.primaryTeal)),
+                                      const SizedBox(height: 6),
+                                      Wrap(
+                                        spacing: 8,
+                                        children: [
+                                          _badge(ins.networkClass.isEmpty
+                                              ? 'General'
+                                              : ins.networkClass),
+                                          _badge(
+                                              ins.isActive
+                                                  ? 'Active'
+                                                  : 'Suspended',
+                                              bg: ins.isActive
+                                                  ? AppTheme.successGreen
+                                                      .withOpacity(0.15)
+                                                  : AppTheme.dangerRed
+                                                      .withOpacity(0.12),
+                                              fg: ins.isActive
+                                                  ? AppTheme.successGreen
+                                                  : AppTheme.dangerRed),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
-                          ),
-                          OutlinedButton(
-                            style: OutlinedButton.styleFrom(
-                                foregroundColor: AppTheme.dangerRed,
-                                side: const BorderSide(
-                                    color: AppTheme.dangerRed)),
-                            onPressed: () => _deleteInsurance(ins.providerId),
-                            child: const Text('Unlink'),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                    minimumSize: const Size(0, 44),
+                                    foregroundColor: AppTheme.dangerRed,
+                                    side: const BorderSide(
+                                        color: AppTheme.dangerRed)),
+                                onPressed: () =>
+                                    _deleteInsurance(ins.providerId),
+                                child: const Text('Unlink'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 ),
         ),
       ],
     );
   }
 
-  Widget _buildLanguagesTab() {
+  Widget _buildLanguagesTab(bool isMobile) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionHeader(
-            'Supported Languages', '+ Link Language', _openLanguageDialog),
+            'Supported Languages', '+ Link Language', _openLanguageDialog,
+            isMobile: isMobile),
         const SizedBox(height: 16),
         Expanded(
           child: _languages.isEmpty
               ? _emptyStateCard(
                   icon: '🗣️', text: 'No languages linked to this clinic.')
-              : GridView.builder(
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 220,
-                    mainAxisExtent: 56,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
+              : RefreshIndicator(
+                  onRefresh: () => _selectClinic(_selectedClinic!),
+                  child: GridView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    gridDelegate:
+                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: 220,
+                      mainAxisExtent: 56,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                    ),
+                    itemCount: _languages.length,
+                    itemBuilder: (context, idx) {
+                      final lang = _languages[idx];
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppTheme.backgroundApp,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+                            const Text('🗣️', style: TextStyle(fontSize: 18)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(_getLanguageName(lang.languageId),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.textMain)),
+                            ),
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              icon: const Icon(Icons.close,
+                                  size: 18, color: AppTheme.dangerRed),
+                              tooltip: 'Unlink',
+                              onPressed: () => _deleteLanguage(lang.languageId),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
-                  itemCount: _languages.length,
-                  itemBuilder: (context, idx) {
-                    final lang = _languages[idx];
-                    return Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: AppTheme.backgroundApp,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        children: [
-                          const Text('🗣️', style: TextStyle(fontSize: 18)),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(lang.languageId,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.textMain)),
-                          ),
-                          IconButton(
-                            visualDensity: VisualDensity.compact,
-                            icon: const Icon(Icons.close,
-                                size: 16, color: AppTheme.dangerRed),
-                            tooltip: 'Unlink',
-                            onPressed: () => _deleteLanguage(lang.languageId),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
                 ),
         ),
       ],
@@ -1212,11 +1610,13 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
     );
 
     final editButton = OutlinedButton(
+      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
       onPressed: () => _openClinicDialog(clinic),
       child: const Text('✏️ Edit Profile'),
     );
     final deleteButton = OutlinedButton(
       style: OutlinedButton.styleFrom(
+          minimumSize: const Size(0, 44),
           foregroundColor: AppTheme.dangerRed,
           side: const BorderSide(color: AppTheme.dangerRed)),
       onPressed: () => _deleteClinic(clinic.clinicId),
@@ -1299,12 +1699,14 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
           ),
           const Divider(height: 24),
           Expanded(
-            child: switch (_activeSubTab) {
-              0 => _buildBranchesTab(),
-              1 => _buildSpecialtiesTab(),
-              2 => _buildInsurancesTab(),
-              _ => _buildLanguagesTab(),
-            },
+            child: _isDetailLoading
+                ? const Center(child: CircularProgressIndicator())
+                : switch (_activeSubTab) {
+                    0 => _buildBranchesTab(isMobile),
+                    1 => _buildSpecialtiesTab(isMobile),
+                    2 => _buildInsurancesTab(isMobile),
+                    _ => _buildLanguagesTab(isMobile),
+                  },
           ),
         ],
       ),
@@ -1320,7 +1722,7 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
         children: [
           headerCard,
           const SizedBox(height: 16),
-          SizedBox(height: 460, child: tabsCard),
+          SizedBox(height: 520, child: tabsCard),
         ],
       );
     }
@@ -1348,29 +1750,31 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Header Banner (stacked for mobile, mirrors angular flex-wrap)
-                        const Text('🏥 Clinic & Facility Management',
-                            style: TextStyle(
-                                fontSize: 19,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.textMain)),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Configure clinic locations, operating hours, medical specialties, and insurance networks',
-                          style: TextStyle(
-                              fontSize: 13, color: AppTheme.textMuted),
+                        // Header Banner (compact single row for mobile:
+                        // title + icon-only add button, subtitle dropped
+                        // to save vertical space above the fold)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            const Expanded(
+                              child: Text('🏥 Clinics & Facilities',
+                                  style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppTheme.textMain)),
+                            ),
+                            IconButton.filled(
+                              key: const Key('add_clinic_btn'),
+                              style: IconButton.styleFrom(
+                                minimumSize: const Size(44, 44),
+                              ),
+                              icon: const Icon(Icons.add, size: 22),
+                              tooltip: 'Add New Clinic',
+                              onPressed: () => _openClinicDialog(null),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            key: const Key('add_clinic_btn'),
-                            icon: const Icon(Icons.add, size: 18),
-                            label: const Text('Add New Clinic'),
-                            onPressed: () => _openClinicDialog(null),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 16),
 
                         // Sidebar stacked above detail panel on mobile
                         SizedBox(

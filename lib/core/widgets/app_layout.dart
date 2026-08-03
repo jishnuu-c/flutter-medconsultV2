@@ -51,8 +51,8 @@ class AppLayout extends ConsumerWidget {
       case UserRole.CLINIC_ADMIN:
         return const [
           MenuItemData(label: 'Dashboard', route: '/clinic-admin/dashboard'),
-          MenuItemData(label: 'Manage Clinics', route: '/clinic-admin/clinics'),
-          MenuItemData(label: 'Manage Doctors', route: '/clinic-admin/doctors'),
+          MenuItemData(label: 'My Clinics', route: '/clinic-admin/clinics'),
+          MenuItemData(label: 'Doctors Roster', route: '/clinic-admin/doctors'),
         ];
       case UserRole.SYSTEM_ADMIN:
         return const [
@@ -115,26 +115,29 @@ class AppLayout extends ConsumerWidget {
                   return Container(
                     margin:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    clipBehavior: Clip.antiAlias,
                     decoration: BoxDecoration(
-                      color:
-                          isActive ? AppTheme.primaryTeal : Colors.transparent,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: ListTile(
-                      title: Text(
-                        item.label,
-                        style: TextStyle(
-                          color: isActive ? Colors.white : Colors.white70,
-                          fontSize: 14,
-                          fontWeight:
-                              isActive ? FontWeight.w600 : FontWeight.normal,
+                    child: Material(
+                      color:
+                          isActive ? AppTheme.primaryTeal : Colors.transparent,
+                      child: ListTile(
+                        title: Text(
+                          item.label,
+                          style: TextStyle(
+                            color: isActive ? Colors.white : Colors.white70,
+                            fontSize: 14,
+                            fontWeight:
+                                isActive ? FontWeight.w600 : FontWeight.normal,
+                          ),
                         ),
+                        dense: true,
+                        onTap: () {
+                          context.go(item.route);
+                          if (!isDesktop) Navigator.of(context).pop();
+                        },
                       ),
-                      dense: true,
-                      onTap: () {
-                        context.go(item.route);
-                        if (!isDesktop) Navigator.of(context).pop();
-                      },
                     ),
                   );
                 }),
@@ -179,128 +182,130 @@ class AppLayout extends ConsumerWidget {
 
     return Scaffold(
       drawer: isDesktop ? null : Drawer(child: sidebarWidget),
-      body: Row(
-        children: [
-          if (isDesktop) sidebarWidget,
-          Expanded(
-            child: Column(
-              children: [
-                // Top Header Bar
-                Container(
-                  height: 70,
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    border:
-                        Border(bottom: BorderSide(color: AppTheme.borderGray)),
-                  ),
-                  child: Row(
-                    children: [
-                      if (!isDesktop)
-                        Builder(
-                          builder: (ctx) => IconButton(
-                            icon: const Icon(Icons.menu),
-                            onPressed: () => Scaffold.of(ctx).openDrawer(),
+      body: SafeArea(
+        child: Row(
+          children: [
+            if (isDesktop) sidebarWidget,
+            Expanded(
+              child: Column(
+                children: [
+                  // Top Header Bar
+                  Container(
+                    height: 70,
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      border: Border(
+                          bottom: BorderSide(color: AppTheme.borderGray)),
+                    ),
+                    child: Row(
+                      children: [
+                        if (!isDesktop)
+                          Builder(
+                            builder: (ctx) => IconButton(
+                              icon: const Icon(Icons.menu),
+                              onPressed: () => Scaffold.of(ctx).openDrawer(),
+                            ),
                           ),
-                        ),
-                      const Text(
-                        'Dashboard',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textMain,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      if (isDesktop)
-                        OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 6),
-                            textStyle: const TextStyle(fontSize: 12),
+                        const Text(
+                          'Dashboard',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.textMain,
                           ),
-                          icon: const Icon(Icons.public, size: 14),
-                          label: const Text('View Public Portal'),
-                          onPressed: () => context.go('/'),
-                        ),
-                      const Spacer(),
-                      if (user != null) ...[
-                        CircleAvatar(
-                          radius: 18,
-                          backgroundColor: AppTheme.primaryLightTeal,
-                          backgroundImage: (user.avatarUrl != null &&
-                                  user.avatarUrl!.isNotEmpty)
-                              ? NetworkImage(user.avatarUrl!)
-                              : null,
-                          child: (user.avatarUrl == null ||
-                                  user.avatarUrl!.isEmpty)
-                              ? Text(
-                                  user.initials,
-                                  style: const TextStyle(
-                                    color: AppTheme.primaryTeal,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                  ),
-                                )
-                              : null,
                         ),
                         const SizedBox(width: 12),
                         if (isDesktop)
-                          Flexible(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  user.fullName,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14,
-                                    color: AppTheme.textMain,
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.primaryLightTeal,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    user.role.value.replaceAll('_', ' '),
+                          OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6),
+                              textStyle: const TextStyle(fontSize: 12),
+                            ),
+                            icon: const Icon(Icons.public, size: 14),
+                            label: const Text('View Public Portal'),
+                            onPressed: () => context.go('/'),
+                          ),
+                        const Spacer(),
+                        if (user != null) ...[
+                          CircleAvatar(
+                            radius: 18,
+                            backgroundColor: AppTheme.primaryLightTeal,
+                            backgroundImage: (user.avatarUrl != null &&
+                                    user.avatarUrl!.isNotEmpty)
+                                ? NetworkImage(user.avatarUrl!)
+                                : null,
+                            child: (user.avatarUrl == null ||
+                                    user.avatarUrl!.isEmpty)
+                                ? Text(
+                                    user.initials,
                                     style: const TextStyle(
-                                      fontSize: 10,
-                                      color: AppTheme.primaryDarkTeal,
+                                      color: AppTheme.primaryTeal,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  )
+                                : null,
+                          ),
+                          const SizedBox(width: 12),
+                          if (isDesktop)
+                            Flexible(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    user.fullName,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
                                       fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                      color: AppTheme.textMain,
                                     ),
                                   ),
-                                ),
-                              ],
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.primaryLightTeal,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      user.role.value.replaceAll('_', ' '),
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: AppTheme.primaryDarkTeal,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
+                          const SizedBox(width: 12),
+                          IconButton(
+                            icon: const Icon(Icons.logout,
+                                color: AppTheme.dangerRed, size: 20),
+                            tooltip: 'Logout',
+                            onPressed: () {
+                              ref.read(authNotifierProvider.notifier).logout();
+                              context.go('/login');
+                            },
                           ),
-                        const SizedBox(width: 12),
-                        IconButton(
-                          icon: const Icon(Icons.logout,
-                              color: AppTheme.dangerRed, size: 20),
-                          tooltip: 'Logout',
-                          onPressed: () {
-                            ref.read(authNotifierProvider.notifier).logout();
-                            context.go('/login');
-                          },
-                        ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
 
-                // Main Content Viewport
-                Expanded(child: child),
-              ],
+                  // Main Content Viewport
+                  Expanded(child: child),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
