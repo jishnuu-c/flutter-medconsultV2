@@ -13,10 +13,14 @@ import '../../features/doctor_dashboard/presentation/doctor_profile_screen.dart'
 import '../../features/doctor_dashboard/presentation/doctor_patients_screen.dart';
 import '../../features/doctor_dashboard/presentation/schedule_screen.dart';
 import '../../features/landing/presentation/landing_screen.dart';
+import '../../features/patient_dashboard/presentation/appointments_history_screen.dart';
 import '../../features/patient_dashboard/presentation/become_clinic_screen.dart';
 import '../../features/patient_dashboard/presentation/become_doctor_screen.dart';
 import '../../features/patient_dashboard/presentation/book_appointment_screen.dart';
+import '../../features/patient_dashboard/presentation/patient_appointments_screen.dart';
+import '../../features/patient_dashboard/presentation/patient_clinics_screen.dart';
 import '../../features/patient_dashboard/presentation/patient_consultations_screen.dart';
+import '../../features/patient_dashboard/presentation/patient_doctors_screen.dart';
 import '../../features/patient_dashboard/presentation/patient_emr_screen.dart';
 import '../../features/patient_dashboard/presentation/patient_health_profile_screen.dart';
 import '../../features/patient_dashboard/presentation/patient_home_screen.dart';
@@ -130,6 +134,18 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const PatientHomeScreen(),
           ),
           GoRoute(
+            path: '/patient/doctors',
+            builder: (context, state) => const PatientDoctorsScreen(),
+          ),
+          GoRoute(
+            path: '/patient/clinics',
+            builder: (context, state) => const PatientClinicsScreen(),
+          ),
+          GoRoute(
+            path: '/patient/appointments',
+            builder: (context, state) => const PatientAppointmentsScreen(),
+          ),
+          GoRoute(
             path: '/patient/profile',
             builder: (context, state) => const PatientProfileScreen(),
           ),
@@ -182,6 +198,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/doctor/consultations',
             builder: (context, state) => const DoctorConsultationsScreen(),
+          ),
+          GoRoute(
+            path: '/doctor/appointments-history',
+            builder: (context, state) =>
+                const DoctorAppointmentsHistoryScreen(),
           ),
           GoRoute(
             path: '/doctor/caserooms',

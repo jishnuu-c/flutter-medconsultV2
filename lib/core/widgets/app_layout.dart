@@ -8,8 +8,10 @@ import '../theme/app_theme.dart';
 class MenuItemData {
   final String label;
   final String route;
+  final IconData icon;
 
-  const MenuItemData({required this.label, required this.route});
+  const MenuItemData(
+      {required this.label, required this.route, required this.icon});
 }
 
 class AppLayout extends ConsumerWidget {
@@ -20,45 +22,109 @@ class AppLayout extends ConsumerWidget {
   List<MenuItemData> _getMenuItems(UserRole? role) {
     if (role == null) return [];
 
+    // Mirrors Angular LayoutComponent.menuItems() — same labels, routes and
+    // order per role.
     switch (role) {
       case UserRole.PATIENT:
         return const [
-          MenuItemData(label: 'Home Dashboard', route: '/patient/home'),
           MenuItemData(
-              label: 'My Medical Records (EMR)', route: '/patient/emr'),
+              label: 'Home Dashboard',
+              route: '/patient/home',
+              icon: Icons.dashboard_outlined),
           MenuItemData(
-              label: 'Book Appointment', route: '/patient/book-appointment'),
+              label: 'Browse Doctors',
+              route: '/patient/doctors',
+              icon: Icons.medical_services_outlined),
           MenuItemData(
-              label: 'Tele-Consultations', route: '/patient/consultations'),
-          MenuItemData(label: 'My General Profile', route: '/patient/profile'),
+              label: 'Clinics & Branches',
+              route: '/patient/clinics',
+              icon: Icons.local_hospital_outlined),
+          MenuItemData(
+              label: 'Book Appointment',
+              route: '/patient/book-appointment',
+              icon: Icons.calendar_month_outlined),
+          MenuItemData(
+              label: 'My Appointments',
+              route: '/patient/appointments',
+              icon: Icons.calendar_month_outlined),
+          MenuItemData(
+              label: 'Tele-Consultations',
+              route: '/patient/consultations',
+              icon: Icons.forum_outlined),
+          MenuItemData(
+              label: 'Medical Records (EMR)',
+              route: '/patient/emr',
+              icon: Icons.folder_shared_outlined),
           MenuItemData(
               label: 'Personal Health Metrics',
-              route: '/patient/health-profile'),
+              route: '/patient/health-profile',
+              icon: Icons.favorite_border),
+          MenuItemData(
+              label: 'My General Profile',
+              route: '/patient/profile',
+              icon: Icons.person_outline),
         ];
       case UserRole.DOCTOR:
         return const [
           MenuItemData(
-              label: 'My Professional Profile', route: '/doctor/profile'),
+              label: 'Professional Profile',
+              route: '/doctor/profile',
+              icon: Icons.medical_services_outlined),
           MenuItemData(
-              label: 'Consultation Schedule', route: '/doctor/schedule'),
+              label: 'Consultation Schedule',
+              route: '/doctor/schedule',
+              icon: Icons.calendar_month_outlined),
           MenuItemData(
-              label: 'My Consultations', route: '/doctor/consultations'),
-          MenuItemData(label: 'Case Rooms', route: '/doctor/caserooms'),
-          MenuItemData(label: 'Patient EMR Records', route: '/doctor/patients'),
+              label: 'Appointments History',
+              route: '/doctor/appointments-history',
+              icon: Icons.folder_shared_outlined),
           MenuItemData(
-              label: 'Availability & Slots', route: '/doctor/availability'),
+              label: 'My Consultations',
+              route: '/doctor/consultations',
+              icon: Icons.forum_outlined),
+          MenuItemData(
+              label: 'Case Rooms',
+              route: '/doctor/caserooms',
+              icon: Icons.forum_outlined),
+          MenuItemData(
+              label: 'Patient EMR Records',
+              route: '/doctor/patients',
+              icon: Icons.folder_shared_outlined),
+          MenuItemData(
+              label: 'Availability & Slots',
+              route: '/doctor/availability',
+              icon: Icons.favorite_border),
         ];
       case UserRole.CLINIC_ADMIN:
         return const [
-          MenuItemData(label: 'Dashboard', route: '/clinic-admin/dashboard'),
-          MenuItemData(label: 'My Clinics', route: '/clinic-admin/clinics'),
-          MenuItemData(label: 'Doctors Roster', route: '/clinic-admin/doctors'),
+          MenuItemData(
+              label: 'Dashboard',
+              route: '/clinic-admin/dashboard',
+              icon: Icons.dashboard_outlined),
+          MenuItemData(
+              label: 'My Clinics',
+              route: '/clinic-admin/clinics',
+              icon: Icons.local_hospital_outlined),
+          MenuItemData(
+              label: 'Doctors Roster',
+              route: '/clinic-admin/doctors',
+              icon: Icons.medical_services_outlined),
         ];
       case UserRole.SYSTEM_ADMIN:
         return const [
-          MenuItemData(label: 'Global Configurations', route: '/system-admin'),
+          MenuItemData(
+              label: 'Global Configurations',
+              route: '/system-admin',
+              icon: Icons.settings_outlined),
         ];
     }
+  }
+
+  // Subset of _getMenuItems shown as quick-access bottom nav on mobile.
+  // Max 4 items (kept in same order as drawer) so labels stay readable.
+  List<MenuItemData> _getBottomNavItems(List<MenuItemData> menuItems) {
+    if (menuItems.length <= 4) return menuItems;
+    return menuItems.take(4).toList();
   }
 
   @override
@@ -66,7 +132,11 @@ class AppLayout extends ConsumerWidget {
     final authState = ref.watch(authNotifierProvider);
     final user = authState.currentUser;
     final menuItems = _getMenuItems(user?.role);
+    final bottomNavItems = _getBottomNavItems(menuItems);
     final isDesktop = MediaQuery.of(context).size.width >= 900;
+    final location = GoRouterState.of(context).uri.toString();
+    final bottomNavIndex =
+        bottomNavItems.indexWhere((item) => item.route == location);
 
     final sidebarWidget = Container(
       width: 260,
@@ -123,6 +193,11 @@ class AppLayout extends ConsumerWidget {
                       color:
                           isActive ? AppTheme.primaryTeal : Colors.transparent,
                       child: ListTile(
+                        leading: Icon(
+                          item.icon,
+                          size: 19,
+                          color: isActive ? Colors.white : Colors.white70,
+                        ),
                         title: Text(
                           item.label,
                           style: TextStyle(
@@ -182,6 +257,26 @@ class AppLayout extends ConsumerWidget {
 
     return Scaffold(
       drawer: isDesktop ? null : Drawer(child: sidebarWidget),
+      bottomNavigationBar: (!isDesktop && bottomNavItems.length >= 2)
+          ? BottomNavigationBar(
+              type: bottomNavItems.length > 3
+                  ? BottomNavigationBarType.fixed
+                  : BottomNavigationBarType.shifting,
+              backgroundColor: Colors.white,
+              selectedItemColor: AppTheme.primaryTeal,
+              unselectedItemColor: AppTheme.textMain.withOpacity(0.5),
+              currentIndex: bottomNavIndex < 0 ? 0 : bottomNavIndex,
+              onTap: (index) => context.go(bottomNavItems[index].route),
+              items: bottomNavItems
+                  .map(
+                    (item) => BottomNavigationBarItem(
+                      icon: Icon(item.icon),
+                      label: item.label,
+                    ),
+                  )
+                  .toList(),
+            )
+          : null,
       body: SafeArea(
         child: Row(
           children: [

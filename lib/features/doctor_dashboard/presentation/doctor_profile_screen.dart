@@ -221,9 +221,11 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
     return match.isNotEmpty ? match.first.nameEn : languageId;
   }
 
-  // Same pattern as consultations_screen / availability_screen: no "my
-  // doctor" endpoint, so match logged-in user's userId against /doctors/all
-  // to resolve doctorId, then load the FULL profile (specialties, languages,
+  // Mirrors Angular loadDoctorData(): match logged-in user's userId against
+  // /doctors/all to resolve doctorId. If no doctor record exists yet for
+  // this account (first login), auto-initialize one via addDoctor — same
+  // default payload/fallback logic as Angular — instead of just erroring
+  // out. Then load the FULL profile (specialties, languages,
   // qualifications, clinic placements) in one call via getDoctorProfile.
   Future<void> _resolveDoctorIdAndLoad() async {
     setState(() => _isLoading = true);
@@ -234,12 +236,44 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
       }
       final doctors = await ref.read(doctorServiceProvider).getAllDoctors();
       final match = doctors.where((d) => d.userId == userId);
-      if (match.isEmpty) {
-        throw Exception('Doctor profile not found for this account.');
+
+      String doctorId;
+      if (match.isNotEmpty) {
+        doctorId = match.first.doctorId;
+      } else {
+        // Auto-initialize profile for current logged-in Doctor user
+        // (mirrors Angular's initPayload exactly, including the
+        // `docterId` field the backend DTO expects).
+        try {
+          final created = await ref.read(doctorServiceProvider).addDoctor({
+            'userId': userId,
+            'title': 'DR',
+            'mohRegistrationNumber': '',
+            'mohVerified': false,
+            'bioEn': '',
+            'bioAr': '',
+            'experienceYears': 0,
+            'overallRating': 5.0,
+            'reviewCount': 0,
+            'consultationFeeSar': 150,
+            'isActive': true,
+            'docterId': '',
+          });
+          doctorId = created.doctorId;
+        } catch (_) {
+          // Same fallback as Angular: if init fails, fall back to the
+          // first doctor in the list (if any) rather than dead-ending.
+          if (doctors.isNotEmpty) {
+            doctorId = doctors.first.doctorId;
+          } else {
+            rethrow;
+          }
+        }
       }
-      _doctorId = match.first.doctorId;
+
+      _doctorId = doctorId;
       final profile =
-          await ref.read(doctorServiceProvider).getDoctorProfile(_doctorId!);
+          await ref.read(doctorServiceProvider).getDoctorProfile(doctorId);
       setState(() {
         _profile = profile;
         _bioEnController.text = profile.bioEn ?? '';
@@ -261,8 +295,10 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
     }
   }
 
-  // Mirrors Angular saveGeneralProfile(): sends title, mohRegistrationNumber,
-  // bioEn, bioAr, experienceYears and consultationFeeSar together.
+  // Mirrors Angular saveGeneralProfile(): sends the edited fields *plus*
+  // the existing userId/mohVerified/overallRating/reviewCount/isActive
+  // (and the `docterId` field the backend DTO expects) so the update
+  // doesn't blank out fields the form doesn't edit.
   Future<void> _saveProfile() async {
     if (_doctorId == null) return;
     setState(() => _isSaving = true);
@@ -278,6 +314,12 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
         'consultationFeeSar': double.tryParse(_feeController.text) ??
             _profile?.consultationFeeSar ??
             200.0,
+        'docterId': _doctorId,
+        'userId': _profile?.userId,
+        'mohVerified': _profile?.mohVerified ?? false,
+        'overallRating': _profile?.overallRating ?? 5.0,
+        'reviewCount': _profile?.reviewCount ?? 0,
+        'isActive': _profile?.isActive ?? true,
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

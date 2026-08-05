@@ -1,3 +1,17 @@
+import 'dart:convert';
+
+// Defensive: some backend responses in this project have come back with
+// nested object fields double-encoded as a raw JSON string instead of an
+// actual object (same root cause as the top-level response sometimes
+// missing a proper application/json content-type). Decode defensively
+// wherever we're about to hand something to a fromJson(Map) factory,
+// instead of crashing with "type 'String' is not a subtype of type
+// 'Map<String, dynamic>'".
+Map<String, dynamic> _asMap(dynamic v) {
+  if (v is String) return jsonDecode(v) as Map<String, dynamic>;
+  return v as Map<String, dynamic>;
+}
+
 enum DoctorTitle {
   DR('DR'),
   PROF('PROF'),
@@ -117,8 +131,13 @@ class DoctorModel {
   });
 
   factory DoctorModel.fromJson(Map<String, dynamic> json) {
-    final rawId = json['doctorId'] ?? json['id'] ?? json['_id'] ?? json['docId'];
-    final rawName = json['fullName'] ?? json['name'] ?? json['full_name'] ?? json['doctorName'] ?? json['doctor_name'];
+    final rawId =
+        json['doctorId'] ?? json['id'] ?? json['_id'] ?? json['docId'];
+    final rawName = json['fullName'] ??
+        json['name'] ??
+        json['full_name'] ??
+        json['doctorName'] ??
+        json['doctor_name'];
 
     return DoctorModel(
       doctorId: rawId?.toString() ?? '',
@@ -126,8 +145,10 @@ class DoctorModel {
       fullName: (rawName != null && rawName.toString().trim().isNotEmpty)
           ? rawName.toString().trim()
           : 'Dr. Sarah Connor',
-      mohRegistrationNumber:
-          json['mohRegistrationNumber'] ?? json['moh_number'] ?? json['moh_registration_number'] ?? 'MOH-DOC-1002',
+      mohRegistrationNumber: json['mohRegistrationNumber'] ??
+          json['moh_number'] ??
+          json['moh_registration_number'] ??
+          'MOH-DOC-1002',
       mohVerified: json['mohVerified'] ?? json['moh_verified'] ?? true,
       title: DoctorTitle.fromString(json['title'] ?? 'DR'),
       bioEn: json['bioEn'],
@@ -137,7 +158,8 @@ class DoctorModel {
           (json['rating'] as num?)?.toDouble() ??
           (json['overall_rating'] as num?)?.toDouble() ??
           4.9,
-      reviewCount: json['reviewCount'] ?? json['reviews'] ?? json['review_count'] ?? 48,
+      reviewCount:
+          json['reviewCount'] ?? json['reviews'] ?? json['review_count'] ?? 48,
       consultationFeeSar: (json['consultationFeeSar'] as num?)?.toDouble() ??
           (json['fee'] as num?)?.toDouble() ??
           (json['consultation_fee'] as num?)?.toDouble() ??
@@ -201,7 +223,8 @@ class DoctorClinicModel {
       doctorId: rawDocId?.toString() ?? '',
       clinicId: rawClinicId?.toString() ?? 'cl-1',
       branchId: rawBranchId?.toString() ?? 'b-1',
-      department: (json['department'] != null && json['department'].toString().trim().isNotEmpty)
+      department: (json['department'] != null &&
+              json['department'].toString().trim().isNotEmpty)
           ? json['department'].toString()
           : 'General Practice',
       consultationFeeSar: (json['consultationFeeSar'] as num?)?.toDouble() ??
@@ -212,8 +235,14 @@ class DoctorClinicModel {
       startDate: json['startDate'] ?? json['start_date'] ?? '2026-07-24',
       endDate: json['endDate'] ?? json['end_date'],
       isActive: json['isActive'] ?? json['is_active'] ?? true,
-      clinicNameEn: json['clinicNameEn'] ?? json['clinicName'] ?? json['clinic_name'] ?? 'Bingo Clinic',
-      branchNameEn: json['branchNameEn'] ?? json['branchName'] ?? json['branch_name'] ?? 'Main Branch',
+      clinicNameEn: json['clinicNameEn'] ??
+          json['clinicName'] ??
+          json['clinic_name'] ??
+          'Bingo Clinic',
+      branchNameEn: json['branchNameEn'] ??
+          json['branchName'] ??
+          json['branch_name'] ??
+          'Main Branch',
     );
   }
 
@@ -439,7 +468,7 @@ class DoctorDetailResponse extends DoctorModel {
   });
 
   factory DoctorDetailResponse.fromJson(Map<String, dynamic> json) {
-    final docJson = json['doctor'] ?? json;
+    final docJson = _asMap(json['doctor'] ?? json);
     final base = DoctorModel.fromJson(docJson);
 
     return DoctorDetailResponse(
@@ -459,16 +488,57 @@ class DoctorDetailResponse extends DoctorModel {
       createdAt: base.createdAt,
       updatedAt: base.updatedAt,
       clinics: (json['clinics'] as List? ?? [])
-          .map((e) => DoctorClinicModel.fromJson(e))
+          .map((e) => e is String
+              ? DoctorClinicModel(
+                  dcId: '',
+                  doctorId: base.doctorId,
+                  clinicId: e,
+                  branchId: '',
+                  department: e,
+                  consultationFeeSar: base.consultationFeeSar,
+                  isPrimary: false,
+                  startDate: '',
+                  isActive: true,
+                  clinicNameEn: e,
+                )
+              : DoctorClinicModel.fromJson(_asMap(e)))
           .toList(),
       specialties: (json['specialties'] as List? ?? [])
-          .map((e) => DoctorSpecialtyModel.fromJson(e))
+          .map((e) => e is String
+              ? DoctorSpecialtyModel(
+                  id: '',
+                  doctorId: base.doctorId,
+                  specialtyId: e,
+                  isPrimary: false,
+                )
+              : DoctorSpecialtyModel.fromJson(_asMap(e)))
           .toList(),
       languages: (json['languages'] as List? ?? [])
-          .map((e) => DoctorLanguageModel.fromJson(e))
+          .map((e) => e is String
+              // Backend sometimes sends this as a flat list of plain
+              // language-name strings instead of {languageId, proficiency}
+              // objects — wrap it into a model directly rather than trying
+              // (and failing) to JSON-decode a plain word like "Hindi".
+              ? DoctorLanguageModel(
+                  id: '',
+                  doctorId: base.doctorId,
+                  languageId: e,
+                  proficiency: LanguageProficiency.FLUENT,
+                )
+              : DoctorLanguageModel.fromJson(_asMap(e)))
           .toList(),
       qualifications: (json['qualifications'] as List? ?? [])
-          .map((e) => DoctorQualificationModel.fromJson(e))
+          .map((e) => e is String
+              ? DoctorQualificationModel(
+                  qualId: '',
+                  doctorId: base.doctorId,
+                  degree: e,
+                  institution: '',
+                  country: '',
+                  yearObtained: DateTime.now().year,
+                  sortOrder: 1,
+                )
+              : DoctorQualificationModel.fromJson(_asMap(e)))
           .toList(),
     );
   }

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
@@ -16,18 +17,25 @@ class DoctorService {
 
   Future<DoctorDetailResponse> getDoctorProfile(String id) async {
     final res = await dio.get('/api/medconsult/doctors/profile/$id');
-    return DoctorDetailResponse.fromJson(res.data);
+    // Defensive: if the server response is missing a proper application/json
+    // content-type, Dio leaves res.data as a raw JSON string instead of an
+    // already-decoded Map — decode it ourselves rather than crashing with
+    // "type 'String' is not a subtype of type 'Map<String, dynamic>'".
+    final data = res.data is String ? jsonDecode(res.data) : res.data;
+    return DoctorDetailResponse.fromJson(data);
   }
 
   Future<DoctorModel> addDoctor(Map<String, dynamic> dto) async {
     final res = await dio.post('/api/medconsult/doctors/add', data: dto);
-    return DoctorModel.fromJson(res.data);
+    final data = res.data is String ? jsonDecode(res.data) : res.data;
+    return DoctorModel.fromJson(data);
   }
 
   Future<DoctorModel> updateDoctor(String id, Map<String, dynamic> dto) async {
     final res =
         await dio.patch('/api/medconsult/doctors/$id/update', data: dto);
-    return DoctorModel.fromJson(res.data);
+    final data = res.data is String ? jsonDecode(res.data) : res.data;
+    return DoctorModel.fromJson(data);
   }
 
   Future<void> deleteDoctor(String id) async {

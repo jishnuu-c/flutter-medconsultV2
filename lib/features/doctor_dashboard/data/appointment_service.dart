@@ -9,6 +9,9 @@ class AppointmentService {
 
   Future<List<dynamic>> getDoctorUpcomingAppointments() async {
     final res = await dio.get('/api/medconsult/appointments/doctor/upcoming');
+    // Defensive: unwrap if backend ever paginates this too.
+    if (res.data is Map && res.data['content'] != null)
+      return res.data['content'];
     return res.data ?? [];
   }
 
@@ -28,27 +31,39 @@ class AppointmentService {
   }
 
   Future<dynamic> searchAppointments(Map<String, dynamic> searchRequest) async {
-    final res = await dio.post('/api/medconsult/appointments/search', data: searchRequest);
+    final res = await dio.post('/api/medconsult/appointments/search',
+        data: searchRequest);
     return res.data;
   }
 
-  Future<List<dynamic>> getAppointmentsByPatient(String patientId, {int page = 0, int size = 10}) async {
+  Future<List<dynamic>> getAppointmentsByPatient(String patientId,
+      {int page = 0, int size = 10}) async {
     final res = await dio.get(
       '/api/medconsult/appointments/patient/$patientId',
       queryParameters: {'page': page, 'size': size},
     );
+    // Paginated endpoint — backend returns a Spring Page object
+    // ({content: [...], totalElements: ...}), not a bare list.
+    if (res.data is Map && res.data['content'] != null)
+      return res.data['content'];
     return res.data ?? [];
   }
 
-  Future<List<dynamic>> getAppointmentsByDoctor(String doctorId, {int page = 0, int size = 10}) async {
+  Future<List<dynamic>> getAppointmentsByDoctor(String doctorId,
+      {int page = 0, int size = 10}) async {
     final res = await dio.get(
       '/api/medconsult/appointments/doctor/$doctorId',
       queryParameters: {'page': page, 'size': size},
     );
+    // Paginated endpoint — backend returns a Spring Page object
+    // ({content: [...], totalElements: ...}), not a bare list.
+    if (res.data is Map && res.data['content'] != null)
+      return res.data['content'];
     return res.data ?? [];
   }
 
-  Future<dynamic> updateStatus(String appointmentId, Map<String, dynamic> statusRequest) async {
+  Future<dynamic> updateStatus(
+      String appointmentId, Map<String, dynamic> statusRequest) async {
     final res = await dio.patch(
       '/api/medconsult/appointments/$appointmentId/status',
       data: statusRequest,
@@ -56,7 +71,8 @@ class AppointmentService {
     return res.data;
   }
 
-  Future<dynamic> cancelAppointment(String appointmentId, Map<String, dynamic> cancelRequest) async {
+  Future<dynamic> cancelAppointment(
+      String appointmentId, Map<String, dynamic> cancelRequest) async {
     final res = await dio.patch(
       '/api/medconsult/appointments/$appointmentId/cancel',
       data: cancelRequest,
