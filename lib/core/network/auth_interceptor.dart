@@ -22,19 +22,30 @@ class AuthInterceptor extends Interceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
     if (err.response?.statusCode == 401) {
-      // Any single 401, from ANY request anywhere in the app, force-logs the
-      // user out (see onUnauthorized below) and the router then bounces them
-      // back to /login. That's why a doctor can land on a dashboard for a
-      // moment and then get kicked straight back to the login screen — some
-      // OTHER request fired in the background (e.g. the schedule screen's
-      // own data fetch) came back 401 even though the login itself was fine.
-      // Logging the exact request here is the only way to know which
-      // endpoint is doing that.
-      print('--- 401 UNAUTHORIZED — this will force a logout ---');
+      // Angular reference (auth.interceptor.ts) does NOT force logout on
+      // 401 at all — it only toasts on 403. A 401 here is often a specific
+      // endpoint's own authorization response (e.g. doctor hitting a
+      // patient's health-profile they're not permitted for), not proof the
+      // session token itself is invalid. Force-logging-out on every 401
+      // from every endpoint was kicking the user out mid-session whenever
+      // any background call (health-profile, vitals, etc.) came back 401.
+      //
+      // Only treat it as a real session expiry when it's the endpoint that
+      // actually verifies the session (/users/me, /auth/*). Everything else
+      // just logs and lets the caller's own error handling (already in
+      // place via .catchError in the screens) deal with it — same as
+      // Angular.
+      final path = err.requestOptions.path;
+      final isSessionEndpoint =
+          path.contains('/users/me') || path.contains('/auth/');
+
+      print('--- 401 UNAUTHORIZED ---');
       print('Request: ${err.requestOptions.method} ${err.requestOptions.path}');
       print('Response: ${err.response?.data}');
-      print('----------------------------------------------------');
-      if (onUnauthorized != null) {
+      print('Forcing logout: $isSessionEndpoint');
+      print('------------------------');
+
+      if (isSessionEndpoint && onUnauthorized != null) {
         onUnauthorized!();
       }
     }

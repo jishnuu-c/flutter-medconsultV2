@@ -10,6 +10,27 @@ import '../data/consultation_service.dart';
 import '../../clinic_admin/data/doctor_service.dart';
 import '../../../core/auth/auth_provider.dart';
 
+// TODO: point this at your real API host (same value the Angular ApiUrlPipe
+// / environment.apiUrl uses). Kept as a local constant so this file compiles
+// without guessing your project's config import path — swap it for your
+// actual base-URL provider once wired up.
+const String _kApiBaseUrl = 'https://your-api-domain.com';
+
+/// Turns a relative avatar path (e.g. "/uploads/Users/avatar/x.jpg") returned
+/// by the API into an absolute URL NetworkImage can load. Returns null when
+/// there is nothing usable, so callers can fall back to the icon avatar.
+String? resolveAssetUrl(String? raw) {
+  if (raw == null || raw.trim().isEmpty) return null;
+  final value = raw.trim();
+  final uri = Uri.tryParse(value);
+  if (uri != null && uri.hasScheme && uri.host.isNotEmpty) return value;
+  final base = _kApiBaseUrl.endsWith('/')
+      ? _kApiBaseUrl.substring(0, _kApiBaseUrl.length - 1)
+      : _kApiBaseUrl;
+  final path = value.startsWith('/') ? value : '/$value';
+  return '$base$path';
+}
+
 class DoctorPatientsScreen extends ConsumerStatefulWidget {
   const DoctorPatientsScreen({super.key});
 
@@ -18,43 +39,16 @@ class DoctorPatientsScreen extends ConsumerStatefulWidget {
       _DoctorPatientsScreenState();
 }
 
-class _PatientInfoRow extends StatelessWidget {
-  final String label;
-  final String value;
-  const _PatientInfoRow({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: RichText(
-        text: TextSpan(
-          children: [
-            TextSpan(
-              text: '$label: ',
-              style: const TextStyle(
-                  fontSize: 12,
-                  color: AppTheme.textMuted,
-                  fontWeight: FontWeight.w600),
-            ),
-            TextSpan(
-              text: value,
-              style: const TextStyle(fontSize: 13, color: AppTheme.textMain),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
   bool _isLoadingPatients = false;
   bool _isLoadingEmr = false;
 
+  // patientId, patientName, avatarUrl
   List<Map<String, String>> _patientList = [];
+  String _searchTerm = '';
   String _selectedPatientId = '';
   String _selectedPatientName = '';
+  String _selectedPatientAvatarUrl = '';
 
   // EMR Chart details — mirrors patients.component.ts
   Map<String, dynamic>? _healthProfile;
@@ -64,6 +58,16 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
   final Map<String, List<dynamic>> _selectedRxItems = {};
   List<dynamic> _vitals = [];
   List<dynamic> _labResults = [];
+
+  List<Map<String, String>> get _filteredPatients {
+    if (_searchTerm.trim().isEmpty) return _patientList;
+    final term = _searchTerm.toLowerCase();
+    return _patientList
+        .where((p) =>
+            (p['patientName'] ?? '').toLowerCase().contains(term) ||
+            (p['patientId'] ?? '').toLowerCase().contains(term))
+        .toList();
+  }
 
   @override
   void initState() {
@@ -90,13 +94,17 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
 
   Future<void> _loadDoctorPatients() async {
     setState(() => _isLoadingPatients = true);
-    final map = <String, String>{};
+    final map = <String, Map<String, String>>{};
 
     void updateList() {
       if (!mounted) return;
       setState(() {
         _patientList = map.entries
-            .map((e) => {'patientId': e.key, 'patientName': e.value})
+            .map((e) => {
+                  'patientId': e.key,
+                  'patientName': e.value['patientName'] ?? '',
+                  'avatarUrl': e.value['avatarUrl'] ?? '',
+                })
             .toList();
       });
     }
@@ -108,8 +116,14 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
           .getDoctorUpcomingAppointments();
       for (final app in apps) {
         final id = app['patientId'];
-        final name = app['patientName'];
-        if (id != null) map[id.toString()] = (name ?? '').toString();
+        if (id == null) continue;
+        final existing = map[id.toString()];
+        map[id.toString()] = {
+          'patientName':
+              (app['patientName'] ?? existing?['patientName'] ?? '').toString(),
+          'avatarUrl': (app['patientAvatarUrl'] ?? existing?['avatarUrl'] ?? '')
+              .toString(),
+        };
       }
       updateList();
     } catch (e) {
@@ -140,8 +154,14 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
       }
       for (final c in consultations) {
         final id = c['patientId'];
-        final name = c['patientName'];
-        if (id != null) map[id.toString()] = (name ?? '').toString();
+        if (id == null) continue;
+        final existing = map[id.toString()];
+        map[id.toString()] = {
+          'patientName':
+              (c['patientName'] ?? existing?['patientName'] ?? '').toString(),
+          'avatarUrl': (c['patientAvatarUrl'] ?? existing?['avatarUrl'] ?? '')
+              .toString(),
+        };
       }
       updateList();
     } catch (e) {
@@ -156,21 +176,21 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
     }
   }
 
-  void _onPatientSelect(String? patientId) {
+  void _selectPatient(Map<String, String> p) {
     setState(() {
-      _selectedPatientId = patientId ?? '';
-      final opt = _patientList.firstWhere(
-        (p) => p['patientId'] == _selectedPatientId,
-        orElse: () => {'patientId': '', 'patientName': ''},
-      );
-      _selectedPatientName = opt['patientName'] ?? '';
+      _selectedPatientId = p['patientId'] ?? '';
+      _selectedPatientName = p['patientName'] ?? '';
+      _selectedPatientAvatarUrl = p['avatarUrl'] ?? '';
     });
-
-    if (_selectedPatientId.isEmpty) {
-      _clearPatientDetails();
-      return;
-    }
     _loadPatientEmr();
+  }
+
+  void _backToDirectory() {
+    setState(() {
+      _selectedPatientId = '';
+      _selectedPatientAvatarUrl = '';
+    });
+    _clearPatientDetails();
   }
 
   void _clearPatientDetails() {
@@ -250,8 +270,9 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
             .read(clinicalRecordServiceProvider)
             .getPrescriptionItems(r['prescriptionId'])
             .then((items) {
-          if (mounted)
+          if (mounted) {
             setState(() => _selectedRxItems[r['prescriptionId']] = items);
+          }
         }).catchError((e) {
           debugPrint('rxItems error: ${_errorMessage(e)}');
         });
@@ -264,157 +285,176 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
     }
   }
 
+  Future<void> _downloadLabFile(String? fileId) async {
+    if (fileId == null || fileId.isEmpty) return;
+    try {
+      await ref.read(clinicalRecordServiceProvider).downloadFile(fileId);
+      _toast('Report downloading...');
+    } catch (e) {
+      debugPrint('download error: ${_errorMessage(e)}');
+      _toast('Could not download lab report file.', error: true);
+    }
+  }
+
   // ── Build ─────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.backgroundApp,
+      appBar: AppBar(
+        title: Text(_selectedPatientId.isEmpty
+            ? 'Patient Directory'
+            : _selectedPatientName),
+        leading: _selectedPatientId.isEmpty
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: _backToDirectory,
+              ),
+      ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Patient EMR Records',
-                style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textMain),
+        child: _selectedPatientId.isEmpty
+            ? _buildDirectory()
+            : RefreshIndicator(
+                onRefresh: _loadPatientEmr,
+                child: _buildChart(),
               ),
-              const SizedBox(height: 4),
-              const Text(
-                'Search patient profiles, active prescriptions, and clinical history.',
-                style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
-              ),
-              const SizedBox(height: 16),
-              _buildPatientSelector(),
-              const SizedBox(height: 16),
-              Expanded(
-                child: _selectedPatientId.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'Choose a patient to view their chart.',
-                          style: TextStyle(color: AppTheme.textMuted),
-                        ),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: _loadPatientEmr,
-                        child: ListView(
-                          children: [
-                            _buildProfileCard(),
-                            const SizedBox(height: 14),
-                            _buildAllergiesAndConditions(),
-                            const SizedBox(height: 14),
-                            _buildPrescriptionsCard(),
-                            const SizedBox(height: 14),
-                            _buildVitalsCard(),
-                            const SizedBox(height: 14),
-                            _buildLabResultsCard(),
-                          ],
-                        ),
-                      ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
 
-  Widget _buildPatientSelector() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: _isLoadingPatients
-            ? const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(8),
-                  child: CircularProgressIndicator(),
-                ),
-              )
-            : DropdownButtonFormField<String>(
-                initialValue:
-                    _selectedPatientId.isEmpty ? null : _selectedPatientId,
-                decoration: const InputDecoration(labelText: 'Choose Patient'),
-                hint: const Text('-- Choose Patient --'),
-                items: _patientList
-                    .map((p) => DropdownMenuItem<String>(
-                          value: p['patientId'],
-                          child: Text(p['patientName'] ?? ''),
-                        ))
-                    .toList(),
-                onChanged: _onPatientSelect,
+  // ── Directory (mirrors patients-directory-card / patients-grid) ────────
+  Widget _buildDirectory() {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: TextField(
+            decoration: InputDecoration(
+              hintText: 'Search patient name or ID...',
+              prefixIcon: const Icon(Icons.search),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(vertical: 0),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.borderGray),
               ),
-      ),
+            ),
+            onChanged: (v) => setState(() => _searchTerm = v),
+          ),
+        ),
+        Expanded(
+          child: _isLoadingPatients
+              ? const Center(child: CircularProgressIndicator())
+              : _filteredPatients.isEmpty
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text(
+                          'No patients found.\nCheck your appointments and consultations.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppTheme.textMuted),
+                        ),
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _loadDoctorPatients,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                        itemCount: _filteredPatients.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, i) {
+                          final p = _filteredPatients[i];
+                          return _PatientDirectoryTile(
+                            name: p['patientName'] ?? '',
+                            id: p['patientId'] ?? '',
+                            avatarUrl: p['avatarUrl'] ?? '',
+                            onTap: () => _selectPatient(p),
+                          );
+                        },
+                      ),
+                    ),
+        ),
+      ],
+    );
+  }
+
+  // ── Chart (mirrors chart-header-card + emr-dashboard-grid, stacked for mobile) ──
+  Widget _buildChart() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [
+        if (_isLoadingEmr) const LinearProgressIndicator(),
+        if (_isLoadingEmr) const SizedBox(height: 10),
+        _buildProfileCard(),
+        const SizedBox(height: 14),
+        _buildAllergiesAndConditions(),
+        const SizedBox(height: 14),
+        _buildActionButtons(),
+        const SizedBox(height: 14),
+        _buildPrescriptionsCard(),
+        const SizedBox(height: 14),
+        _buildVitalsCard(),
+        const SizedBox(height: 14),
+        _buildLabResultsCard(),
+      ],
     );
   }
 
   Widget _buildProfileCard() {
+    // NOTE: a BoxDecoration can't combine `borderRadius` with a `border`
+    // that has different widths/colors per side (Flutter throws "A
+    // borderRadius can only be given on borders with uniform colors").
+    // Card's own shape gives the rounding; clipBehavior clips the child to
+    // it, and the inner Container only draws the left accent bar (no radius
+    // on that Container), so the two never conflict.
     return Card(
-      child: Padding(
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Container(
+        decoration: const BoxDecoration(
+          border: Border(
+            left: BorderSide(color: AppTheme.primaryTeal, width: 4),
+          ),
+        ),
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Chart: $_selectedPatientName',
-              style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.primaryTeal),
+            Row(
+              children: [
+                _Avatar(
+                  url: resolveAssetUrl(_selectedPatientAvatarUrl),
+                  radius: 24,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    _selectedPatientName,
+                    style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.primaryTeal),
+                  ),
+                ),
+              ],
             ),
             if (_healthProfile != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                'Height: ${_healthProfile!['heightCm'] ?? '-'} cm | '
-                'Weight: ${_healthProfile!['weightKg'] ?? '-'} kg | '
-                'BMI: ${_formatBmi(_healthProfile!['bmi'])}',
-                style: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
-              ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  Chip(
-                    label: Text(
-                        'Smoking: ${_healthProfile!['smokingStatus'] ?? '-'}'),
-                    backgroundColor: AppTheme.primaryLightTeal,
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  Chip(
-                    label: Text(
-                        'Alcohol: ${_healthProfile!['alcoholStatus'] ?? '-'}'),
-                    backgroundColor: AppTheme.primaryLightTeal,
-                    visualDensity: VisualDensity.compact,
-                  ),
+                  _pill('📏 Height: ${_healthProfile!['heightCm'] ?? '-'} cm'),
+                  _pill('⚖️ Weight: ${_healthProfile!['weightKg'] ?? '-'} kg'),
+                  _pill('📊 BMI: ${_formatBmi(_healthProfile!['bmi'])}'),
+                  _pill('🚬 ${_healthProfile!['smokingStatus'] ?? '-'}'),
+                  _pill('🍷 ${_healthProfile!['alcoholStatus'] ?? '-'}'),
                 ],
               ),
-            ],
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                ElevatedButton(
-                  onPressed: _openVitalDialog,
-                  child: const Text('Record Vitals'),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryDarkTeal),
-                  onPressed: _openPrescriptionDialog,
-                  child: const Text('Write Prescription'),
-                ),
-                OutlinedButton(
-                  onPressed: _openLabDialog,
-                  child: const Text('Upload Lab Report'),
-                ),
-              ],
-            ),
-            if (_isLoadingEmr) ...[
-              const SizedBox(height: 10),
-              const LinearProgressIndicator(),
             ],
           ],
         ),
@@ -422,10 +462,58 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
     );
   }
 
+  Widget _pill(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryLightTeal,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: AppTheme.primaryTeal.withValues(alpha: 0.2)),
+      ),
+      child: Text(text,
+          style: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.primaryDarkTeal)),
+    );
+  }
+
   String _formatBmi(dynamic bmi) {
     if (bmi == null) return '-';
     final v = double.tryParse(bmi.toString());
     return v == null ? bmi.toString() : v.toStringAsFixed(1);
+  }
+
+  Widget _buildActionButtons() {
+    return Row(
+      children: [
+        Expanded(
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.favorite, size: 16),
+            label: const Text('Vitals'),
+            onPressed: _openVitalSheet,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryDarkTeal),
+            icon: const Icon(Icons.medication, size: 16),
+            label: const Text('Rx'),
+            onPressed: _openPrescriptionSheet,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.science, size: 16),
+            label: const Text('Lab'),
+            onPressed: _openLabSheet,
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildAllergiesAndConditions() {
@@ -440,38 +528,46 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
               style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: AppTheme.textMuted),
+                  color: AppTheme.textMuted,
+                  letterSpacing: 0.4),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             if (_allergies.isEmpty)
-              const Text('No allergies recorded.',
+              const Text('No allergies recorded on file.',
                   style: TextStyle(fontSize: 13, color: AppTheme.textMuted))
             else
-              ..._allergies.map((al) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
+              ..._allergies.map((al) => _LeftAccentBox(
+                    accentColor: AppTheme.dangerRed,
+                    backgroundColor: const Color(0xFFFFF5F5),
+                    margin: const EdgeInsets.only(bottom: 6),
                     child: Text(
-                      '🔴 ${al['allergen']} (${al['severity']}) - ${al['reaction']}',
-                      style: const TextStyle(fontSize: 13),
+                      '🚨 ${al['allergen']} (${al['severity']}) — ${al['reaction']}',
+                      style: const TextStyle(
+                          fontSize: 13, color: Color(0xFF991B1B)),
                     ),
                   )),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             Text(
               'CHRONIC CONDITIONS (${_chronicConditions.length})',
               style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: AppTheme.textMuted),
+                  color: AppTheme.textMuted,
+                  letterSpacing: 0.4),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             if (_chronicConditions.isEmpty)
-              const Text('No conditions recorded.',
+              const Text('No chronic conditions recorded.',
                   style: TextStyle(fontSize: 13, color: AppTheme.textMuted))
             else
-              ..._chronicConditions.map((cc) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
+              ..._chronicConditions.map((cc) => _LeftAccentBox(
+                    accentColor: const Color(0xFF3B82F6),
+                    backgroundColor: const Color(0xFFF8FAFC),
+                    margin: const EdgeInsets.only(bottom: 6),
                     child: Text(
-                      '⚫ ${cc['conditionName']} [${cc['icd10Code']}] - Status: ${cc['status']}',
-                      style: const TextStyle(fontSize: 13),
+                      '🩺 ${cc['conditionName']} [${cc['icd10Code']}] — Status: ${cc['status']}',
+                      style: const TextStyle(
+                          fontSize: 13, color: Color(0xFF1E293B)),
                     ),
                   )),
           ],
@@ -487,11 +583,23 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Prescription History',
-                style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.primaryTeal)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('📜 Prescription History',
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.primaryTeal)),
+                Chip(
+                  label: Text('${_prescriptions.length}',
+                      style: const TextStyle(fontSize: 11)),
+                  backgroundColor: AppTheme.primaryLightTeal,
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ],
+            ),
             const Divider(),
             if (_prescriptions.isEmpty)
               const Padding(
@@ -509,7 +617,7 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     border: Border.all(color: AppTheme.borderGray),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -518,7 +626,7 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Expanded(
-                            child: Text('Issued: ${rx['issuedDate'] ?? '-'}',
+                            child: Text('📅 Issued: ${rx['issuedDate'] ?? '-'}',
                                 style: const TextStyle(
                                     fontSize: 12, color: AppTheme.textMuted)),
                           ),
@@ -533,7 +641,7 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
                         ],
                       ),
                       const SizedBox(height: 6),
-                      Text('Diagnosis: ${rx['diagnosisNotes'] ?? ''}',
+                      Text('🩺 Diagnosis: ${rx['diagnosisNotes'] ?? ''}',
                           style: const TextStyle(
                               fontSize: 13, fontWeight: FontWeight.bold)),
                       if (items.isNotEmpty) ...[
@@ -565,11 +673,23 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Recorded Vitals History',
-                style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.primaryTeal)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('🫀 Recorded Vitals History',
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.primaryTeal)),
+                Chip(
+                  label: Text('${_vitals.length}',
+                      style: const TextStyle(fontSize: 11)),
+                  backgroundColor: AppTheme.primaryLightTeal,
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ],
+            ),
             const Divider(),
             if (_vitals.isEmpty)
               const Padding(
@@ -579,8 +699,13 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
                         style: TextStyle(color: AppTheme.textMuted))),
               )
             else
-              ..._vitals.map((v) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
+              ..._vitals.map((v) => Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.backgroundApp,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -588,20 +713,21 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                                'BP: ${v['bloodPressureSystolic']}/${v['bloodPressureDiastolic']} mmHg',
+                                '🩺 BP: ${v['bloodPressureSystolic']}/${v['bloodPressureDiastolic']} mmHg',
                                 style: const TextStyle(
                                     fontSize: 13, fontWeight: FontWeight.bold)),
-                            Text('HR: ${v['heartRateBpm']} BPM',
+                            Text('❤️ ${v['heartRateBpm']} BPM',
                                 style: const TextStyle(
                                     fontSize: 13, fontWeight: FontWeight.bold)),
                           ],
                         ),
+                        const SizedBox(height: 4),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Expanded(
                               child: Text(
-                                'Glucose: ${v['bloodGlucoseMmol'] ?? 'N/A'} | Temp: ${v['temperatureC'] ?? 'N/A'}°C',
+                                '🩸 ${v['bloodGlucoseMmol'] ?? 'N/A'} | 🌡️ ${v['temperatureC'] ?? 'N/A'}°C',
                                 style: const TextStyle(
                                     fontSize: 11, color: AppTheme.textMuted),
                               ),
@@ -611,7 +737,6 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
                                     fontSize: 11, color: AppTheme.textMuted)),
                           ],
                         ),
-                        const Divider(height: 12),
                       ],
                     ),
                   )),
@@ -628,11 +753,23 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Lab Reports',
-                style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.primaryTeal)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('🔬 Lab Reports & Attachments',
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.primaryTeal)),
+                Chip(
+                  label: Text('${_labResults.length}',
+                      style: const TextStyle(fontSize: 11)),
+                  backgroundColor: AppTheme.primaryLightTeal,
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ],
+            ),
             const Divider(),
             if (_labResults.isEmpty)
               const Padding(
@@ -649,8 +786,13 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
                     : flag == 'NORMAL'
                         ? AppTheme.successGreen
                         : AppTheme.warningAmber;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: AppTheme.borderGray),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -659,7 +801,7 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
                         children: [
                           Expanded(
                             child: Text(
-                                '${lab['labName']} - ${lab['reportType']}',
+                                '🧪 ${lab['labName']} — ${lab['reportType']}',
                                 style: const TextStyle(
                                     fontSize: 13, fontWeight: FontWeight.bold)),
                           ),
@@ -674,27 +816,54 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 2),
-                      Text('Date: ${lab['reportDate'] ?? '-'}',
+                      const SizedBox(height: 4),
+                      Text(
+                          '📅 Date: ${lab['reportDate'] ?? '-'} | Status: ${lab['status'] ?? '-'}',
                           style: const TextStyle(
                               fontSize: 11, color: AppTheme.textMuted)),
-                      const SizedBox(height: 4),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppTheme.backgroundApp,
-                          borderRadius: BorderRadius.circular(6),
+                      if ((lab['doctorAnnotation'] ?? '')
+                          .toString()
+                          .isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        _LeftAccentBox(
+                          accentColor: AppTheme.primaryTeal,
+                          backgroundColor: AppTheme.backgroundApp,
+                          width: double.infinity,
+                          child: Text(
+                            '💬 ${lab['doctorAnnotation']}',
+                            style: const TextStyle(
+                                fontSize: 12, color: AppTheme.textMain),
+                          ),
                         ),
-                        child: Text(
-                          lab['doctorAnnotation'] ?? 'No annotation',
-                          style: const TextStyle(
-                              fontSize: 12,
-                              fontStyle: FontStyle.italic,
-                              color: AppTheme.textMain),
+                      ],
+                      if (lab['fileId'] != null &&
+                          lab['fileId'].toString().isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryLightTeal,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('📄 Lab Attachment',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppTheme.primaryDarkTeal)),
+                              TextButton.icon(
+                                icon: const Icon(Icons.download, size: 16),
+                                label: const Text('Download'),
+                                onPressed: () =>
+                                    _downloadLabFile(lab['fileId']?.toString()),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const Divider(height: 16),
+                      ],
                     ],
                   ),
                 );
@@ -711,93 +880,6 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
     return s.length >= 16 ? s.replaceFirst('T', ' ').substring(0, 16) : s;
   }
 
-  // ── Record Vitals dialog ─────────────────────────────────────────────
-  void _openVitalDialog() {
-    final formKey = GlobalKey<FormState>();
-    final systolic = TextEditingController(text: '120');
-    final diastolic = TextEditingController(text: '80');
-    final heartRate = TextEditingController(text: '72');
-    final glucose = TextEditingController(text: '5.5');
-    final hba1c = TextEditingController(text: '5.7');
-    final weight = TextEditingController(text: '70');
-    final temp = TextEditingController(text: '36.6');
-    final oxygen = TextEditingController(text: '98');
-    final notes = TextEditingController();
-    bool submitting = false;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Document Vitals Metric'),
-          content: Form(
-            key: formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _numField('Systolic BP (mmHg)', systolic),
-                  _numField('Diastolic BP (mmHg)', diastolic),
-                  _numField('Heart Rate (BPM)', heartRate),
-                  _numField('Glucose (mmol/L)', glucose, decimal: true),
-                  _numField('HbA1c (%)', hba1c, decimal: true),
-                  _numField('Weight (kg)', weight),
-                  _numField('Temperature (°C)', temp, decimal: true),
-                  _numField('Oxygen Saturation (%)', oxygen),
-                  TextFormField(
-                    controller: notes,
-                    decoration: const InputDecoration(labelText: 'Notes'),
-                    maxLines: 2,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: submitting
-                  ? null
-                  : () async {
-                      if (!(formKey.currentState?.validate() ?? false)) return;
-                      setDialogState(() => submitting = true);
-                      try {
-                        await ref
-                            .read(clinicalRecordServiceProvider)
-                            .createVital({
-                          'bloodPressureSystolic':
-                              int.tryParse(systolic.text) ?? 0,
-                          'bloodPressureDiastolic':
-                              int.tryParse(diastolic.text) ?? 0,
-                          'heartRateBpm': int.tryParse(heartRate.text) ?? 0,
-                          'bloodGlucoseMmol': double.tryParse(glucose.text),
-                          'hba1cPercent': double.tryParse(hba1c.text),
-                          'weightKg': double.tryParse(weight.text),
-                          'temperatureC': double.tryParse(temp.text),
-                          'oxygenSaturation': int.tryParse(oxygen.text),
-                          'notes': notes.text,
-                          'patientId': _selectedPatientId,
-                          'recordedAt': DateTime.now().toIso8601String(),
-                          'source': 'DOCTOR_ENTRY',
-                        });
-                        if (mounted) Navigator.pop(ctx);
-                        _toast('Vital logged.');
-                        _loadPatientEmr();
-                      } catch (e) {
-                        setDialogState(() => submitting = false);
-                        _toast('Failed to record vitals.', error: true);
-                      }
-                    },
-              child: const Text('Save Entry'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _numField(String label, TextEditingController c,
       {bool decimal = false}) {
     return Padding(
@@ -811,8 +893,190 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
     );
   }
 
-  // ── Write Prescription dialog (2-stage, mirrors patients.component.html) ──
-  void _openPrescriptionDialog() {
+  Widget _sheetScaffold({
+    required String title,
+    required Widget child,
+    required List<Widget> actions,
+  }) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: DraggableScrollableSheet(
+        initialChildSize: 0.9,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 10),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppTheme.borderGray,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(title,
+                        style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryTeal)),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.all(20),
+                  child: child,
+                ),
+              ),
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(children: actions),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Record Vitals sheet ─────────────────────────────────────────────
+  void _openVitalSheet() {
+    final formKey = GlobalKey<FormState>();
+    final systolic = TextEditingController(text: '120');
+    final diastolic = TextEditingController(text: '80');
+    final heartRate = TextEditingController(text: '72');
+    final glucose = TextEditingController(text: '5.5');
+    final hba1c = TextEditingController(text: '5.7');
+    final weight = TextEditingController(text: '70');
+    final temp = TextEditingController(text: '36.6');
+    final oxygen = TextEditingController(text: '98');
+    final notes = TextEditingController();
+    bool submitting = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) => _sheetScaffold(
+          title: 'Document Vitals Metric',
+          child: Form(
+            key: formKey,
+            child: Column(
+              children: [
+                Row(children: [
+                  Expanded(child: _numField('Systolic BP (mmHg)', systolic)),
+                  const SizedBox(width: 10),
+                  Expanded(child: _numField('Diastolic BP (mmHg)', diastolic)),
+                ]),
+                Row(children: [
+                  Expanded(child: _numField('Heart Rate (BPM)', heartRate)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                      child: _numField('Glucose (mmol/L)', glucose,
+                          decimal: true)),
+                ]),
+                Row(children: [
+                  Expanded(child: _numField('HbA1c (%)', hba1c, decimal: true)),
+                  const SizedBox(width: 10),
+                  Expanded(child: _numField('Weight (kg)', weight)),
+                ]),
+                Row(children: [
+                  Expanded(
+                      child:
+                          _numField('Temperature (°C)', temp, decimal: true)),
+                  const SizedBox(width: 10),
+                  Expanded(child: _numField('Oxygen Saturation (%)', oxygen)),
+                ]),
+                TextFormField(
+                  controller: notes,
+                  decoration: const InputDecoration(labelText: 'Notes'),
+                  maxLines: 2,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton(
+                onPressed: submitting
+                    ? null
+                    : () async {
+                        if (!(formKey.currentState?.validate() ?? false)) {
+                          return;
+                        }
+                        setSheetState(() => submitting = true);
+                        try {
+                          await ref
+                              .read(clinicalRecordServiceProvider)
+                              .createVital({
+                            'bloodPressureSystolic':
+                                int.tryParse(systolic.text) ?? 0,
+                            'bloodPressureDiastolic':
+                                int.tryParse(diastolic.text) ?? 0,
+                            'heartRateBpm': int.tryParse(heartRate.text) ?? 0,
+                            'bloodGlucoseMmol': double.tryParse(glucose.text),
+                            'hba1cPercent': double.tryParse(hba1c.text),
+                            'weightKg': double.tryParse(weight.text),
+                            'temperatureC': double.tryParse(temp.text),
+                            'oxygenSaturation': int.tryParse(oxygen.text),
+                            'notes': notes.text,
+                            'patientId': _selectedPatientId,
+                            'recordedAt': DateTime.now().toIso8601String(),
+                            'source': 'DOCTOR_ENTRY',
+                          });
+                          if (mounted) Navigator.pop(ctx);
+                          _toast('Vital logged.');
+                          _loadPatientEmr();
+                        } catch (e) {
+                          setSheetState(() => submitting = false);
+                          _toast('Failed to record vitals.', error: true);
+                        }
+                      },
+                child: submitting
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Save Entry'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Write Prescription sheet (2-stage, mirrors patients.component.html) ──
+  void _openPrescriptionSheet() {
     final formKey = GlobalKey<FormState>();
     DateTime? validUntil;
     final diagnosisNotes = TextEditingController();
@@ -831,17 +1095,20 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
     final refillsAllowed = TextEditingController(text: '0');
     final specialInstructions = TextEditingController();
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Write E-Prescription'),
-          content: SingleChildScrollView(
-            child: createdRxId == null
+        builder: (context, setSheetState) {
+          final stageOne = createdRxId == null;
+          return _sheetScaffold(
+            title: 'Write E-Prescription',
+            child: stageOne
                 ? Form(
                     key: formKey,
                     child: Column(
-                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         ListTile(
                           contentPadding: EdgeInsets.zero,
@@ -857,8 +1124,9 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
                               lastDate: DateTime.now()
                                   .add(const Duration(days: 3650)),
                             );
-                            if (picked != null)
-                              setDialogState(() => validUntil = picked);
+                            if (picked != null) {
+                              setSheetState(() => validUntil = picked);
+                            }
                           },
                         ),
                         TextFormField(
@@ -883,7 +1151,7 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
                     ),
                   )
                 : Column(
-                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
                         width: double.infinity,
@@ -949,7 +1217,7 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
                                     value: 'TOPICAL', child: Text('Topical')),
                               ],
                               onChanged: (v) =>
-                                  setDialogState(() => route = v ?? 'ORAL'),
+                                  setSheetState(() => route = v ?? 'ORAL'),
                             ),
                             const SizedBox(height: 8),
                             TextFormField(
@@ -962,8 +1230,14 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
                                   : null,
                             ),
                             const SizedBox(height: 8),
-                            _numField('Duration (Days)', durationDays),
-                            _numField('Total Quantity', quantity),
+                            Row(children: [
+                              Expanded(
+                                  child: _numField(
+                                      'Duration (Days)', durationDays)),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                  child: _numField('Total Quantity', quantity)),
+                            ]),
                             _numField('Refills Allowed', refillsAllowed),
                             const SizedBox(height: 8),
                             TextFormField(
@@ -972,105 +1246,134 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
                                   labelText: 'Special Instructions',
                                   hintText: 'E.g. Take after meal'),
                             ),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                icon: const Icon(Icons.add, size: 18),
+                                label: const Text('Add Item'),
+                                onPressed: () async {
+                                  if (!(itemFormKey.currentState?.validate() ??
+                                      false)) {
+                                    return;
+                                  }
+                                  try {
+                                    final item = await ref
+                                        .read(clinicalRecordServiceProvider)
+                                        .addPrescriptionItem(createdRxId!, {
+                                      'drugName': drugName.text,
+                                      'dosage': dosage.text,
+                                      'route': route,
+                                      'frequency': frequency.text,
+                                      'durationDays':
+                                          int.tryParse(durationDays.text) ?? 1,
+                                      'quantity':
+                                          int.tryParse(quantity.text) ?? 1,
+                                      'refillsAllowed':
+                                          int.tryParse(refillsAllowed.text) ??
+                                              0,
+                                      'specialInstructions':
+                                          specialInstructions.text,
+                                    });
+                                    setSheetState(() {
+                                      rxItemsList.add(item);
+                                      drugName.clear();
+                                      dosage.clear();
+                                      route = 'ORAL';
+                                      frequency.text = '1x daily';
+                                      durationDays.text = '7';
+                                      quantity.text = '1';
+                                      refillsAllowed.text = '0';
+                                      specialInstructions.clear();
+                                    });
+                                    _toast('Prescription item added.');
+                                  } catch (e) {
+                                    _toast('Failed to add prescription item.',
+                                        error: true);
+                                  }
+                                },
+                              ),
+                            ),
                           ],
                         ),
                       ),
                     ],
                   ),
-          ),
-          actions: createdRxId == null
-              ? [
-                  TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('Cancel')),
-                  ElevatedButton(
-                    onPressed: submitting
-                        ? null
-                        : () async {
-                            if (!(formKey.currentState?.validate() ?? false))
-                              return;
-                            setDialogState(() => submitting = true);
-                            try {
-                              final rx = await ref
-                                  .read(clinicalRecordServiceProvider)
-                                  .createPrescription({
-                                'validUntil':
-                                    validUntil?.toIso8601String().split('T')[0],
-                                'diagnosisNotes': diagnosisNotes.text,
-                                'pharmacistNotes': pharmacistNotes.text,
-                                'patientId': _selectedPatientId,
-                                'status': 'ACTIVE',
-                                'issuedDate': DateTime.now()
-                                    .toIso8601String()
-                                    .split('T')[0],
-                              });
-                              setDialogState(() {
-                                createdRxId = rx['prescriptionId'];
-                                submitting = false;
-                              });
-                              _toast(
-                                  'Prescription shell created. Now add items.');
-                            } catch (e) {
-                              setDialogState(() => submitting = false);
-                              _toast('Failed to create prescription.',
-                                  error: true);
-                            }
-                          },
-                    child: const Text('Create Shell'),
-                  ),
-                ]
-              : [
-                  TextButton(
-                    onPressed: () async {
-                      if (!(itemFormKey.currentState?.validate() ?? false))
-                        return;
-                      try {
-                        final item = await ref
-                            .read(clinicalRecordServiceProvider)
-                            .addPrescriptionItem(createdRxId!, {
-                          'drugName': drugName.text,
-                          'dosage': dosage.text,
-                          'route': route,
-                          'frequency': frequency.text,
-                          'durationDays': int.tryParse(durationDays.text) ?? 1,
-                          'quantity': int.tryParse(quantity.text) ?? 1,
-                          'refillsAllowed':
-                              int.tryParse(refillsAllowed.text) ?? 0,
-                          'specialInstructions': specialInstructions.text,
-                        });
-                        setDialogState(() {
-                          rxItemsList.add(item);
-                          drugName.clear();
-                          dosage.clear();
-                          route = 'ORAL';
-                          frequency.text = '1x daily';
-                          durationDays.text = '7';
-                          quantity.text = '1';
-                          refillsAllowed.text = '0';
-                          specialInstructions.clear();
-                        });
-                        _toast('Prescription item added.');
-                      } catch (e) {
-                        _toast('Failed to add prescription item.', error: true);
-                      }
-                    },
-                    child: const Text('+ Add Item'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      _loadPatientEmr();
-                    },
-                    child: const Text('Finish Prescription'),
-                  ),
-                ],
-        ),
+            actions: stageOne
+                ? [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: submitting
+                            ? null
+                            : () async {
+                                if (!(formKey.currentState?.validate() ??
+                                    false)) {
+                                  return;
+                                }
+                                setSheetState(() => submitting = true);
+                                try {
+                                  final rx = await ref
+                                      .read(clinicalRecordServiceProvider)
+                                      .createPrescription({
+                                    'validUntil': validUntil
+                                        ?.toIso8601String()
+                                        .split('T')[0],
+                                    'diagnosisNotes': diagnosisNotes.text,
+                                    'pharmacistNotes': pharmacistNotes.text,
+                                    'patientId': _selectedPatientId,
+                                    'status': 'ACTIVE',
+                                    'issuedDate': DateTime.now()
+                                        .toIso8601String()
+                                        .split('T')[0],
+                                  });
+                                  setSheetState(() {
+                                    createdRxId = rx['prescriptionId'];
+                                    submitting = false;
+                                  });
+                                  _toast(
+                                      'Prescription shell created. Now add items.');
+                                } catch (e) {
+                                  setSheetState(() => submitting = false);
+                                  _toast('Failed to create prescription.',
+                                      error: true);
+                                }
+                              },
+                        child: submitting
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2))
+                            : const Text('Create Shell'),
+                      ),
+                    ),
+                  ]
+                : [
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _loadPatientEmr();
+                        },
+                        child: const Text('Finish Prescription'),
+                      ),
+                    ),
+                  ],
+          );
+        },
       ),
     );
   }
 
-  // ── Upload Lab Report dialog ────────────────────────────────────────
-  void _openLabDialog() {
+  // ── Upload Lab Report sheet ────────────────────────────────────────
+  void _openLabSheet() {
     final formKey = GlobalKey<FormState>();
     final labName = TextEditingController();
     final reportType = TextEditingController();
@@ -1079,55 +1382,59 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
     PlatformFile? selectedFile;
     bool submitting = false;
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Upload Lab Report'),
-          content: Form(
+        builder: (context, setSheetState) => _sheetScaffold(
+          title: 'Upload Lab Report',
+          child: Form(
             key: formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: labName,
-                    decoration: const InputDecoration(
-                        labelText: 'Lab Facility Name',
-                        hintText: 'E.g. Al Borg Diagnostics'),
-                    validator: (v) =>
-                        (v == null || v.trim().isEmpty) ? 'Required' : null,
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: reportType,
-                    decoration: const InputDecoration(
-                        labelText: 'Report Type / Test Category',
-                        hintText: 'E.g. Lipid Profile'),
-                    validator: (v) =>
-                        (v == null || v.trim().isEmpty) ? 'Required' : null,
-                  ),
-                  const SizedBox(height: 8),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(reportDate == null
-                        ? 'Report Date'
-                        : 'Report Date: ${reportDate!.toIso8601String().split('T')[0]}'),
-                    trailing: const Icon(Icons.calendar_today, size: 18),
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: DateTime.now(),
-                        firstDate:
-                            DateTime.now().subtract(const Duration(days: 3650)),
-                        lastDate: DateTime.now(),
-                      );
-                      if (picked != null)
-                        setDialogState(() => reportDate = picked);
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextFormField(
+                  controller: labName,
+                  decoration: const InputDecoration(
+                      labelText: 'Lab Facility Name',
+                      hintText: 'E.g. Al Borg Diagnostics'),
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Required' : null,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: reportType,
+                  decoration: const InputDecoration(
+                      labelText: 'Report Type / Test Category',
+                      hintText: 'E.g. Lipid Profile'),
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Required' : null,
+                ),
+                const SizedBox(height: 8),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(reportDate == null
+                      ? 'Report Date'
+                      : 'Report Date: ${reportDate!.toIso8601String().split('T')[0]}'),
+                  trailing: const Icon(Icons.calendar_today, size: 18),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: DateTime.now(),
+                      firstDate:
+                          DateTime.now().subtract(const Duration(days: 3650)),
+                      lastDate: DateTime.now(),
+                    );
+                    if (picked != null) {
+                      setSheetState(() => reportDate = picked);
+                    }
+                  },
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
                     icon: const Icon(Icons.attach_file, size: 18),
                     label: Text(selectedFile == null
                         ? 'Select Report Attachment (PDF/Image)'
@@ -1138,58 +1445,245 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
                         allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
                       );
                       if (result != null && result.files.isNotEmpty) {
-                        setDialogState(() => selectedFile = result.files.first);
+                        setSheetState(() => selectedFile = result.files.first);
                       }
                     },
                   ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: doctorAnnotation,
-                    decoration: const InputDecoration(
-                        labelText: 'Clinical Annotation Notes'),
-                    maxLines: 2,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: doctorAnnotation,
+                  decoration: const InputDecoration(
+                      labelText: 'Clinical Annotation Notes'),
+                  maxLines: 2,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton(
+                onPressed: submitting
+                    ? null
+                    : () async {
+                        if (!(formKey.currentState?.validate() ?? false)) {
+                          return;
+                        }
+                        setSheetState(() => submitting = true);
+                        try {
+                          await ref
+                              .read(clinicalRecordServiceProvider)
+                              .createLabResult(
+                            {
+                              'labName': labName.text,
+                              'reportType': reportType.text,
+                              'reportDate':
+                                  reportDate?.toIso8601String().split('T')[0],
+                              'status': 'PENDING',
+                              'overallFlag': 'NORMAL',
+                              'doctorAnnotation': doctorAnnotation.text,
+                              'patientId': _selectedPatientId,
+                            },
+                            filePath: selectedFile?.path,
+                          );
+                          if (mounted) Navigator.pop(ctx);
+                          _toast('Lab result uploaded.');
+                          _loadPatientEmr();
+                        } catch (e) {
+                          setSheetState(() => submitting = false);
+                          _toast('Failed to upload lab report.', error: true);
+                        }
+                      },
+                child: submitting
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Upload Report'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Directory list tile — mirrors .patient-profile-card from patients.component.css,
+/// laid out horizontally for a mobile scroll list instead of a desktop grid.
+class _PatientDirectoryTile extends StatelessWidget {
+  final String name;
+  final String id;
+  final String avatarUrl;
+  final VoidCallback onTap;
+
+  const _PatientDirectoryTile({
+    required this.name,
+    required this.id,
+    required this.avatarUrl,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Outer ClipRRect + outline gives the rounded card border; the teal
+    // strip is a separate solid-color Container (no radius on it), so we
+    // never mix `borderRadius` with a multi-color Border on the same box —
+    // that combo is what was throwing "borderRadius can only be given on
+    // borders with uniform colors" and killing this list's render.
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: AppTheme.borderGray),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            child: IntrinsicHeight(
+              child: Row(
+                children: [
+                  Container(width: 4, color: AppTheme.primaryTeal),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: [
+                          _Avatar(url: resolveAssetUrl(avatarUrl), radius: 22),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(name,
+                                    style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppTheme.textMain)),
+                                const SizedBox(height: 2),
+                                Text('ID: $id',
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppTheme.textMuted)),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right,
+                              color: AppTheme.textMuted),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
           ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: submitting
-                  ? null
-                  : () async {
-                      if (!(formKey.currentState?.validate() ?? false)) return;
-                      setDialogState(() => submitting = true);
-                      try {
-                        await ref
-                            .read(clinicalRecordServiceProvider)
-                            .createLabResult(
-                          {
-                            'labName': labName.text,
-                            'reportType': reportType.text,
-                            'reportDate':
-                                reportDate?.toIso8601String().split('T')[0],
-                            'status': 'PENDING',
-                            'overallFlag': 'NORMAL',
-                            'doctorAnnotation': doctorAnnotation.text,
-                            'patientId': _selectedPatientId,
-                          },
-                          filePath: selectedFile?.path,
-                        );
-                        if (mounted) Navigator.pop(ctx);
-                        _toast('Lab result uploaded.');
-                        _loadPatientEmr();
-                      } catch (e) {
-                        setDialogState(() => submitting = false);
-                        _toast('Failed to upload lab report.', error: true);
-                      }
-                    },
-              child: const Text('Upload Report'),
-            ),
-          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Rounded box with a solid-color left accent strip. Splitting the accent
+/// into its own Container (instead of a one-sided Border) is what lets this
+/// combine cleanly with `borderRadius` — see note in _PatientDirectoryTile.
+class _LeftAccentBox extends StatelessWidget {
+  final Color accentColor;
+  final Color backgroundColor;
+  final Widget child;
+  final EdgeInsets margin;
+  final double? width;
+
+  const _LeftAccentBox({
+    required this.accentColor,
+    required this.backgroundColor,
+    required this.child,
+    this.margin = EdgeInsets.zero,
+    this.width,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      margin: margin,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: IntrinsicHeight(
+          child: Row(
+            mainAxisSize: width == null ? MainAxisSize.min : MainAxisSize.max,
+            children: [
+              Container(width: 4, color: accentColor),
+              Expanded(
+                child: Container(
+                  color: backgroundColor,
+                  padding: const EdgeInsets.all(10),
+                  child: child,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Safe avatar: shows a placeholder icon if url is null/empty, and falls
+/// back to the icon (instead of crashing/looping) on any load error.
+class _Avatar extends StatelessWidget {
+  final String? url;
+  final double radius;
+
+  const _Avatar({required this.url, required this.radius});
+
+  @override
+  Widget build(BuildContext context) {
+    if (url == null || url!.isEmpty) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: AppTheme.primaryLightTeal,
+        child:
+            Icon(Icons.person, color: AppTheme.primaryDarkTeal, size: radius),
+      );
+    }
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: AppTheme.primaryLightTeal,
+      child: ClipOval(
+        child: Image.network(
+          url!,
+          width: radius * 2,
+          height: radius * 2,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => Icon(
+            Icons.person,
+            color: AppTheme.primaryDarkTeal,
+            size: radius,
+          ),
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+            return SizedBox(
+              width: radius * 2,
+              height: radius * 2,
+              child: const Center(
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
