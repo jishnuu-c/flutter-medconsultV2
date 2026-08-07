@@ -3,18 +3,13 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/network/api_client.dart';
 import '../data/appointment_service.dart';
 import '../data/clinical_record_service.dart';
 import '../data/patient_record_service.dart';
 import '../data/consultation_service.dart';
 import '../../clinic_admin/data/doctor_service.dart';
 import '../../../core/auth/auth_provider.dart';
-
-// TODO: point this at your real API host (same value the Angular ApiUrlPipe
-// / environment.apiUrl uses). Kept as a local constant so this file compiles
-// without guessing your project's config import path — swap it for your
-// actual base-URL provider once wired up.
-const String _kApiBaseUrl = 'https://your-api-domain.com';
 
 /// Turns a relative avatar path (e.g. "/uploads/Users/avatar/x.jpg") returned
 /// by the API into an absolute URL NetworkImage can load. Returns null when
@@ -24,9 +19,9 @@ String? resolveAssetUrl(String? raw) {
   final value = raw.trim();
   final uri = Uri.tryParse(value);
   if (uri != null && uri.hasScheme && uri.host.isNotEmpty) return value;
-  final base = _kApiBaseUrl.endsWith('/')
-      ? _kApiBaseUrl.substring(0, _kApiBaseUrl.length - 1)
-      : _kApiBaseUrl;
+  final base = kBaseUrl.endsWith('/')
+      ? kBaseUrl.substring(0, kBaseUrl.length - 1)
+      : kBaseUrl;
   final path = value.startsWith('/') ? value : '/$value';
   return '$base$path';
 }

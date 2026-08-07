@@ -34,11 +34,13 @@ class _PatientAppointmentsScreenState
     });
     try {
       final profile = await ref.read(patientServiceProvider).getMyProfile();
-      final patientId = profile['patientId'];
+      // profile only used to detect "needs profile init" (404 below);
+      // /appointments/my is token-derived and needs no patientId.
       final res = await ref
           .read(appointmentServiceProvider)
-          .getAppointmentsByPatient(patientId, page: 0, size: 50);
-      if (mounted) setState(() => _appointments = res);
+          .getMyAppointments(page: 0, size: 50);
+      final content = (res is Map ? res['content'] : null) ?? res ?? [];
+      if (mounted) setState(() => _appointments = content);
     } catch (e) {
       final status = e is DioException ? e.response?.statusCode : null;
       if (status == 404) {

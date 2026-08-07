@@ -178,6 +178,7 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
       orElse: () => DoctorModel(
         doctorId: '',
         userId: '',
+        email: '',
         fullName: doctorId.isNotEmpty ? doctorId : 'Doctor',
         mohRegistrationNumber: '',
         mohVerified: true,
@@ -1375,6 +1376,7 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
       orElse: () => DoctorModel(
         doctorId: doctorId,
         userId: '',
+        email: '',
         fullName: doctorId.isNotEmpty ? doctorId : 'Doctor',
         mohRegistrationNumber: 'N/A',
         mohVerified: true,

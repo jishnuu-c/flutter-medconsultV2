@@ -98,6 +98,7 @@ enum LeaveType {
 class DoctorModel {
   final String doctorId;
   final String userId;
+  final String email;
   final String fullName;
   final String mohRegistrationNumber;
   final bool mohVerified;
@@ -115,6 +116,7 @@ class DoctorModel {
   DoctorModel({
     required this.doctorId,
     required this.userId,
+    required this.email,
     required this.fullName,
     required this.mohRegistrationNumber,
     required this.mohVerified,
@@ -142,6 +144,8 @@ class DoctorModel {
     return DoctorModel(
       doctorId: rawId?.toString() ?? '',
       userId: json['userId']?.toString() ?? json['user_id']?.toString() ?? '',
+      email:
+          json['email']?.toString() ?? json['emailAddress']?.toString() ?? '',
       fullName: (rawName != null && rawName.toString().trim().isNotEmpty)
           ? rawName.toString().trim()
           : 'Dr. Sarah Connor',
@@ -172,6 +176,7 @@ class DoctorModel {
 
   Map<String, dynamic> toJson() => {
         'userId': userId,
+        'email': email,
         'mohRegistrationNumber': mohRegistrationNumber,
         'mohVerified': mohVerified,
         'title': title.value,
@@ -448,6 +453,7 @@ class DoctorDetailResponse extends DoctorModel {
   DoctorDetailResponse({
     required super.doctorId,
     required super.userId,
+    required super.email,
     required super.fullName,
     required super.mohRegistrationNumber,
     required super.mohVerified,
@@ -474,6 +480,7 @@ class DoctorDetailResponse extends DoctorModel {
     return DoctorDetailResponse(
       doctorId: base.doctorId,
       userId: base.userId,
+      email: base.email,
       fullName: base.fullName,
       mohRegistrationNumber: base.mohRegistrationNumber,
       mohVerified: base.mohVerified,

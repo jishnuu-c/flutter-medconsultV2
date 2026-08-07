@@ -20,6 +20,18 @@ class AppointmentService {
     return res.data ?? [];
   }
 
+  /// Self-scoped (token-derived) appointments for the logged-in patient.
+  /// Mirrors Angular's AppointmentService.getMyAppointments — NOT the same
+  /// as getAppointmentsByPatient below, which hits a doctor/admin-facing
+  /// endpoint that a plain PATIENT token gets 403'd on.
+  Future<dynamic> getMyAppointments({int page = 0, int size = 10}) async {
+    final res = await dio.get(
+      '/api/medconsult/appointments/my',
+      queryParameters: {'page': page, 'size': size},
+    );
+    return res.data;
+  }
+
   Future<dynamic> bookAppointment(Map<String, dynamic> dto) async {
     final res = await dio.post('/api/medconsult/appointments/book', data: dto);
     return res.data;

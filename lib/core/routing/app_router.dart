@@ -13,7 +13,7 @@ import '../../features/doctor_dashboard/presentation/doctor_profile_screen.dart'
 import '../../features/doctor_dashboard/presentation/doctor_patients_screen.dart';
 import '../../features/doctor_dashboard/presentation/schedule_screen.dart';
 import '../../features/landing/presentation/landing_screen.dart';
-import '../../features/patient_dashboard/presentation/appointments_history_screen.dart';
+import '../../features/doctor_dashboard/presentation/appointments_history_screen.dart';
 import '../../features/patient_dashboard/presentation/become_clinic_screen.dart';
 import '../../features/patient_dashboard/presentation/become_doctor_screen.dart';
 import '../../features/patient_dashboard/presentation/book_appointment_screen.dart';

@@ -3,7 +3,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../auth/auth_provider.dart';
 import '../models/auth_models.dart';
+import '../network/api_client.dart';
 import '../theme/app_theme.dart';
+
+/// Turns a relative avatar path (e.g. "/uploads/Users/avatar/x.jpg") returned
+/// by the API into an absolute URL NetworkImage can load. Returns null when
+/// there is nothing usable, so callers can fall back to the initials avatar.
+String? _resolveAssetUrl(String? raw) {
+  if (raw == null || raw.trim().isEmpty) return null;
+  final value = raw.trim();
+  final uri = Uri.tryParse(value);
+  if (uri != null && uri.hasScheme && uri.host.isNotEmpty) return value;
+  final base = kBaseUrl.endsWith('/')
+      ? kBaseUrl.substring(0, kBaseUrl.length - 1)
+      : kBaseUrl;
+  final path = value.startsWith('/') ? value : '/$value';
+  return '$base$path';
+}
 
 class MenuItemData {
   final String label;
@@ -190,8 +206,19 @@ class AppLayout extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Material(
-                      color:
-                          isActive ? AppTheme.primaryTeal : Colors.transparent,
+                      color: isActive
+                          ? AppTheme.primaryTeal
+                          // Transparent Material can't guarantee the ink
+                          // splash is visible, hence Flutter's "ListTile
+                          // background color or ink splashes may be
+                          // invisible" warning on every inactive tile tap.
+                          // Fall through to the sidebar's own opaque
+                          // background instead of wrapping in a see-through
+                          // Material here.
+                          : Colors.transparent,
+                      type: isActive
+                          ? MaterialType.canvas
+                          : MaterialType.transparency,
                       child: ListTile(
                         leading: Icon(
                           item.icon,
@@ -327,12 +354,12 @@ class AppLayout extends ConsumerWidget {
                           CircleAvatar(
                             radius: 18,
                             backgroundColor: AppTheme.primaryLightTeal,
-                            backgroundImage: (user.avatarUrl != null &&
-                                    user.avatarUrl!.isNotEmpty)
-                                ? NetworkImage(user.avatarUrl!)
-                                : null,
-                            child: (user.avatarUrl == null ||
-                                    user.avatarUrl!.isEmpty)
+                            backgroundImage:
+                                _resolveAssetUrl(user.avatarUrl) != null
+                                    ? NetworkImage(
+                                        _resolveAssetUrl(user.avatarUrl)!)
+                                    : null,
+                            child: _resolveAssetUrl(user.avatarUrl) == null
                                 ? Text(
                                     user.initials,
                                     style: const TextStyle(

@@ -54,6 +54,39 @@ class ClinicalRecordService {
     return res.data;
   }
 
+  // NOTE: endpoint paths below follow the same nesting convention as the
+  // methods above (prescriptions/{id}, prescriptions/{id}/items) since your
+  // Angular clinical-record.service.ts wasn't in this upload — please check
+  // those exact routes against it and adjust the path strings if they
+  // differ on your backend.
+  Future<void> deletePrescriptionItem(String itemId) async {
+    await dio.delete('/api/medconsult/prescriptions/items/$itemId');
+  }
+
+  Future<void> deletePrescription(String prescriptionId) async {
+    await dio.delete('/api/medconsult/prescriptions/$prescriptionId');
+  }
+
+  Future<List<dynamic>> getLabItems(String labResultId) async {
+    final res = await dio.get('/api/medconsult/lab-results/$labResultId/items');
+    return _extractList(res.data);
+  }
+
+  Future<dynamic> addLabItem(
+      String labResultId, Map<String, dynamic> dto) async {
+    final res = await dio.post('/api/medconsult/lab-results/$labResultId/items',
+        data: dto);
+    return res.data;
+  }
+
+  Future<void> deleteLabItem(String itemId) async {
+    await dio.delete('/api/medconsult/lab-results/items/$itemId');
+  }
+
+  Future<void> deleteLabResult(String labResultId) async {
+    await dio.delete('/api/medconsult/lab-results/$labResultId');
+  }
+
   Future<List<dynamic>> searchVitals({
     String? patientId,
     String? source,
