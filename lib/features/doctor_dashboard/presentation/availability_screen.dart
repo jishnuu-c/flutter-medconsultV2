@@ -97,8 +97,8 @@ class _DoctorAvailabilityScreenState
     return d['label'];
   }
 
-  // Same pattern as consultations_screen: no "my doctor" endpoint, so match
-  // logged-in user's userId against /doctors/all to resolve doctorId first.
+  // ── Data loading (unchanged logic, mirrors Angular's availability.component.ts) ──
+
   Future<void> _resolveDoctorIdAndLoad() async {
     setState(() => _isLoading = true);
     try {
@@ -120,8 +120,6 @@ class _DoctorAvailabilityScreenState
     }
   }
 
-  // Mirrors Angular's loadClinics(): fetch active clinic placements, then
-  // enrich each with clinicNameEn / branchNameEn via clinic + branches calls.
   Future<void> _loadClinics() async {
     if (_doctorId == null) return;
     try {
@@ -177,6 +175,15 @@ class _DoctorAvailabilityScreenState
       }
     } catch (e) {
       _snack('Failed to load clinics: ${_errorMessage(e)}');
+    }
+  }
+
+  DoctorClinicModel? get _selectedClinic {
+    if (_selectedDcId == null) return null;
+    try {
+      return _clinics.firstWhere((c) => c.dcId == _selectedDcId);
+    } catch (_) {
+      return null;
     }
   }
 
@@ -318,6 +325,7 @@ class _DoctorAvailabilityScreenState
     );
     if (picked != null) {
       setState(() => _slotFilterDate = picked);
+      await _loadSlots();
     }
   }
 
@@ -361,13 +369,9 @@ class _DoctorAvailabilityScreenState
     }
   }
 
-  // Mirrors Angular's generateSlotsForDate(): find the active schedule rule
-  // for the filter date's day-of-week (1=Monday..7=Sunday), then create
-  // sequential slots from startTime to endTime in slotDurationMin steps.
   Future<void> _generateSlotsForDate() async {
     if (_selectedDcId == null) return;
-    final javaDayOfWeek =
-        _slotFilterDate.weekday; // DateTime.weekday: 1=Mon..7=Sun already
+    final javaDayOfWeek = _slotFilterDate.weekday;
     setState(() => _isLoading = true);
     try {
       final schedules =
@@ -462,24 +466,6 @@ class _DoctorAvailabilityScreenState
     return result == true;
   }
 
-  // ── Responsive helpers ──────────────────────────────────────────────
-  bool _isMobile(BuildContext c) => MediaQuery.of(c).size.width < 600;
-
-  // Form field width: full-row on mobile so fields stack instead of
-  // getting squeezed, fixed desired width on tablet/desktop.
-  double _fw(BuildContext c, double desired) {
-    if (!_isMobile(c)) return desired;
-    final avail = MediaQuery.of(c).size.width - 24 * 2 - 16 * 2;
-    return avail < desired ? avail.clamp(140, double.infinity) : desired;
-  }
-
-  // Slot card width: 2 columns on mobile, fixed size on tablet/desktop.
-  double _slotCardWidth(BuildContext c) {
-    if (!_isMobile(c)) return 140;
-    final avail = MediaQuery.of(c).size.width - 24 * 2 - 16 * 2 - 12;
-    return (avail / 2).clamp(110, 200);
-  }
-
   Future<String?> _pickTime(String initial) async {
     final parts = initial.split(':');
     final picked = await showTimePicker(
@@ -492,131 +478,325 @@ class _DoctorAvailabilityScreenState
     return '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
   }
 
+  // ── Build ─────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        padding: EdgeInsets.all(_isMobile(context) ? 12 : 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '🗓️ My Availability & Schedule',
-              style: TextStyle(
-                  fontSize: _isMobile(context) ? 18 : 22,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textMain),
+      appBar: AppBar(
+        title: const Text('My Availability'),
+      ),
+      floatingActionButton: (_selectedDcId == null)
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () {
+                switch (_activeTab) {
+                  case _AvailabilityTab.schedule:
+                    _openScheduleSheet();
+                    break;
+                  case _AvailabilityTab.leaves:
+                    _openLeaveSheet();
+                    break;
+                  case _AvailabilityTab.slots:
+                    _openSlotSheet();
+                    break;
+                }
+              },
+              icon: const Icon(Icons.add),
+              label: Text(_activeTab == _AvailabilityTab.schedule
+                  ? 'Add Rule'
+                  : _activeTab == _AvailabilityTab.leaves
+                      ? 'Request Leave'
+                      : 'Add Slot'),
             ),
-            const SizedBox(height: 4),
-            const Text(
-              'Manage clinic schedules, time off, and booking slots efficiently.',
-              style: TextStyle(fontSize: 14, color: AppTheme.textMuted),
-            ),
-            const SizedBox(height: 16),
-
-            // Clinic selector
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      body: SafeArea(
+        child: _isLoading && _clinics.isEmpty
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: () async {
+                  if (_selectedDcId != null) await _loadTabData();
+                },
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 90),
                   children: [
-                    const Text('Select Clinic/Branch to Manage',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      initialValue: _selectedDcId,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                          hintText: '-- Choose a Clinic/Branch --'),
-                      items: _clinics
-                          .map((c) => DropdownMenuItem(
-                                value: c.dcId,
-                                child: Text(
-                                  '🏥 ${c.clinicNameEn ?? 'Clinic'} - ${c.branchNameEn ?? 'Branch'} (${c.department})',
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ))
-                          .toList(),
-                      onChanged: _onClinicChange,
+                    const Text(
+                      'Manage clinic schedules, time off, and booking slots.',
+                      style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
                     ),
+                    const SizedBox(height: 14),
+                    _buildClinicSelector(),
+                    if (_selectedClinic != null) ...[
+                      const SizedBox(height: 14),
+                      _buildPlacementCard(_selectedClinic!),
+                    ],
+                    if (_clinics.isEmpty && !_isLoading)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 40),
+                        child: Center(
+                          child: Text(
+                            'No active clinic placements found for your profile.',
+                            style: TextStyle(color: AppTheme.textMuted),
+                          ),
+                        ),
+                      ),
+                    if (_selectedDcId != null) ...[
+                      const SizedBox(height: 18),
+                      _buildTabBar(),
+                      const SizedBox(height: 14),
+                      if (_isLoading)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 30),
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                      else
+                        _buildTabContent(),
+                    ],
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
+      ),
+    );
+  }
 
-            if (_isLoading && _clinics.isEmpty)
-              const Expanded(child: Center(child: CircularProgressIndicator()))
-            else if (_clinics.isEmpty)
-              const Expanded(
-                child: Center(
-                  child: Text(
-                      'No active clinic placements found for your profile.',
-                      style: TextStyle(color: AppTheme.textMuted)),
-                ),
-              )
-            else if (_selectedDcId != null)
-              Expanded(
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _isMobile(context)
-                            ? SizedBox(
-                                height: 44,
-                                child: ListView(
-                                  scrollDirection: Axis.horizontal,
-                                  children: [
-                                    _tabButton('🗓️ Schedule',
-                                        _AvailabilityTab.schedule),
-                                    const SizedBox(width: 8),
-                                    _tabButton(
-                                        '🏖️ Leaves', _AvailabilityTab.leaves),
-                                    const SizedBox(width: 8),
-                                    _tabButton(
-                                        '⚡ Slots', _AvailabilityTab.slots),
-                                  ],
-                                ),
-                              )
-                            : Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  _tabButton('🗓️ Weekly Schedule Rules',
-                                      _AvailabilityTab.schedule),
-                                  _tabButton('🏖️ Time Off / Leaves',
-                                      _AvailabilityTab.leaves),
-                                  _tabButton('⚡ Slots Generator',
-                                      _AvailabilityTab.slots),
-                                ],
-                              ),
-                        const Divider(height: 24),
-                        Expanded(
-                          child: _isLoading
-                              ? const Center(child: CircularProgressIndicator())
-                              : SingleChildScrollView(
-                                  child: _buildTabContent(),
-                                ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+  Widget _buildClinicSelector() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Select Clinic / Branch',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              initialValue: _selectedDcId,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                hintText: '-- Choose a Clinic/Branch --',
+                border: OutlineInputBorder(),
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               ),
+              items: _clinics
+                  .map((c) => DropdownMenuItem(
+                        value: c.dcId,
+                        child: Text(
+                          '🏥 ${c.clinicNameEn ?? 'Clinic'} - ${c.branchNameEn ?? 'Branch'}',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ))
+                  .toList(),
+              onChanged: _onClinicChange,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _tabButton(String label, _AvailabilityTab tab) {
-    final selected = _activeTab == tab;
-    return selected
-        ? ElevatedButton(onPressed: () => _switchTab(tab), child: Text(label))
-        : OutlinedButton(onPressed: () => _switchTab(tab), child: Text(label));
+  // Mirrors .placement-info-card in availability.component.css.
+  Widget _buildPlacementCard(DoctorClinicModel c) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFF0F9FF), Color(0xFFE8F4FD)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFBAE6FD), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(width: 4, color: const Color(0xFF0EA5E9)),
+              const SizedBox(width: 12),
+              Container(
+                width: 48,
+                height: 48,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF0EA5E9), Color(0xFF38BDF8)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: const Text('🏥', style: TextStyle(fontSize: 22)),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(c.clinicNameEn ?? 'Clinic',
+                        style: const TextStyle(
+                            fontSize: 16.5,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1E293B))),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        _chip(
+                          c.isPrimary
+                              ? '⭐ Primary Specialist'
+                              : '👤 Consultant',
+                          c.isPrimary
+                              ? const Color(0xFFDCFCE7)
+                              : const Color(0xFFF1F5F9),
+                          c.isPrimary
+                              ? const Color(0xFF166534)
+                              : const Color(0xFF475569),
+                        ),
+                        _chip(
+                          c.isActive ? '● Active' : '● Inactive',
+                          c.isActive
+                              ? const Color(0xFFDCFCE7)
+                              : const Color(0xFFF1F5F9),
+                          c.isActive
+                              ? const Color(0xFF166534)
+                              : const Color(0xFF64748B),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        Text('📍 ${c.branchNameEn ?? 'Branch'}',
+                            style: const TextStyle(
+                                fontSize: 12.5, color: Color(0xFF64748B))),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE0F2FE),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            (c.department ?? 'General Practice').toUpperCase(),
+                            style: const TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF0369A1),
+                                letterSpacing: 0.4),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          const Divider(height: 1, color: Color(0xFFBAE6FD)),
+          const SizedBox(height: 12),
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 3.2,
+            children: [
+              _stat('CONSULTATION FEE', 'SAR ${c.consultationFeeSar ?? '—'}',
+                  valueColor: const Color(0xFF16A34A)),
+              _stat('JOINED SINCE', c.startDate ?? '—'),
+              if (c.endDate != null && c.endDate!.isNotEmpty)
+                _stat('CONTRACT UNTIL', c.endDate!,
+                    valueColor: const Color(0xFFB45309)),
+              _stat('TOTAL PLACEMENTS', '${_clinics.length} Clinic(s)'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chip(String label, Color bg, Color fg) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      child: Text(label,
+          style:
+              TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: fg)),
+    );
+  }
+
+  Widget _stat(String label, String value, {Color? valueColor}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(label,
+            style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF94A3B8),
+                letterSpacing: 0.5)),
+        const SizedBox(height: 2),
+        Text(value,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.bold,
+                color: valueColor ?? const Color(0xFF1E293B))),
+      ],
+    );
+  }
+
+  Widget _buildTabBar() {
+    Widget seg(String label, _AvailabilityTab tab) {
+      final selected = _activeTab == tab;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => _switchTab(tab),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: selected ? AppTheme.primaryTeal : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: selected ? Colors.white : AppTheme.textMuted,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundApp,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.borderGray),
+      ),
+      child: Row(
+        children: [
+          seg('🗓️ Schedule', _AvailabilityTab.schedule),
+          seg('🏖️ Leaves', _AvailabilityTab.leaves),
+          seg('⚡ Slots', _AvailabilityTab.slots),
+        ],
+      ),
+    );
   }
 
   Widget _buildTabContent() {
@@ -630,7 +810,7 @@ class _DoctorAvailabilityScreenState
     }
   }
 
-  // ── SCHEDULE TAB UI ─────────────────────────────────────────────────
+  // ── SCHEDULE TAB ────────────────────────────────────────────────────
   Widget _buildScheduleTab() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -639,399 +819,182 @@ class _DoctorAvailabilityScreenState
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: AppTheme.primaryLightTeal,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(10),
           ),
           child: const Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('ℹ️', style: TextStyle(fontSize: 18)),
+              Text('ℹ️', style: TextStyle(fontSize: 16)),
               SizedBox(width: 8),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('About Schedule Rules',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    SizedBox(height: 2),
-                    Text(
-                        'Add weekly recurring schedules. The system uses these rules to automatically generate your bookable slots for future dates.',
-                        style:
-                            TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-                  ],
+                child: Text(
+                  'Add weekly recurring schedules. These auto-generate your bookable slots.',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 16),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              crossAxisAlignment: WrapCrossAlignment.end,
-              children: [
-                SizedBox(
-                  width: _fw(context, 160),
-                  child: DropdownButtonFormField<int>(
-                    initialValue: _dayOfWeek,
-                    isExpanded: true,
-                    decoration:
-                        const InputDecoration(labelText: 'Day of Week *'),
-                    items: _kDaysOfWeek
-                        .map((d) => DropdownMenuItem<int>(
-                            value: d['value'], child: Text(d['label'])))
-                        .toList(),
-                    onChanged: (v) => setState(() => _dayOfWeek = v ?? 1),
-                  ),
+        const SizedBox(height: 14),
+        if (_schedules.isEmpty)
+          _emptyState('No schedule rules defined yet.')
+        else
+          ..._schedules.map((s) => Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: AppTheme.borderGray),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                SizedBox(
-                  width: _fw(context, 140),
-                  child: OutlinedButton(
-                    onPressed: () async {
-                      final t = await _pickTime(_schStartTime);
-                      if (t != null) setState(() => _schStartTime = t);
-                    },
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text('Start: $_schStartTime', maxLines: 1),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(_dayName(s.dayOfWeek),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 14)),
+                          const SizedBox(height: 4),
+                          Text('${s.startTime} - ${s.endTime}',
+                              style: const TextStyle(
+                                  fontSize: 12.5, color: AppTheme.textMuted)),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 6,
+                            children: [
+                              _chip('⏱️ ${s.slotDurationMin} min',
+                                  AppTheme.backgroundApp, AppTheme.textMuted),
+                              _chip(
+                                  s.sessionType.value.replaceAll('_', ' '),
+                                  AppTheme.primaryLightTeal,
+                                  AppTheme.primaryDarkTeal),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ),
-                SizedBox(
-                  width: _fw(context, 140),
-                  child: OutlinedButton(
-                    onPressed: () async {
-                      final t = await _pickTime(_schEndTime);
-                      if (t != null) setState(() => _schEndTime = t);
-                    },
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text('End: $_schEndTime', maxLines: 1),
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  width: _fw(context, 120),
-                  child: TextFormField(
-                    initialValue: _slotDurationMin.toString(),
-                    decoration:
-                        const InputDecoration(labelText: 'Slot (min) *'),
-                    keyboardType: TextInputType.number,
-                    onChanged: (v) =>
-                        _slotDurationMin = int.tryParse(v) ?? _slotDurationMin,
-                  ),
-                ),
-                SizedBox(
-                  width: _fw(context, 160),
-                  child: DropdownButtonFormField<SessionType>(
-                    initialValue: _schSessionType,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Type *'),
-                    items: SessionType.values
-                        .map((s) => DropdownMenuItem(
-                            value: s,
-                            child: Text(s.value.replaceAll('_', ' '),
-                                overflow: TextOverflow.ellipsis)))
-                        .toList(),
-                    onChanged: (v) =>
-                        setState(() => _schSessionType = v ?? _schSessionType),
-                  ),
-                ),
-                SizedBox(
-                  width: _fw(context, double.infinity),
-                  child: ElevatedButton(
-                    onPressed: _submitSchedule,
-                    child: const Text('+ Add Rule'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        _schedules.isEmpty
-            ? const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(
-                    child: Text('No schedule rules defined yet.',
-                        style: TextStyle(color: AppTheme.textMuted))),
-              )
-            : Column(
-                children: _schedules.map((s) {
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(_dayName(s.dayOfWeek),
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text(
-                        '${s.startTime} - ${s.endTime} · ⏱️ ${s.slotDurationMin} min · ${s.sessionType.value}'),
-                    trailing: TextButton(
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline,
+                          color: AppTheme.dangerRed),
                       onPressed: () => _removeSchedule(s.scheduleId),
-                      child: const Text('× Delete',
-                          style: TextStyle(color: AppTheme.dangerRed)),
                     ),
-                  );
-                }).toList(),
-              ),
+                  ],
+                ),
+              )),
       ],
     );
   }
 
-  // ── LEAVES TAB UI ───────────────────────────────────────────────────
+  // ── LEAVES TAB ──────────────────────────────────────────────────────
   Widget _buildLeavesTab() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              crossAxisAlignment: WrapCrossAlignment.end,
-              children: [
-                SizedBox(
-                  width: _fw(context, 180),
-                  child: DropdownButtonFormField<LeaveType>(
-                    initialValue: _leaveType,
-                    isExpanded: true,
-                    decoration:
-                        const InputDecoration(labelText: 'Leave Type *'),
-                    items: LeaveType.values
-                        .map((l) => DropdownMenuItem(
-                            value: l,
-                            child: Text(l.value.replaceAll('_', ' '),
-                                overflow: TextOverflow.ellipsis)))
-                        .toList(),
-                    onChanged: (v) =>
-                        setState(() => _leaveType = v ?? _leaveType),
-                  ),
+        if (_leaves.isEmpty)
+          _emptyState('No leave requests found.')
+        else
+          ..._leaves.map((l) => Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: AppTheme.borderGray),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                SizedBox(
-                  width: _fw(context, 160),
-                  child: OutlinedButton(
-                    onPressed: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: _leaveStart ?? DateTime.now(),
-                        firstDate:
-                            DateTime.now().subtract(const Duration(days: 30)),
-                        lastDate: DateTime.now().add(const Duration(days: 365)),
-                      );
-                      if (picked != null) setState(() => _leaveStart = picked);
-                    },
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                          _leaveStart == null
-                              ? 'Start Date *'
-                              : _fmtDate(_leaveStart!),
-                          maxLines: 1),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                    l.leaveType.value.replaceAll('_', ' '),
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14)),
+                              ),
+                              _chip(
+                                l.isApproved ? '✓ Approved' : '⏳ Pending',
+                                l.isApproved
+                                    ? const Color(0xFFDCFCE7)
+                                    : const Color(0xFFFFF7ED),
+                                l.isApproved
+                                    ? const Color(0xFF166534)
+                                    : const Color(0xFFB45309),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text('${l.startDate} to ${l.endDate}',
+                              style: const TextStyle(
+                                  fontSize: 12.5, color: AppTheme.textMuted)),
+                          if (l.notes != null && l.notes!.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(l.notes!,
+                                style: const TextStyle(
+                                    fontSize: 12, color: AppTheme.textMuted)),
+                          ],
+                        ],
+                      ),
                     ),
-                  ),
-                ),
-                SizedBox(
-                  width: _fw(context, 160),
-                  child: OutlinedButton(
-                    onPressed: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: _leaveEnd ?? DateTime.now(),
-                        firstDate:
-                            DateTime.now().subtract(const Duration(days: 30)),
-                        lastDate: DateTime.now().add(const Duration(days: 365)),
-                      );
-                      if (picked != null) setState(() => _leaveEnd = picked);
-                    },
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                          _leaveEnd == null
-                              ? 'End Date *'
-                              : _fmtDate(_leaveEnd!),
-                          maxLines: 1),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline,
+                          color: AppTheme.dangerRed),
+                      onPressed: () => _removeLeave(l.leaveId),
                     ),
-                  ),
+                  ],
                 ),
-                SizedBox(
-                  width: _fw(context, 220),
-                  child: TextFormField(
-                    controller: _leaveNotesCtrl,
-                    decoration: const InputDecoration(
-                        labelText: 'Notes', hintText: 'Optional'),
-                  ),
-                ),
-                SizedBox(
-                  width: _fw(context, double.infinity),
-                  child: ElevatedButton(
-                    onPressed: _submitLeave,
-                    child: const Text('Request Leave'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        _leaves.isEmpty
-            ? const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(
-                    child: Text('No leave requests found.',
-                        style: TextStyle(color: AppTheme.textMuted))),
-              )
-            : Column(
-                children: _leaves.map((l) {
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(l.leaveType.value,
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text(
-                        '${l.startDate} to ${l.endDate}${l.notes != null && l.notes!.isNotEmpty ? ' · ${l.notes}' : ''}'),
-                    trailing: Wrap(
-                      spacing: 4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Chip(
-                          label:
-                              Text(l.isApproved ? '✓ Approved' : '⏳ Pending'),
-                          backgroundColor: l.isApproved
-                              ? Colors.green.shade100
-                              : Colors.orange.shade100,
-                        ),
-                        TextButton(
-                          onPressed: () => _removeLeave(l.leaveId),
-                          child: const Text('× Delete',
-                              style: TextStyle(color: AppTheme.dangerRed)),
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ),
+              )),
       ],
     );
   }
 
-  // ── SLOTS TAB UI ────────────────────────────────────────────────────
+  // ── SLOTS TAB ───────────────────────────────────────────────────────
   Widget _buildSlotsTab() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppTheme.borderGray.withValues(alpha: 0.3),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              OutlinedButton.icon(
-                icon: const Icon(Icons.calendar_today, size: 16),
-                label: Text('Date: ${_fmtDate(_slotFilterDate)}'),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.calendar_today, size: 15),
+                label: Text(_fmtDate(_slotFilterDate)),
                 onPressed: _pickSlotFilterDate,
               ),
-              OutlinedButton(
-                  onPressed: _loadSlots, child: const Text('Load Slots')),
-              ElevatedButton(
-                onPressed: _generateSlotsForDate,
-                child: const Text('⚡ Auto-Generate'),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('+ Add Manual Single Slot',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  crossAxisAlignment: WrapCrossAlignment.end,
-                  children: [
-                    SizedBox(
-                      width: _fw(context, 140),
-                      child: OutlinedButton(
-                        onPressed: () async {
-                          final t = await _pickTime(_slotStartTime);
-                          if (t != null) setState(() => _slotStartTime = t);
-                        },
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text('Start: $_slotStartTime', maxLines: 1),
-                        ),
-                      ),
-                    ),
-                    SizedBox(
-                      width: _fw(context, 140),
-                      child: OutlinedButton(
-                        onPressed: () async {
-                          final t = await _pickTime(_slotEndTime);
-                          if (t != null) setState(() => _slotEndTime = t);
-                        },
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text('End: $_slotEndTime', maxLines: 1),
-                        ),
-                      ),
-                    ),
-                    SizedBox(
-                      width: _fw(context, 160),
-                      child: DropdownButtonFormField<SessionType>(
-                        initialValue: _slotSessionType,
-                        isExpanded: true,
-                        decoration: const InputDecoration(labelText: 'Type *'),
-                        items: SessionType.values
-                            .map((s) => DropdownMenuItem(
-                                value: s,
-                                child: Text(s.value.replaceAll('_', ' '),
-                                    overflow: TextOverflow.ellipsis)))
-                            .toList(),
-                        onChanged: (v) => setState(
-                            () => _slotSessionType = v ?? _slotSessionType),
-                      ),
-                    ),
-                    SizedBox(
-                      width: _fw(context, double.infinity),
-                      child: ElevatedButton(
-                        onPressed: _submitSlot,
-                        child: const Text('Add Single Slot'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
             ),
-          ),
+            const SizedBox(width: 10),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.bolt, size: 16),
+              label: const Text('Auto-Generate'),
+              onPressed: _generateSlotsForDate,
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         if (_slots.isEmpty)
           Container(
+            width: double.infinity,
             padding: const EdgeInsets.all(24),
-            alignment: Alignment.center,
             decoration: BoxDecoration(
               border: Border.all(color: AppTheme.borderGray),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(12),
+              color: AppTheme.backgroundApp,
             ),
             child: Column(
               children: [
-                const Text('No Slots Available for Selected Date',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                    textAlign: TextAlign.center),
+                const Text('No Slots Available',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
                 const Text(
-                    'Click below to generate slots automatically from your weekly schedule rules.',
-                    style: TextStyle(color: AppTheme.textMuted),
+                    'Generate slots automatically from your weekly schedule rules.',
+                    style: TextStyle(color: AppTheme.textMuted, fontSize: 12.5),
                     textAlign: TextAlign.center),
                 const SizedBox(height: 12),
                 ElevatedButton(
@@ -1042,71 +1005,383 @@ class _DoctorAvailabilityScreenState
             ),
           )
         else
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: _slots.map((slot) {
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              childAspectRatio: 0.95,
+            ),
+            itemCount: _slots.length,
+            itemBuilder: (context, i) {
+              final slot = _slots[i];
               final start = (slot['startTime'] as String?) ?? '';
               final status = slot['status'] ?? 'AVAILABLE';
               final isAvailable = status == 'AVAILABLE';
               final isBlocked = status == 'BLOCKED' || status == 'NO_SHOW';
+              final bg = isAvailable
+                  ? const Color(0xFFDCFCE7)
+                  : isBlocked
+                      ? const Color(0xFFE2E8F0)
+                      : const Color(0xFFDBEAFE);
+              final border = isAvailable
+                  ? AppTheme.primaryTeal
+                  : isBlocked
+                      ? const Color(0xFF94A3B8)
+                      : const Color(0xFF3B82F6);
+              final fg = isAvailable
+                  ? AppTheme.primaryDarkTeal
+                  : isBlocked
+                      ? const Color(0xFF64748B)
+                      : const Color(0xFF1E40AF);
+
               return Container(
-                width: _slotCardWidth(context),
-                padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: isAvailable
-                      ? AppTheme.primaryLightTeal
-                      : isBlocked
-                          ? AppTheme.borderGray.withValues(alpha: 0.4)
-                          : Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.borderGray),
+                  color: bg,
+                  border: Border.all(color: border, width: 1.4),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Stack(
-                  clipBehavior: Clip.none,
                   children: [
                     Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(start.length >= 5 ? start.substring(0, 5) : start,
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.bold)),
+                        Text(
+                          start.length >= 5 ? start.substring(0, 5) : start,
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13.5,
+                              color: fg),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          (slot['sessionType'] ?? '').toString(),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                          style: TextStyle(fontSize: 9.5, color: fg),
+                        ),
                         const SizedBox(height: 4),
-                        Text(slot['sessionType'] ?? '',
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                            style: const TextStyle(
-                                fontSize: 12, color: AppTheme.textMuted)),
-                        const SizedBox(height: 8),
-                        Chip(
-                          label: Text(status,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 11)),
-                          visualDensity: VisualDensity.compact,
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(status,
+                              style: TextStyle(fontSize: 8.5, color: fg)),
                         ),
                       ],
                     ),
                     if (isAvailable)
                       Positioned(
-                        top: 0,
-                        right: 0,
-                        child: IconButton(
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                          icon: const Icon(Icons.close,
-                              size: 16, color: AppTheme.dangerRed),
-                          onPressed: () =>
-                              _deleteSlot(slot['slotId'].toString()),
+                        top: -2,
+                        right: -2,
+                        child: GestureDetector(
+                          onTap: () => _deleteSlot(slot['slotId'].toString()),
+                          child: Container(
+                            padding: const EdgeInsets.all(3),
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.close,
+                                size: 12, color: AppTheme.dangerRed),
+                          ),
                         ),
                       ),
                   ],
                 ),
               );
-            }).toList(),
+            },
           ),
       ],
+    );
+  }
+
+  Widget _emptyState(String text) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 30),
+      alignment: Alignment.center,
+      child: Text(text, style: const TextStyle(color: AppTheme.textMuted)),
+    );
+  }
+
+  // ── Bottom sheet shell (same pattern as patients screen) ────────────
+  Widget _sheetScaffold({
+    required String title,
+    required Widget child,
+    required VoidCallback onSubmit,
+    required String submitLabel,
+  }) {
+    return Padding(
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(
+                  color: AppTheme.borderGray,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            Text(title,
+                style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.primaryTeal)),
+            const SizedBox(height: 16),
+            child,
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: onSubmit,
+                child: Text(submitLabel),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openScheduleSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) => _sheetScaffold(
+          title: 'Add Schedule Rule',
+          submitLabel: '+ Add Rule',
+          onSubmit: () {
+            Navigator.pop(ctx);
+            _submitSchedule();
+          },
+          child: Column(
+            children: [
+              DropdownButtonFormField<int>(
+                initialValue: _dayOfWeek,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Day of Week *'),
+                items: _kDaysOfWeek
+                    .map((d) => DropdownMenuItem<int>(
+                        value: d['value'], child: Text(d['label'])))
+                    .toList(),
+                onChanged: (v) =>
+                    setSheetState(() => setState(() => _dayOfWeek = v ?? 1)),
+              ),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      final t = await _pickTime(_schStartTime);
+                      if (t != null) {
+                        setSheetState(() => setState(() => _schStartTime = t));
+                      }
+                    },
+                    child: Text('Start: $_schStartTime'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      final t = await _pickTime(_schEndTime);
+                      if (t != null) {
+                        setSheetState(() => setState(() => _schEndTime = t));
+                      }
+                    },
+                    child: Text('End: $_schEndTime'),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              TextFormField(
+                initialValue: _slotDurationMin.toString(),
+                decoration:
+                    const InputDecoration(labelText: 'Slot Duration (min) *'),
+                keyboardType: TextInputType.number,
+                onChanged: (v) =>
+                    _slotDurationMin = int.tryParse(v) ?? _slotDurationMin,
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<SessionType>(
+                initialValue: _schSessionType,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Session Type *'),
+                items: SessionType.values
+                    .map((s) => DropdownMenuItem(
+                        value: s, child: Text(s.value.replaceAll('_', ' '))))
+                    .toList(),
+                onChanged: (v) => setSheetState(() =>
+                    setState(() => _schSessionType = v ?? _schSessionType)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openLeaveSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) => _sheetScaffold(
+          title: 'Request Leave',
+          submitLabel: 'Request Leave',
+          onSubmit: () {
+            Navigator.pop(ctx);
+            _submitLeave();
+          },
+          child: Column(
+            children: [
+              DropdownButtonFormField<LeaveType>(
+                initialValue: _leaveType,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Leave Type *'),
+                items: LeaveType.values
+                    .map((l) => DropdownMenuItem(
+                        value: l, child: Text(l.value.replaceAll('_', ' '))))
+                    .toList(),
+                onChanged: (v) => setSheetState(
+                    () => setState(() => _leaveType = v ?? _leaveType)),
+              ),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _leaveStart ?? DateTime.now(),
+                        firstDate:
+                            DateTime.now().subtract(const Duration(days: 30)),
+                        lastDate: DateTime.now().add(const Duration(days: 365)),
+                      );
+                      if (picked != null) {
+                        setSheetState(
+                            () => setState(() => _leaveStart = picked));
+                      }
+                    },
+                    child: Text(_leaveStart == null
+                        ? 'Start Date *'
+                        : _fmtDate(_leaveStart!)),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _leaveEnd ?? DateTime.now(),
+                        firstDate:
+                            DateTime.now().subtract(const Duration(days: 30)),
+                        lastDate: DateTime.now().add(const Duration(days: 365)),
+                      );
+                      if (picked != null) {
+                        setSheetState(() => setState(() => _leaveEnd = picked));
+                      }
+                    },
+                    child: Text(_leaveEnd == null
+                        ? 'End Date *'
+                        : _fmtDate(_leaveEnd!)),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _leaveNotesCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'Notes', hintText: 'Optional'),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openSlotSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) => _sheetScaffold(
+          title: 'Add Manual Slot — ${_fmtDate(_slotFilterDate)}',
+          submitLabel: 'Add Single Slot',
+          onSubmit: () {
+            Navigator.pop(ctx);
+            _submitSlot();
+          },
+          child: Column(
+            children: [
+              Row(children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      final t = await _pickTime(_slotStartTime);
+                      if (t != null) {
+                        setSheetState(() => setState(() => _slotStartTime = t));
+                      }
+                    },
+                    child: Text('Start: $_slotStartTime'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      final t = await _pickTime(_slotEndTime);
+                      if (t != null) {
+                        setSheetState(() => setState(() => _slotEndTime = t));
+                      }
+                    },
+                    child: Text('End: $_slotEndTime'),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<SessionType>(
+                initialValue: _slotSessionType,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Session Type *'),
+                items: SessionType.values
+                    .map((s) => DropdownMenuItem(
+                        value: s, child: Text(s.value.replaceAll('_', ' '))))
+                    .toList(),
+                onChanged: (v) => setSheetState(() =>
+                    setState(() => _slotSessionType = v ?? _slotSessionType)),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
