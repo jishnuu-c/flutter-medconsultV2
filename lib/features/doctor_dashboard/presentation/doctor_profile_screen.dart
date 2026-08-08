@@ -20,46 +20,80 @@ class DoctorProfileScreen extends ConsumerStatefulWidget {
 class _ProfileCardGroup extends StatelessWidget {
   final String title;
   final Widget child;
-  const _ProfileCardGroup({required this.title, required this.child});
+  // Mirrors Angular's per-card `border-left: 5px solid ...` accent —
+  // e.g. teal for Personal Overview, accent-amber for Credentials.
+  final Color accentColor;
+  const _ProfileCardGroup({
+    required this.title,
+    required this.child,
+    this.accentColor = AppTheme.primaryTeal,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      // clamp(20px, 4vw, 32px) equivalent: scale padding with screen width, clamped
-      padding: EdgeInsets.all(
-        (MediaQuery.of(context).size.width * 0.04).clamp(20, 32),
-      ),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceWhite,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.borderGray),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 6,
-              offset: const Offset(0, 2)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    // NOTE: BoxDecoration.border with non-uniform side colors (accent left
+    // vs. grey top/right/bottom) throws "A borderRadius can only be given
+    // on borders with uniform colors" when combined with borderRadius.
+    // Fix: keep the outer border/radius uniform (grey), and draw the
+    // colored accent as a Positioned strip in a Stack — NOT a Row with
+    // IntrinsicHeight/stretch, because `child` here contains a
+    // LayoutBuilder (via _responsivePair) and IntrinsicHeight forces
+    // intrinsic-dimension queries on its whole subtree, which
+    // LayoutBuilder does not support ("LayoutBuilder does not support
+    // returning intrinsic dimensions"). Stack + Positioned never queries
+    // intrinsics, so it's safe here.
+    final pad = (MediaQuery.of(context).size.width * 0.04).clamp(20, 32);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Stack(
         children: [
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.only(bottom: 16),
-            margin: const EdgeInsets.only(bottom: 20),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: AppTheme.borderGray)),
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceWhite,
+              border: Border.all(color: AppTheme.borderGray),
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2)),
+              ],
             ),
-            child: Text(
-              title,
-              style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 20,
-                  color: AppTheme.primaryTeal),
+            padding: EdgeInsets.fromLTRB(
+                pad - 5, pad.toDouble(), pad.toDouble(), pad.toDouble()),
+            child: Padding(
+              padding: const EdgeInsets.only(left: 5),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.only(bottom: 16),
+                    margin: const EdgeInsets.only(bottom: 20),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                          bottom: BorderSide(color: AppTheme.borderGray)),
+                    ),
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 20,
+                          color: AppTheme.primaryTeal),
+                    ),
+                  ),
+                  child,
+                ],
+              ),
             ),
           ),
-          child,
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 5,
+            child: Container(color: accentColor),
+          ),
         ],
       ),
     );
@@ -132,10 +166,20 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
   final _sortOrderController = TextEditingController(text: '1');
   bool _isSubmittingQualification = false;
 
-  bool _isLoading = false;
+  bool _isLoading = true;
   bool _isSaving = false;
   String? _doctorId;
   DoctorDetailResponse? _profile;
+
+  // ── Card 0: User Account Settings (mirrors Angular accountForm) ──
+  bool _isEditingAccount = false;
+  bool _isSavingAccount = false;
+  String? _stagedAvatarPath; // local preview path, staged until save
+  final _accFullNameController = TextEditingController();
+  final _accEmailController = TextEditingController();
+  final _accPhoneController = TextEditingController();
+  String _accGender = 'MALE';
+  String _accPreferredLang = 'en';
 
   List<SpecialtyModel> _globalSpecialties = [];
   List<LanguageModel> _globalLanguages = [];
@@ -154,6 +198,7 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _initAccountData();
     _resolveDoctorIdAndLoad();
     _loadReferences();
   }
@@ -170,7 +215,80 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
     _countryController.dispose();
     _yearObtainedController.dispose();
     _sortOrderController.dispose();
+    _accFullNameController.dispose();
+    _accEmailController.dispose();
+    _accPhoneController.dispose();
     super.dispose();
+  }
+
+  // Mirrors Angular initAccountData(): pre-fill account form from the
+  // logged-in user, then disable it until "Edit Account Details" tapped.
+  void _initAccountData() {
+    final user = ref.read(authNotifierProvider).currentUser;
+    _accFullNameController.text = user?.fullName ?? '';
+    _accEmailController.text = user?.email ?? '';
+    _accPhoneController.text = user?.phone ?? '';
+    _accGender = 'MALE';
+    _accPreferredLang = 'en';
+  }
+
+  void _enableAccountEdit() => setState(() => _isEditingAccount = true);
+
+  void _cancelAccountEdit() {
+    setState(() {
+      _isEditingAccount = false;
+      _stagedAvatarPath = null;
+    });
+    _initAccountData();
+  }
+
+  // Mirrors Angular triggerAvatarUpload()/onAvatarSelected(). Wire this to
+  // your image_picker (or file_picker) call once the package is in
+  // pubspec.yaml — kept as a stub here so this file compiles standalone.
+  Future<void> _pickAvatar() async {
+    setState(() => _isEditingAccount = true);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text(
+                'Photo picker not wired yet — hook up image_picker here.')),
+      );
+    }
+  }
+
+  // Mirrors Angular saveAccountInfo(): saves name/email/phone/gender/lang
+  // (+ staged avatar) via the user/account service.
+  Future<void> _saveAccountInfo() async {
+    setState(() => _isSavingAccount = true);
+    try {
+      // TODO: replace with real call, e.g.
+      // await ref.read(userServiceProvider).updateProfile(
+      //   avatarPath: _stagedAvatarPath,
+      //   fullName: _accFullNameController.text.trim(),
+      //   email: _accEmailController.text.trim(),
+      //   phone: _accPhoneController.text.trim(),
+      //   gender: _accGender,
+      //   preferredLang: _accPreferredLang,
+      // );
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+                'Doctor user account details and avatar saved successfully!')));
+      }
+      setState(() {
+        _isEditingAccount = false;
+        _stagedAvatarPath = null;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content:
+                Text('Failed to update account details: ${_errorMessage(e)}')));
+      }
+    } finally {
+      if (mounted) setState(() => _isSavingAccount = false);
+    }
   }
 
   String _errorMessage(Object e) {
@@ -228,7 +346,6 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
   // out. Then load the FULL profile (specialties, languages,
   // qualifications, clinic placements) in one call via getDoctorProfile.
   Future<void> _resolveDoctorIdAndLoad() async {
-    setState(() => _isLoading = true);
     try {
       final userId = ref.read(authNotifierProvider).currentUser?.id;
       if (userId == null) {
@@ -565,13 +682,35 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
     );
   }
 
-  // Mirrors .sub-nav-tabs / .sub-tab-btn: horizontally scrollable tab strip
-  // so tab labels never wrap or overflow on narrow/mobile screens.
+  // Small emoji per tab, matching Angular's sub-tab icons.
+  static const _tabIcons = ['📝', '🎓', '🗣️', '📜', '🏢'];
+
+  int _tabCount(int i) {
+    final p = _profile;
+    if (p == null) return 0;
+    switch (i) {
+      case 1:
+        return p.specialties.length;
+      case 2:
+        return p.languages.length;
+      case 3:
+        return p.qualifications.length;
+      case 4:
+        return p.clinics.length;
+      default:
+        return 0;
+    }
+  }
+
+  // Mirrors .sub-nav-tabs / .sub-tab-btn: rounded pill strip on a light
+  // background, active tab = white pill + soft shadow + badge count.
   Widget _buildSubNavTabs() {
     return Container(
-      decoration: const BoxDecoration(
-        border:
-            Border(bottom: BorderSide(color: AppTheme.borderGray, width: 2)),
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.borderGray, width: 1.5),
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -579,29 +718,66 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
         child: Row(
           children: List.generate(_tabs.length, (i) {
             final active = _activeTab == i;
+            final count = _tabCount(i);
             return Padding(
-              padding: const EdgeInsets.only(right: 4),
+              padding: const EdgeInsets.only(right: 6),
               child: InkWell(
+                borderRadius: BorderRadius.circular(12),
                 onTap: () => setState(() => _activeTab = i),
                 child: Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                          color: active
-                              ? AppTheme.primaryTeal
-                              : Colors.transparent,
-                          width: 3),
+                    color: active ? Colors.white : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: active
+                          ? AppTheme.primaryTeal.withValues(alpha: 0.3)
+                          : Colors.transparent,
+                      width: 1.5,
                     ),
+                    boxShadow: active
+                        ? [
+                            BoxShadow(
+                                color: AppTheme.primaryDarkTeal
+                                    .withValues(alpha: 0.08),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4)),
+                          ]
+                        : null,
                   ),
-                  child: Text(
-                    _tabs[i],
-                    style: TextStyle(
-                      fontWeight: active ? FontWeight.bold : FontWeight.w600,
-                      fontSize: 14,
-                      color: active ? AppTheme.primaryTeal : AppTheme.textMuted,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('${_tabIcons[i]} ${_tabs[i]}',
+                          style: TextStyle(
+                              fontWeight:
+                                  active ? FontWeight.bold : FontWeight.w600,
+                              fontSize: 13,
+                              color: active
+                                  ? AppTheme.primaryDarkTeal
+                                  : AppTheme.textSecondary)),
+                      if (i > 0) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: active
+                                ? AppTheme.primaryLightTeal
+                                : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text('$count',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: active
+                                      ? AppTheme.primaryDarkTeal
+                                      : AppTheme.textMuted)),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),
@@ -629,503 +805,702 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
     switch (_activeTab) {
       // ── Tab 0: Professional Details (title, MOH#, bio EN/AR, exp, fee) ──
       case 0:
-        return _ProfileCardGroup(
-          title: 'Professional Details',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _responsivePair(
-                _labeled(
-                  'Professional Title',
-                  DropdownButtonFormField<DoctorTitle>(
-                    initialValue: _titleValue,
-                    decoration: const InputDecoration(),
-                    items: DoctorTitle.values
-                        .map((t) =>
-                            DropdownMenuItem(value: t, child: Text(t.value)))
-                        .toList(),
-                    onChanged: (val) {
-                      if (val != null) setState(() => _titleValue = val);
-                    },
-                  ),
-                ),
-                _labeled(
-                  'MOH Registration Number',
-                  TextField(
-                    controller: _mohRegController,
-                    decoration: const InputDecoration(hintText: 'MOH-123456'),
-                  ),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _responsivePair(
+              _labeled(
+                'Professional Title',
+                DropdownButtonFormField<DoctorTitle>(
+                  initialValue: _titleValue,
+                  decoration: const InputDecoration(),
+                  items: DoctorTitle.values
+                      .map((t) =>
+                          DropdownMenuItem(value: t, child: Text(t.value)))
+                      .toList(),
+                  onChanged: (val) {
+                    if (val != null) setState(() => _titleValue = val);
+                  },
                 ),
               ),
-              const SizedBox(height: 16),
-              const Text('Biography (English)',
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _bioEnController,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                    hintText: 'Enter your professional biography...'),
-              ),
-              const SizedBox(height: 16),
-              const Text('Biography (Arabic)',
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _bioArController,
-                maxLines: 4,
-                textDirection: TextDirection.rtl,
-                decoration:
-                    const InputDecoration(hintText: 'أدخل نبذتك المهنية...'),
-              ),
-              const SizedBox(height: 16),
-              _responsivePair(
-                _labeled(
-                  'Years of Experience',
-                  TextField(
-                    controller: _expController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(hintText: '10'),
-                  ),
-                ),
-                _labeled(
-                  'Consultation Fee (SAR)',
-                  TextField(
-                    controller: _feeController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(hintText: '200'),
-                  ),
+              _labeled(
+                'MOH Registration Number',
+                TextField(
+                  controller: _mohRegController,
+                  decoration: const InputDecoration(hintText: 'MOH-123456'),
                 ),
               ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                height: 44,
-                child: ElevatedButton(
-                  onPressed:
-                      (_isSaving || _doctorId == null) ? null : _saveProfile,
-                  child: _isSaving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
-                      : const Text('Save Profile'),
+            ),
+            const SizedBox(height: 16),
+            const Text('Biography (English)',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _bioEnController,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                  hintText: 'Enter your professional biography...'),
+            ),
+            const SizedBox(height: 16),
+            const Text('Biography (Arabic)',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _bioArController,
+              maxLines: 4,
+              textDirection: TextDirection.rtl,
+              decoration:
+                  const InputDecoration(hintText: 'أدخل نبذتك المهنية...'),
+            ),
+            const SizedBox(height: 16),
+            _responsivePair(
+              _labeled(
+                'Years of Experience',
+                TextField(
+                  controller: _expController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(hintText: '10'),
                 ),
               ),
-            ],
-          ),
+              _labeled(
+                'Consultation Fee (SAR)',
+                TextField(
+                  controller: _feeController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(hintText: '200'),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: ElevatedButton(
+                onPressed:
+                    (_isSaving || _doctorId == null) ? null : _saveProfile,
+                child: _isSaving
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Text('Save Profile'),
+              ),
+            ),
+          ],
         );
 
       // ── Tab 1: Specialties (add form + list with remove) ──
       case 1:
-        return _ProfileCardGroup(
-          title: 'Specialties (${profile?.specialties.length ?? 0})',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _AddFormBox(
-                title: '+ Add Medical Specialty',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _labeled(
-                      'Specialty',
-                      DropdownButtonFormField<String>(
-                        initialValue: _specSpecialtyId,
-                        decoration: const InputDecoration(
-                            hintText: '-- Choose Specialty --'),
-                        items: _globalSpecialties
-                            .map((s) => DropdownMenuItem(
-                                value: s.specialtyId, child: Text(s.nameEn)))
-                            .toList(),
-                        onChanged: _onSpecialtyChanged,
-                      ),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _AddFormBox(
+              title: '+ Add Medical Specialty',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _labeled(
+                    'Specialty',
+                    DropdownButtonFormField<String>(
+                      initialValue: _specSpecialtyId,
+                      decoration: const InputDecoration(
+                          hintText: '-- Choose Specialty --'),
+                      items: _globalSpecialties
+                          .map((s) => DropdownMenuItem(
+                              value: s.specialtyId, child: Text(s.nameEn)))
+                          .toList(),
+                      onChanged: _onSpecialtyChanged,
                     ),
-                    const SizedBox(height: 12),
-                    _labeled(
-                      'Sub-Specialty (Optional)',
-                      DropdownButtonFormField<String>(
-                        initialValue: _specSubSpecialtyId,
-                        decoration:
-                            const InputDecoration(hintText: '-- None --'),
-                        items: _subSpecialties
-                            .map((ss) => DropdownMenuItem(
-                                value: ss.subSpecialtyId,
-                                child: Text(ss.nameEn)))
-                            .toList(),
+                  ),
+                  const SizedBox(height: 12),
+                  _labeled(
+                    'Sub-Specialty (Optional)',
+                    DropdownButtonFormField<String>(
+                      initialValue: _specSubSpecialtyId,
+                      decoration: const InputDecoration(hintText: '-- None --'),
+                      items: _subSpecialties
+                          .map((ss) => DropdownMenuItem(
+                              value: ss.subSpecialtyId, child: Text(ss.nameEn)))
+                          .toList(),
+                      onChanged: (val) =>
+                          setState(() => _specSubSpecialtyId = val),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: _specIsPrimary,
                         onChanged: (val) =>
-                            setState(() => _specSubSpecialtyId = val),
+                            setState(() => _specIsPrimary = val ?? false),
                       ),
+                      const Text('Primary Specialty'),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 40,
+                    child: ElevatedButton(
+                      onPressed:
+                          (_isSubmittingSpecialty || _specSpecialtyId == null)
+                              ? null
+                              : _submitSpecialty,
+                      child: _isSubmittingSpecialty
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : const Text('+ Add Specialty'),
                     ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Checkbox(
-                          value: _specIsPrimary,
-                          onChanged: (val) =>
-                              setState(() => _specIsPrimary = val ?? false),
-                        ),
-                        const Text('Primary Specialty'),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 40,
-                      child: ElevatedButton(
-                        onPressed:
-                            (_isSubmittingSpecialty || _specSpecialtyId == null)
-                                ? null
-                                : _submitSpecialty,
-                        child: _isSubmittingSpecialty
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
-                            : const Text('+ Add Specialty'),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              if (profile == null || profile.specialties.isEmpty)
-                const Text('No medical specialties listed on your profile yet.',
-                    style: TextStyle(color: AppTheme.textMuted))
-              else
-                Column(
-                  children: profile.specialties.map((s) {
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: AppTheme.borderGray),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('🎓 ${_specialtyName(s.specialtyId)}',
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w600)),
-                                const SizedBox(height: 4),
-                                Chip(
-                                  label: Text(
-                                      s.isPrimary ? 'Primary' : 'Secondary',
-                                      style: const TextStyle(fontSize: 11)),
-                                  backgroundColor: s.isPrimary
-                                      ? AppTheme.primaryLightTeal
-                                      : AppTheme.borderGray,
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                              ],
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: () => _removeSpecialty(s),
-                            style: TextButton.styleFrom(
-                                foregroundColor: AppTheme.dangerRed),
-                            child: const Text('Remove'),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                ),
-            ],
-          ),
-        );
-
-      // ── Tab 2: Languages (add form + list with remove) ──
-      case 2:
-        return _ProfileCardGroup(
-          title: 'Languages (${profile?.languages.length ?? 0})',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _AddFormBox(
-                title: '+ Add Spoken Language',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _labeled(
-                      'Language',
-                      DropdownButtonFormField<String>(
-                        initialValue: _langLanguageId,
-                        decoration: const InputDecoration(
-                            hintText: '-- Choose Language --'),
-                        items: _globalLanguages
-                            .map((l) => DropdownMenuItem(
-                                value: l.languageId, child: Text(l.nameEn)))
-                            .toList(),
-                        onChanged: (val) =>
-                            setState(() => _langLanguageId = val),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _labeled(
-                      'Proficiency',
-                      DropdownButtonFormField<LanguageProficiency>(
-                        initialValue: _langProficiency,
-                        decoration: const InputDecoration(),
-                        items: LanguageProficiency.values
-                            .map((p) => DropdownMenuItem(
-                                value: p, child: Text(p.value)))
-                            .toList(),
-                        onChanged: (val) {
-                          if (val != null) {
-                            setState(() => _langProficiency = val);
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 40,
-                      child: ElevatedButton(
-                        onPressed:
-                            (_isSubmittingLanguage || _langLanguageId == null)
-                                ? null
-                                : _submitLanguage,
-                        child: _isSubmittingLanguage
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
-                            : const Text('+ Add Language'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (profile == null || profile.languages.isEmpty)
-                const Text('No languages listed on your profile yet.',
-                    style: TextStyle(color: AppTheme.textMuted))
-              else
-                Column(
-                  children: profile.languages.map((l) {
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: AppTheme.borderGray),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                                '🗣️ ${_languageName(l.languageId)} • ${l.proficiency.value}',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w600)),
-                          ),
-                          TextButton(
-                            onPressed: () => _removeLanguage(l),
-                            style: TextButton.styleFrom(
-                                foregroundColor: AppTheme.dangerRed),
-                            child: const Text('Remove'),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                ),
-            ],
-          ),
-        );
-
-      // ── Tab 3: Qualifications (add form + list with remove) ──
-      case 3:
-        return _ProfileCardGroup(
-          title: 'Qualifications (${profile?.qualifications.length ?? 0})',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _AddFormBox(
-                title: '+ Add Academic Degree / Qualification',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _labeled(
-                      'Degree',
-                      TextField(
-                        controller: _degreeController,
-                        decoration: const InputDecoration(
-                            hintText: 'E.g. MBBS, MD, Board Certification'),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _labeled(
-                      'Institution / University',
-                      TextField(
-                        controller: _institutionController,
-                        decoration:
-                            const InputDecoration(hintText: 'University Name'),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _responsivePair(
-                      _labeled(
-                        'Country',
-                        TextField(
-                          controller: _countryController,
-                          decoration:
-                              const InputDecoration(hintText: 'Saudi Arabia'),
-                        ),
-                      ),
-                      _labeled(
-                        'Year Obtained',
-                        TextField(
-                          controller: _yearObtainedController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(hintText: '2018'),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 40,
-                      child: ElevatedButton(
-                        onPressed: _isSubmittingQualification
-                            ? null
-                            : _submitQualification,
-                        child: _isSubmittingQualification
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
-                            : const Text('+ Add Degree'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (profile == null || profile.qualifications.isEmpty)
-                const Text('No qualifications on record.',
-                    style: TextStyle(color: AppTheme.textMuted))
-              else
-                Column(
-                  children: profile.qualifications.map((q) {
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: AppTheme.borderGray),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Padding(
-                            padding: EdgeInsets.only(top: 2),
-                            child: Icon(Icons.school_outlined,
-                                size: 18, color: AppTheme.primaryTeal),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(q.degree,
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 14)),
-                                Text(
-                                  '${q.institution}, ${q.country} • ${q.yearObtained}',
-                                  style: const TextStyle(
-                                      fontSize: 12, color: AppTheme.textMuted),
-                                ),
-                              ],
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: () => _removeQualification(q),
-                            style: TextButton.styleFrom(
-                                foregroundColor: AppTheme.dangerRed),
-                            child: const Text('Remove'),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                ),
-            ],
-          ),
-        );
-
-      // ── Tab 4: Clinic Placements (read-only, matches Angular) ──
-      case 4:
-      default:
-        return _ProfileCardGroup(
-          title: 'Clinic Placements (${profile?.clinics.length ?? 0})',
-          child: (profile == null || profile.clinics.isEmpty)
-              ? const Text('Not currently placed at any clinic.',
+            ),
+            if (profile == null || profile.specialties.isEmpty)
+              const Text('No medical specialties listed on your profile yet.',
                   style: TextStyle(color: AppTheme.textMuted))
-              : Column(
-                  children: profile.clinics.map((c) {
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: AppTheme.borderGray),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 4,
-                            crossAxisAlignment: WrapCrossAlignment.center,
+            else
+              Column(
+                children: profile.specialties.map((s) {
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: AppTheme.borderGray),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                c.clinicNameEn ?? c.department,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w600, fontSize: 14),
-                              ),
-                              if (c.isPrimary)
-                                const Chip(
-                                  label: Text('Primary',
-                                      style: TextStyle(fontSize: 11)),
-                                  backgroundColor: AppTheme.primaryLightTeal,
-                                  visualDensity: VisualDensity.compact,
-                                ),
+                              Text('🎓 ${_specialtyName(s.specialtyId)}',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 4),
                               Chip(
-                                label: Text(c.isActive ? 'Active' : 'Inactive',
+                                label: Text(
+                                    s.isPrimary ? 'Primary' : 'Secondary',
                                     style: const TextStyle(fontSize: 11)),
-                                backgroundColor: c.isActive
+                                backgroundColor: s.isPrimary
                                     ? AppTheme.primaryLightTeal
                                     : AppTheme.borderGray,
                                 visualDensity: VisualDensity.compact,
                               ),
                             ],
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${c.branchNameEn ?? c.branchId} • ${c.department}',
-                            style: const TextStyle(
-                                fontSize: 12, color: AppTheme.textMuted),
-                          ),
-                          Text(
-                            'Fee: SAR ${c.consultationFeeSar.toStringAsFixed(0)} • Since ${c.startDate}',
-                            style: const TextStyle(
-                                fontSize: 12, color: AppTheme.textMuted),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                ),
+                        ),
+                        TextButton(
+                          onPressed: () => _removeSpecialty(s),
+                          style: TextButton.styleFrom(
+                              foregroundColor: AppTheme.dangerRed),
+                          child: const Text('Remove'),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+          ],
         );
+
+      // ── Tab 2: Languages (add form + list with remove) ──
+      case 2:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _AddFormBox(
+              title: '+ Add Spoken Language',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _labeled(
+                    'Language',
+                    DropdownButtonFormField<String>(
+                      initialValue: _langLanguageId,
+                      decoration: const InputDecoration(
+                          hintText: '-- Choose Language --'),
+                      items: _globalLanguages
+                          .map((l) => DropdownMenuItem(
+                              value: l.languageId, child: Text(l.nameEn)))
+                          .toList(),
+                      onChanged: (val) => setState(() => _langLanguageId = val),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _labeled(
+                    'Proficiency',
+                    DropdownButtonFormField<LanguageProficiency>(
+                      initialValue: _langProficiency,
+                      decoration: const InputDecoration(),
+                      items: LanguageProficiency.values
+                          .map((p) =>
+                              DropdownMenuItem(value: p, child: Text(p.value)))
+                          .toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() => _langProficiency = val);
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 40,
+                    child: ElevatedButton(
+                      onPressed:
+                          (_isSubmittingLanguage || _langLanguageId == null)
+                              ? null
+                              : _submitLanguage,
+                      child: _isSubmittingLanguage
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : const Text('+ Add Language'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (profile == null || profile.languages.isEmpty)
+              const Text('No languages listed on your profile yet.',
+                  style: TextStyle(color: AppTheme.textMuted))
+            else
+              Column(
+                children: profile.languages.map((l) {
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: AppTheme.borderGray),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                              '🗣️ ${_languageName(l.languageId)} • ${l.proficiency.value}',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w600)),
+                        ),
+                        TextButton(
+                          onPressed: () => _removeLanguage(l),
+                          style: TextButton.styleFrom(
+                              foregroundColor: AppTheme.dangerRed),
+                          child: const Text('Remove'),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+          ],
+        );
+
+      // ── Tab 3: Qualifications (add form + list with remove) ──
+      case 3:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _AddFormBox(
+              title: '+ Add Academic Degree / Qualification',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _labeled(
+                    'Degree',
+                    TextField(
+                      controller: _degreeController,
+                      decoration: const InputDecoration(
+                          hintText: 'E.g. MBBS, MD, Board Certification'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _labeled(
+                    'Institution / University',
+                    TextField(
+                      controller: _institutionController,
+                      decoration:
+                          const InputDecoration(hintText: 'University Name'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _responsivePair(
+                    _labeled(
+                      'Country',
+                      TextField(
+                        controller: _countryController,
+                        decoration:
+                            const InputDecoration(hintText: 'Saudi Arabia'),
+                      ),
+                    ),
+                    _labeled(
+                      'Year Obtained',
+                      TextField(
+                        controller: _yearObtainedController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(hintText: '2018'),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 40,
+                    child: ElevatedButton(
+                      onPressed: _isSubmittingQualification
+                          ? null
+                          : _submitQualification,
+                      child: _isSubmittingQualification
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : const Text('+ Add Degree'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (profile == null || profile.qualifications.isEmpty)
+              const Text('No qualifications on record.',
+                  style: TextStyle(color: AppTheme.textMuted))
+            else
+              Column(
+                children: profile.qualifications.map((q) {
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: AppTheme.borderGray),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(top: 2),
+                          child: Icon(Icons.school_outlined,
+                              size: 18, color: AppTheme.primaryTeal),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(q.degree,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14)),
+                              Text(
+                                '${q.institution}, ${q.country} • ${q.yearObtained}',
+                                style: const TextStyle(
+                                    fontSize: 12, color: AppTheme.textMuted),
+                              ),
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => _removeQualification(q),
+                          style: TextButton.styleFrom(
+                              foregroundColor: AppTheme.dangerRed),
+                          child: const Text('Remove'),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+          ],
+        );
+
+      // ── Tab 4: Clinic Placements (read-only, matches Angular) ──
+      case 4:
+      default:
+        final clinics = profile?.clinics ?? [];
+        final activeCount = clinics.where((c) => c.isActive).length;
+        final primaryCount = clinics.where((c) => c.isPrimary).length;
+        return clinics.isEmpty
+            ? _buildClinicEmptyState()
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Summary strip — mirrors .clinics-summary-strip
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFF0F9FF), Color(0xFFE0F2FE)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      border: Border.all(color: const Color(0xFFBAE6FD)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    child: Row(
+                      children: [
+                        _summaryStat('${clinics.length}', 'Total',
+                            const Color(0xFF0EA5E9)),
+                        _vDivider(),
+                        _summaryStat(
+                            '$activeCount', 'Active', const Color(0xFF22C55E)),
+                        _vDivider(),
+                        _summaryStat('$primaryCount', 'Primary',
+                            AppTheme.primaryDarkTeal),
+                      ],
+                    ),
+                  ),
+                  // Placement cards — mirrors .clinic-placement-card
+                  ...clinics.map((c) => Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border(
+                            top: const BorderSide(
+                                color: AppTheme.borderGray, width: 1.5),
+                            right: const BorderSide(
+                                color: AppTheme.borderGray, width: 1.5),
+                            bottom: const BorderSide(
+                                color: AppTheme.borderGray, width: 1.5),
+                            left: BorderSide(
+                                color: c.isActive
+                                    ? const Color(0xFF22C55E)
+                                    : const Color(0xFF94A3B8),
+                                width: 5),
+                          ),
+                        ),
+                        child: Opacity(
+                          opacity: c.isActive ? 1 : 0.75,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [
+                                          Color(0xFFE0F2FE),
+                                          Color(0xFFBAE6FD)
+                                        ],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: const Text('🏥',
+                                        style: TextStyle(fontSize: 20)),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          c.clinicNameEn ?? 'Medical Facility',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 15,
+                                              color: Color(0xFF1E293B)),
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          '📍 ${c.branchNameEn ?? 'Main Branch'}',
+                                          style: const TextStyle(
+                                              fontSize: 12.5,
+                                              color: Color(0xFF64748B)),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: c.isActive
+                                          ? const Color(0xFFDCFCE7)
+                                          : const Color(0xFFF1F5F9),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          width: 7,
+                                          height: 7,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: c.isActive
+                                                ? const Color(0xFF22C55E)
+                                                : const Color(0xFF94A3B8),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 5),
+                                        Text(c.isActive ? 'Active' : 'Inactive',
+                                            style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                                color: c.isActive
+                                                    ? const Color(0xFF166534)
+                                                    : const Color(0xFF64748B))),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 12),
+                                child: Divider(
+                                    height: 1, color: AppTheme.borderGray),
+                              ),
+                              Wrap(
+                                spacing: 16,
+                                runSpacing: 10,
+                                children: [
+                                  _clinicDetail('Department',
+                                      chip: c.department,
+                                      chipBg: const Color(0xFFE0F2FE),
+                                      chipFg: const Color(0xFF0369A1)),
+                                  _clinicDetail('Consultation Fee',
+                                      text:
+                                          'SAR ${c.consultationFeeSar.toStringAsFixed(0)}',
+                                      textColor: const Color(0xFF16A34A)),
+                                  _clinicDetail('Role',
+                                      chip: c.isPrimary
+                                          ? 'Primary Specialist'
+                                          : 'Consultant',
+                                      chipBg: c.isPrimary
+                                          ? const Color(0xFFFEF9C3)
+                                          : const Color(0xFFF1F5F9),
+                                      chipFg: c.isPrimary
+                                          ? const Color(0xFF854D0E)
+                                          : const Color(0xFF475569)),
+                                  _clinicDetail('Since', text: c.startDate),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      )),
+                ],
+              );
     }
+  }
+
+  Widget _vDivider() => Container(
+        width: 1,
+        height: 44,
+        color: const Color(0xFFBAE6FD),
+      );
+
+  Widget _summaryStat(String num, String label, Color color) {
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Column(
+          children: [
+            Text(num,
+                style: TextStyle(
+                    fontSize: 22, fontWeight: FontWeight.w800, color: color)),
+            const SizedBox(height: 3),
+            Text(label.toUpperCase(),
+                style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                    color: Color(0xFF94A3B8))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _clinicDetail(String label,
+      {String? text,
+      String? chip,
+      Color? chipBg,
+      Color? chipFg,
+      Color? textColor}) {
+    return SizedBox(
+      width: 130,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label.toUpperCase(),
+              style: const TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.4,
+                  color: Color(0xFF94A3B8))),
+          const SizedBox(height: 4),
+          if (chip != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: chipBg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(chip,
+                  style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: chipFg)),
+            )
+          else
+            Text(text ?? '—',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: textColor ?? const Color(0xFF1E293B))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildClinicEmptyState() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+            color: const Color(0xFFE2E8F0), width: 2, style: BorderStyle.solid),
+      ),
+      child: Column(
+        children: const [
+          Text('🏥', style: TextStyle(fontSize: 40)),
+          SizedBox(height: 10),
+          Text('No Clinic Placements Yet',
+              style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF64748B))),
+          SizedBox(height: 6),
+          Text(
+              'You are currently not assigned to any clinic branch. Contact your clinic administrator to get assigned.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8))),
+        ],
+      ),
+    );
   }
 
   @override
@@ -1145,129 +1520,407 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'My Professional Profile',
-              style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textMain),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Manage your professional details, specialties, languages, and clinic placements.',
-              style: TextStyle(fontSize: 14, color: AppTheme.textMuted),
-            ),
-            const SizedBox(height: 20),
+            // ── Header banner: mirrors Angular's title + MOH/Reg badges ──
+            _buildHeaderBanner(profile, isMobile),
+            const SizedBox(height: 24),
 
-            // ── doctor-profile-container: column layout, 24px gap ──────
-            // Overview card (avatar, name, MOH status, rating)
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.all(isMobile
-                  ? 14
-                  : (MediaQuery.of(context).size.width * 0.04).clamp(20, 32)),
-              margin: const EdgeInsets.only(bottom: 24),
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceWhite,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.borderGray),
-                boxShadow: [
-                  BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2)),
-                ],
-              ),
+            // ── Card 0: User Account Settings & Profile Picture ─────────
+            _buildAccountCard(user, isMobile),
+            const SizedBox(height: 24),
+
+            // ── Card 1: Personal Overview & Practice Details ────────────
+            _ProfileCardGroup(
+              title: '2. Personal Overview & Practice Details',
+              accentColor: AppTheme.primaryTeal,
+              child: _buildOverviewDetails(profile, user),
+            ),
+            const SizedBox(height: 24),
+
+            // ── Card 2: Professional Credentials, Bio & Qualifications ──
+            // Single unified card: sub-nav tabs + active tab content live
+            // INSIDE it, same as Angular (no per-tab outer card).
+            _ProfileCardGroup(
+              title: '2. Professional Credentials, Bio & Qualifications',
+              accentColor: AppTheme.warningAmber,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Wrap(
-                    spacing: 16,
-                    runSpacing: 12,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      CircleAvatar(
-                        radius: 34,
-                        backgroundColor: AppTheme.primaryLightTeal,
-                        child: Text(
-                          user?.initials ?? 'DR',
-                          style: const TextStyle(
-                              color: AppTheme.primaryTeal,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18),
-                        ),
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            profile != null
-                                ? '${profile.title.value}. ${profile.fullName}'
-                                : (user?.fullName ?? 'Dr. Practitioner'),
-                            style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.textMain),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(user?.email ?? '',
-                              style: const TextStyle(
-                                  fontSize: 13, color: AppTheme.textMuted)),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      if (profile != null)
-                        Chip(
-                          avatar: Icon(
-                            profile.mohVerified
-                                ? Icons.verified
-                                : Icons.pending_outlined,
-                            size: 16,
-                            color: profile.mohVerified
-                                ? AppTheme.successGreen
-                                : AppTheme.warningAmber,
-                          ),
-                          label: Text(
-                              'MOH: ${profile.mohRegistrationNumber} • ${profile.mohVerified ? "Verified" : "Pending"}'),
-                          backgroundColor: AppTheme.backgroundApp,
-                        ),
-                      if (profile != null)
-                        Chip(
-                          avatar: const Icon(Icons.star,
-                              size: 16, color: AppTheme.warningAmber),
-                          label: Text(
-                              '${profile.overallRating.toStringAsFixed(1)} (${profile.reviewCount} reviews)'),
-                          backgroundColor: AppTheme.backgroundApp,
-                        ),
-                      if (profile != null)
-                        Chip(
-                          label: Text(profile.isActive ? 'Active' : 'Inactive'),
-                          backgroundColor: profile.isActive
-                              ? AppTheme.primaryLightTeal
-                              : AppTheme.borderGray,
-                        ),
-                    ],
-                  ),
+                  _buildSubNavTabs(),
+                  const SizedBox(height: 20),
+                  _buildTabContent(),
                 ],
               ),
             ),
-
-            // ── sub-nav-tabs: horizontally scrollable, mobile-safe ─────
-            _buildSubNavTabs(),
-            const SizedBox(height: 20),
-
-            // ── active tab's profile-card-group ─────────────────────────
-            _buildTabContent(),
           ],
         ),
       ),
+    );
+  }
+
+  // Mirrors Angular's header banner: h2 title + subtitle on the left,
+  // MOH-verified / registration-ID badges on the right (wraps on mobile).
+  Widget _buildHeaderBanner(DoctorDetailResponse? profile, bool isMobile) {
+    return Container(
+      padding: const EdgeInsets.only(bottom: 16),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppTheme.borderGray)),
+      ),
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        runSpacing: 12,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('👨‍⚕️ Professional Profile',
+                  style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.primaryTeal)),
+              const SizedBox(height: 4),
+              const Text(
+                  'Manage personal bio, clinical credentials, spoken languages, and academic qualifications',
+                  style: TextStyle(fontSize: 13, color: AppTheme.textMuted)),
+            ],
+          ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (profile != null)
+                Chip(
+                  label: Text(profile.mohVerified
+                      ? '✓ MOH Verified License'
+                      : 'MOH Verification Pending'),
+                  labelStyle: TextStyle(
+                      color: profile.mohVerified
+                          ? const Color(0xFF166534)
+                          : const Color(0xFF1E429F),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12.5),
+                  backgroundColor: profile.mohVerified
+                      ? const Color(0xFFDCFCE7)
+                      : const Color(0xFFE1EFFE),
+                  side: BorderSide.none,
+                ),
+              if (profile != null && profile.mohRegistrationNumber.isNotEmpty)
+                Chip(
+                  label:
+                      Text('Registration ID: ${profile.mohRegistrationNumber}'),
+                  labelStyle: const TextStyle(
+                      color: AppTheme.primaryDarkTeal,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12.5),
+                  backgroundColor: AppTheme.primaryLightTeal,
+                  side: BorderSide.none,
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Mirrors Angular Card 0: avatar upload + "1. User Account Details" form.
+  // Uses ClipRRect + Stack/Positioned for the accent strip, same fix as
+  // _ProfileCardGroup (uniform border/radius, colored strip drawn on top).
+  Widget _buildAccountCard(dynamic user, bool isMobile) {
+    final pad = isMobile
+        ? 14.0
+        : 0.0; // wide-screen padding computed inline below via clamp
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Stack(
+        children: [
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceWhite,
+              border: Border.all(color: AppTheme.borderGray),
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2)),
+              ],
+            ),
+            padding: EdgeInsets.fromLTRB((isMobile ? pad : 27),
+                isMobile ? 14 : 32, isMobile ? 14 : 32, isMobile ? 14 : 32),
+            child: Padding(
+              padding: const EdgeInsets.only(left: 5),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header row: avatar + name/email/role + edit button
+                  Container(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                          bottom: BorderSide(color: AppTheme.borderGray)),
+                    ),
+                    child: Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      runSpacing: 12,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            GestureDetector(
+                              onTap: _pickAvatar,
+                              child: Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  CircleAvatar(
+                                    radius: 34,
+                                    backgroundColor: AppTheme.primaryLightTeal,
+                                    child: Text(
+                                      user?.initials ?? 'DR',
+                                      style: const TextStyle(
+                                          color: AppTheme.primaryTeal,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 18),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    bottom: -2,
+                                    right: -2,
+                                    child: Container(
+                                      width: 24,
+                                      height: 24,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: AppTheme.primaryDarkTeal,
+                                        border: Border.all(
+                                            color: Colors.white, width: 2),
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: const Text('📷',
+                                          style: TextStyle(fontSize: 11)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(user?.fullName ?? '',
+                                    style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.textMain)),
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text('✉️ ${user?.email ?? ''}',
+                                        style: const TextStyle(
+                                            fontSize: 12,
+                                            color: AppTheme.textMuted)),
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFDCFCE7),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: const Text('DOCTOR',
+                                          style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF166534))),
+                                    ),
+                                  ],
+                                ),
+                                if (_stagedAvatarPath != null)
+                                  const Padding(
+                                    padding: EdgeInsets.only(top: 4),
+                                    child: Text(
+                                        '📷 New profile photo selected. Tap "Save Account Info" to upload.',
+                                        style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFFB45309))),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        if (!_isEditingAccount)
+                          OutlinedButton(
+                            onPressed: _enableAccountEdit,
+                            child: const Text('✏️ Edit Account Details'),
+                          ),
+                      ],
+                    ),
+                  ),
+
+                  // "1. User Account Details" form
+                  const Text('1. User Account Details',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: AppTheme.textMain)),
+                  const SizedBox(height: 12),
+                  _responsivePair(
+                    _labeled(
+                      'Full Name *',
+                      TextField(
+                        controller: _accFullNameController,
+                        enabled: _isEditingAccount,
+                      ),
+                    ),
+                    _labeled(
+                      'Email Address *',
+                      TextField(
+                        controller: _accEmailController,
+                        enabled: _isEditingAccount,
+                        keyboardType: TextInputType.emailAddress,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _responsivePair(
+                    _labeled(
+                      'Phone Number',
+                      TextField(
+                        controller: _accPhoneController,
+                        enabled: _isEditingAccount,
+                        keyboardType: TextInputType.phone,
+                      ),
+                    ),
+                    _labeled(
+                      'Gender',
+                      DropdownButtonFormField<String>(
+                        initialValue: _accGender,
+                        onChanged: _isEditingAccount
+                            ? (val) =>
+                                setState(() => _accGender = val ?? _accGender)
+                            : null,
+                        items: const [
+                          DropdownMenuItem(value: 'MALE', child: Text('Male')),
+                          DropdownMenuItem(
+                              value: 'FEMALE', child: Text('Female')),
+                          DropdownMenuItem(
+                              value: 'OTHER', child: Text('Other')),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _labeled(
+                    'Preferred Language',
+                    DropdownButtonFormField<String>(
+                      initialValue: _accPreferredLang,
+                      onChanged: _isEditingAccount
+                          ? (val) => setState(() =>
+                              _accPreferredLang = val ?? _accPreferredLang)
+                          : null,
+                      items: const [
+                        DropdownMenuItem(value: 'en', child: Text('English')),
+                        DropdownMenuItem(value: 'ar', child: Text('العربية')),
+                      ],
+                    ),
+                  ),
+
+                  if (_isEditingAccount) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.only(top: 12),
+                      decoration: const BoxDecoration(
+                        border:
+                            Border(top: BorderSide(color: AppTheme.borderGray)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed:
+                                _isSavingAccount ? null : _cancelAccountEdit,
+                            child: const Text('Cancel'),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            onPressed:
+                                _isSavingAccount ? null : _saveAccountInfo,
+                            child: _isSavingAccount
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white))
+                                : const Text('💾 Save Account Info'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 5,
+            child: Container(color: AppTheme.primaryDarkTeal),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Mirrors Angular Card 1 body: doctor display name + experience/rating/fee.
+  Widget _buildOverviewDetails(DoctorDetailResponse? profile, dynamic user) {
+    return Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.start,
+      runSpacing: 12,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              profile != null
+                  ? '${profile.title.value}. ${profile.fullName}'
+                  : (user?.fullName ?? 'Dr. Practitioner'),
+              style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textMain),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 16,
+              runSpacing: 6,
+              children: [
+                Text('Experience: ${profile?.experienceYears ?? 0} Years',
+                    style: const TextStyle(
+                        fontSize: 12.5, color: AppTheme.textMuted)),
+                Text(
+                    'Rating: ⭐ ${profile?.overallRating.toStringAsFixed(1) ?? '0.0'} (${profile?.reviewCount ?? 0} reviews)',
+                    style: const TextStyle(
+                        fontSize: 12.5, color: AppTheme.textMuted)),
+                Text(
+                    'Standard Fee: SAR ${profile?.consultationFeeSar.toStringAsFixed(0) ?? '150'}',
+                    style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF16A34A))),
+              ],
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

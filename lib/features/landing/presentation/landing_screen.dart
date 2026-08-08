@@ -4,30 +4,274 @@ import 'package:go_router/go_router.dart';
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/models/auth_models.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/services/references_service.dart';
+import '../../clinic_admin/data/clinic_models.dart';
+import '../../clinic_admin/data/clinic_service.dart';
+import '../../clinic_admin/data/doctor_models.dart';
+import '../../clinic_admin/data/doctor_service.dart';
 
-class DoctorCardData {
-  final String id;
-  final String name;
-  final String title;
-  final String spec;
-  final double rating;
-  final int reviews;
-  final int expYears;
-  final String nextSlot;
-  final double feeSar;
+// ─────────────────────────────────────────────────────────────────────────
+// Display models — mirror Angular's ClinicCardDisplay / DoctorCardDisplay
+// (landing.component.ts), built from the REAL ClinicService / DoctorService
+// / ReferenceService that already exist in this codebase (clinic_admin/data
+// + core/services) — reused here rather than duplicated.
+// ─────────────────────────────────────────────────────────────────────────
 
-  const DoctorCardData({
-    required this.id,
-    required this.name,
-    required this.title,
-    required this.spec,
-    required this.rating,
-    required this.reviews,
-    required this.expYears,
-    required this.nextSlot,
-    required this.feeSar,
+class DoctorCardDisplay {
+  final DoctorModel doctor;
+  final String clinicId;
+  final String dcId;
+  final String branchName;
+  String nextSlot;
+  String avail; // today | tomorrow | busy | loading
+
+  DoctorCardDisplay({
+    required this.doctor,
+    required this.clinicId,
+    required this.dcId,
+    this.branchName = '',
+    this.nextSlot = 'Checking slots…',
+    this.avail = 'loading',
   });
 }
+
+class ClinicCardDisplay {
+  final ClinicModel clinic;
+  final ClinicDetailResponse? detail;
+  final String cityName;
+  final String area;
+  final List<String> specNames;
+  final List<String> insuranceNames;
+  final List<DoctorCardDisplay> doctors;
+
+  ClinicCardDisplay({
+    required this.clinic,
+    required this.detail,
+    required this.cityName,
+    required this.area,
+    required this.specNames,
+    required this.insuranceNames,
+    required this.doctors,
+  });
+}
+
+class LandingData {
+  final List<SpecialtyModel> specialties;
+  final List<CityModel> cities;
+  final List<InsuranceProviderModel> insurances;
+  final List<ClinicCardDisplay> clinics;
+
+  LandingData({
+    required this.specialties,
+    required this.cities,
+    required this.insurances,
+    required this.clinics,
+  });
+}
+
+// Loads real data the same way Angular's loadAllRealData() /
+// processRealClinicsAndDoctors() do: specialties, cities, insurances,
+// clinics + detail, doctors + their active clinic links — all via the
+// existing services, not new ones.
+final landingDataProvider = FutureProvider<LandingData>((ref) async {
+  final clinicSvc = ref.watch(clinicServiceProvider);
+  final doctorSvc = ref.watch(doctorServiceProvider);
+  final refSvc = ref.watch(referenceServiceProvider);
+
+  final results = await Future.wait([
+    refSvc.getAllSpecialties().catchError((_) => <SpecialtyModel>[]),
+    refSvc.getAllCities().catchError((_) => <CityModel>[]),
+    refSvc
+        .getAllInsuranceProviders()
+        .catchError((_) => <InsuranceProviderModel>[]),
+    clinicSvc.getAllClinics().catchError((_) => <ClinicModel>[]),
+    doctorSvc.getAllDoctors().catchError((_) => <DoctorModel>[]),
+  ]);
+
+  final specialties = results[0] as List<SpecialtyModel>;
+  final cities = results[1] as List<CityModel>;
+  final insurances = results[2] as List<InsuranceProviderModel>;
+  final rawClinics = results[3] as List<ClinicModel>;
+  final rawDoctors = results[4] as List<DoctorModel>;
+
+  // Active clinic links per doctor.
+  final Map<String, List<DoctorClinicModel>> doctorLinks = {};
+  await Future.wait(rawDoctors.map((doc) async {
+    final links = await doctorSvc
+        .getDoctorClinics(doc.doctorId)
+        .catchError((_) => <DoctorClinicModel>[]);
+    doctorLinks[doc.doctorId] = links.where((l) => l.isActive).toList();
+  }));
+
+  // Detail (branches/specialties/insurance) per clinic.
+  final details = await Future.wait(rawClinics.map(
+    (c) => clinicSvc
+        .getClinicDetail(c.clinicId)
+        .then<ClinicDetailResponse?>((d) => d)
+        .catchError((_) => null),
+  ));
+
+  final clinicCards = <ClinicCardDisplay>[];
+  for (var i = 0; i < rawClinics.length; i++) {
+    final c = rawClinics[i];
+    final detail = details[i];
+    ClinicBranchModel? primaryBranch;
+    if (detail != null && detail.branches.isNotEmpty) {
+      primaryBranch = detail.branches.firstWhere(
+        (b) => b.isPrimary,
+        orElse: () => detail.branches.first,
+      );
+    }
+    final cityId = primaryBranch?.cityId ??
+        (cities.isNotEmpty ? cities[i % cities.length].cityId : '');
+    final cityName = cities
+        .firstWhere((ct) => ct.cityId == cityId,
+            orElse: () =>
+                CityModel(cityId: '', nameEn: 'Saudi Arabia', nameAr: ''))
+        .nameEn;
+    final area = (primaryBranch?.addressLine1.isNotEmpty ?? false)
+        ? primaryBranch!.addressLine1
+        : cityName;
+
+    final specNames = (detail?.specialties ?? <ClinicSpecialtyModel>[])
+        .map((s) => specialties
+            .firstWhere((x) => x.specialtyId == s.specialtyId,
+                orElse: () =>
+                    SpecialtyModel(specialtyId: '', nameEn: '', nameAr: ''))
+            .nameEn)
+        .where((n) => n.isNotEmpty)
+        .toList();
+
+    final insNames = {
+      for (final ins in (detail?.insurances ?? <ClinicInsuranceModel>[])
+          .where((i) => i.isActive))
+        insurances
+            .firstWhere((x) => x.providerId == ins.providerId,
+                orElse: () => InsuranceProviderModel(
+                    providerId: '', nameEn: '', nameAr: ''))
+            .nameEn
+    }.where((n) => n.isNotEmpty).toList();
+
+    // Doctors linked to this clinic via active doctor-clinic assignments.
+    final docCards = <DoctorCardDisplay>[];
+    for (final doc in rawDoctors) {
+      final links = doctorLinks[doc.doctorId] ?? [];
+      for (final link in links.where((l) => l.clinicId == c.clinicId)) {
+        final branch = detail?.branches.firstWhere(
+          (b) => b.branchId == link.branchId,
+          orElse: () => ClinicBranchModel(
+              branchId: '',
+              clinicId: '',
+              branchNameEn: '',
+              branchNameAr: '',
+              cityId: '',
+              addressLine1: '',
+              isPrimary: false,
+              isActive: true),
+        );
+        docCards.add(DoctorCardDisplay(
+          doctor: doc,
+          clinicId: c.clinicId,
+          dcId: link.dcId,
+          branchName: branch?.branchNameEn ?? '',
+        ));
+      }
+    }
+
+    clinicCards.add(ClinicCardDisplay(
+      clinic: c,
+      detail: detail,
+      cityName: cityName,
+      area: area,
+      specNames: specNames,
+      insuranceNames: insNames,
+      doctors: docCards,
+    ));
+  }
+
+  // Fire-and-forget: fetch real next-available-slot per doctor (mirrors
+  // fetchRealSlotsForLandingDoctors in Angular) without blocking first paint.
+  // getAvailableSlots returns raw json (List<dynamic>) — no dedicated slot
+  // model exists yet in doctor_service.dart, so fields are read directly.
+  for (final card in clinicCards) {
+    for (final doc in card.doctors) {
+      if (doc.dcId.isEmpty) {
+        doc
+          ..nextSlot = 'No open slots'
+          ..avail = 'busy';
+        continue;
+      }
+      doctorSvc.getAvailableSlots(doc.dcId).then((raw) {
+        final available = raw
+            .map((e) => e as Map<String, dynamic>)
+            .where((e) =>
+                (e['status']?.toString().toUpperCase() ?? '') == 'AVAILABLE')
+            .toList()
+          ..sort((a, b) {
+            final d = (a['slotDate']?.toString() ?? '')
+                .compareTo(b['slotDate']?.toString() ?? '');
+            return d != 0
+                ? d
+                : (a['startTime']?.toString() ?? '')
+                    .compareTo(b['startTime']?.toString() ?? '');
+          });
+        if (available.isEmpty) {
+          doc
+            ..nextSlot = 'No open slots'
+            ..avail = 'busy';
+          return;
+        }
+        final first = available.first;
+        final slotDate = first['slotDate']?.toString() ?? '';
+        final startTime = first['startTime']?.toString() ?? '';
+        final today = DateTime.now();
+        final todayStr =
+            '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+        final tomorrow = today.add(const Duration(days: 1));
+        final tomorrowStr =
+            '${tomorrow.year.toString().padLeft(4, '0')}-${tomorrow.month.toString().padLeft(2, '0')}-${tomorrow.day.toString().padLeft(2, '0')}';
+        final time = _formatSlotTime(startTime);
+        if (slotDate == todayStr) {
+          doc
+            ..nextSlot = 'Today $time'
+            ..avail = 'today';
+        } else if (slotDate == tomorrowStr) {
+          doc
+            ..nextSlot = 'Tomorrow $time'
+            ..avail = 'tomorrow';
+        } else {
+          doc
+            ..nextSlot = '$slotDate $time'
+            ..avail = 'tomorrow';
+        }
+      }).catchError((_) {
+        doc
+          ..nextSlot = 'No open slots'
+          ..avail = 'busy';
+      });
+    }
+  }
+
+  return LandingData(
+    specialties: specialties,
+    cities: cities,
+    insurances: insurances,
+    clinics: clinicCards,
+  );
+});
+
+String _formatSlotTime(String timeStr) {
+  final parts = timeStr.split(':');
+  if (parts.length < 2) return timeStr;
+  var hours = int.tryParse(parts[0]) ?? 0;
+  final minutes = parts[1];
+  final ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours == 0 ? 12 : hours;
+  return '$hours:$minutes $ampm';
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 
 class LandingScreen extends ConsumerStatefulWidget {
   const LandingScreen({super.key});
@@ -38,53 +282,7 @@ class LandingScreen extends ConsumerStatefulWidget {
 
 class _LandingScreenState extends ConsumerState<LandingScreen> {
   final _searchController = TextEditingController();
-  String _selectedSpecialty = 'All';
-
-  final List<String> _specialties = [
-    'All',
-    'General Practice',
-    'Internal Medicine',
-    'Cardiology',
-    'Dermatology',
-    'Pediatrics',
-    'Orthopedics',
-  ];
-
-  final List<DoctorCardData> _mockDoctors = const [
-    DoctorCardData(
-      id: 'doc-1',
-      name: 'Dr. Tariq Al-Mansoor',
-      title: 'Dr',
-      spec: 'Cardiology Specialist',
-      rating: 4.9,
-      reviews: 48,
-      expYears: 12,
-      nextSlot: 'Today 3:00 PM',
-      feeSar: 250,
-    ),
-    DoctorCardData(
-      id: 'doc-2',
-      name: 'Dr. Sarah Jenkins',
-      title: 'Dr',
-      spec: 'Dermatology Consultant',
-      rating: 5.0,
-      reviews: 92,
-      expYears: 8,
-      nextSlot: 'Tomorrow 10:00 AM',
-      feeSar: 200,
-    ),
-    DoctorCardData(
-      id: 'doc-3',
-      name: 'Dr. Ahmed Al-Zahrani',
-      title: 'Dr',
-      spec: 'Pediatrics Specialist',
-      rating: 4.8,
-      reviews: 35,
-      expYears: 15,
-      nextSlot: 'Today 5:30 PM',
-      feeSar: 180,
-    ),
-  ];
+  String? _selectedSpecialtyId;
 
   @override
   void dispose() {
@@ -92,20 +290,20 @@ class _LandingScreenState extends ConsumerState<LandingScreen> {
     super.dispose();
   }
 
-  void _showBookingDialog(DoctorCardData doc) {
+  void _showBookingDialog(DoctorCardDisplay doc) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Book Appointment with ${doc.name}'),
+        title: Text('Book Appointment with Dr. ${doc.doctor.fullName}'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Specialty: ${doc.spec}'),
+            if (doc.doctor.consultationFeeSar > 0)
+              Text(
+                  'Consultation Fee: SAR ${doc.doctor.consultationFeeSar.toStringAsFixed(0)}'),
             const SizedBox(height: 4),
-            Text('Consultation Fee: SAR ${doc.feeSar.toStringAsFixed(0)}'),
-            const SizedBox(height: 4),
-            Text('Available Slot: ${doc.nextSlot}'),
+            Text('Next Available Slot: ${doc.nextSlot}'),
             const SizedBox(height: 16),
             const Text(
               'Please log in as a Patient to confirm appointment booking.',
@@ -134,6 +332,7 @@ class _LandingScreenState extends ConsumerState<LandingScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authNotifierProvider);
     final user = authState.currentUser;
+    final landingAsync = ref.watch(landingDataProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -144,7 +343,8 @@ class _LandingScreenState extends ConsumerState<LandingScreen> {
               padding: const EdgeInsets.only(right: 16),
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 ),
                 onPressed: () {
                   switch (user.role) {
@@ -183,240 +383,418 @@ class _LandingScreenState extends ConsumerState<LandingScreen> {
           ],
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Hero Section
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
-              color: AppTheme.darkSidebar,
-              child: Column(
+      body: RefreshIndicator(
+        onRefresh: () => ref.refresh(landingDataProvider.future),
+        child: landingAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (err, st) => ListView(
+            children: [
+              const SizedBox(height: 120),
+              Icon(Icons.wifi_off, size: 40, color: AppTheme.textMuted),
+              const SizedBox(height: 12),
+              const Center(
+                  child: Text('Could not load clinics. Pull to retry.')),
+              const SizedBox(height: 4),
+              Center(
+                child: Text('$err',
+                    style: const TextStyle(
+                        fontSize: 11, color: AppTheme.textMuted)),
+              ),
+            ],
+          ),
+          data: (data) => _buildContent(data),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent(LandingData data) {
+    final query = _searchController.text.trim().toLowerCase();
+    final filteredClinics = data.clinics.where((c) {
+      final matchesQuery = query.isEmpty ||
+          c.clinic.nameEn.toLowerCase().contains(query) ||
+          c.doctors.any((d) => d.doctor.fullName.toLowerCase().contains(query));
+      final matchesSpec = _selectedSpecialtyId == null ||
+          (c.detail?.specialties
+                  .any((s) => s.specialtyId == _selectedSpecialtyId) ??
+              false);
+      return matchesQuery && matchesSpec;
+    }).toList();
+
+    return ListView(
+      children: [
+        // Hero + search
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
+          color: AppTheme.darkSidebar,
+          child: Column(
+            children: [
+              const Text(
+                'Find a clinic. Connect with the right doctor.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Search verified private clinics — browse doctors by specialty and availability.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(30),
+                ),
+                child: Row(
+                  children: [
+                    const SizedBox(width: 16),
+                    const Icon(Icons.search, color: AppTheme.textMuted),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        key: const Key('landing_search_input'),
+                        controller: _searchController,
+                        decoration: const InputDecoration(
+                          hintText: 'Search doctor, specialty, or clinic...',
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          fillColor: Colors.transparent,
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                    ElevatedButton(
+                      key: const Key('landing_search_btn'),
+                      style: ElevatedButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                      ),
+                      onPressed: () => setState(() {}),
+                      child: const Text('Search'),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Specialty filter chips (real specialties from API)
+        Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Browse by Specialty',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  const Text(
-                    'Saudi Arabia\'s Leading Digital Health Platform',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 32,
+                  ChoiceChip(
+                    label: const Text('All'),
+                    selected: _selectedSpecialtyId == null,
+                    selectedColor: AppTheme.primaryTeal,
+                    labelStyle: TextStyle(
+                      color: _selectedSpecialtyId == null
+                          ? Colors.white
+                          : AppTheme.textMain,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
                     ),
+                    onSelected: (_) =>
+                        setState(() => _selectedSpecialtyId = null),
                   ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Find verified doctors, explore clinics, and book tele-consultations effortlessly.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 16, color: Colors.white70),
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Search Bar
-                  Container(
-                    constraints: const BoxConstraints(maxWidth: 600),
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    child: Row(
-                      children: [
-                        const SizedBox(width: 16),
-                        const Icon(Icons.search, color: AppTheme.textMuted),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextField(
-                            key: const Key('landing_search_input'),
-                            controller: _searchController,
-                            decoration: const InputDecoration(
-                              hintText: 'Search doctor, specialty, or clinic...',
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              fillColor: Colors.transparent,
-                            ),
-                          ),
-                        ),
-                        ElevatedButton(
-                          key: const Key('landing_search_btn'),
-                          style: ElevatedButton.styleFrom(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(24),
-                            ),
-                          ),
-                          onPressed: () => setState(() {}),
-                          child: const Text('Search'),
-                        ),
-                      ],
-                    ),
-                  ),
+                  ...data.specialties.map((spec) {
+                    final isSelected = _selectedSpecialtyId == spec.specialtyId;
+                    return ChoiceChip(
+                      label: Text(spec.nameEn),
+                      selected: isSelected,
+                      selectedColor: AppTheme.primaryTeal,
+                      labelStyle: TextStyle(
+                        color: isSelected ? Colors.white : AppTheme.textMain,
+                        fontWeight:
+                            isSelected ? FontWeight.bold : FontWeight.normal,
+                      ),
+                      onSelected: (selected) => setState(() =>
+                          _selectedSpecialtyId =
+                              selected ? spec.specialtyId : null),
+                    );
+                  }),
                 ],
               ),
-            ),
+              const SizedBox(height: 32),
+              Text('Verified Medical Clinics (${filteredClinics.length})',
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              if (filteredClinics.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(
+                      child: Text(
+                          'No medical clinics found matching your current filters.')),
+                )
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: filteredClinics.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 16),
+                  itemBuilder: (context, index) => _ClinicCard(
+                      clinic: filteredClinics[index],
+                      onBook: _showBookingDialog),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
 
-            // Specialty Filter Chips
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Browse by Specialty',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+class _ClinicCard extends StatefulWidget {
+  final ClinicCardDisplay clinic;
+  final void Function(DoctorCardDisplay) onBook;
+
+  const _ClinicCard({required this.clinic, required this.onBook});
+
+  @override
+  State<_ClinicCard> createState() => _ClinicCardState();
+}
+
+class _ClinicCardState extends State<_ClinicCard> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.clinic;
+    final visibleDoctors = _expanded ? c.doctors : c.doctors.take(3).toList();
+    final logoUrl = c.clinic.logoUrl ?? '';
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryLightTeal,
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _specialties.map((spec) {
-                      final isSelected = _selectedSpecialty == spec;
-                      return ChoiceChip(
-                        label: Text(spec),
-                        selected: isSelected,
-                        selectedColor: AppTheme.primaryTeal,
-                        labelStyle: TextStyle(
-                          color: isSelected ? Colors.white : AppTheme.textMain,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        ),
-                        onSelected: (selected) {
-                          if (selected) setState(() => _selectedSpecialty = spec);
-                        },
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Doctor Cards Header
-                  const Text(
-                    'Featured Doctors & Specialists',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Doctor Cards Grid / List
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final filteredDocs = _mockDoctors.where((doc) {
-                        final query = _searchController.text.trim().toLowerCase();
-                        final matchesQuery = query.isEmpty ||
-                            doc.name.toLowerCase().contains(query) ||
-                            doc.spec.toLowerCase().contains(query);
-                        final matchesSpec = _selectedSpecialty == 'All' || doc.spec.contains(_selectedSpecialty);
-                        return matchesQuery && matchesSpec;
-                      }).toList();
-
-                      if (filteredDocs.isEmpty) {
-                        return const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(32),
-                            child: Text('No doctors match your criteria.'),
+                  child: logoUrl.isNotEmpty
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Image.network(logoUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const Icon(
+                                  Icons.local_hospital,
+                                  color: AppTheme.primaryDarkTeal)),
+                        )
+                      : const Icon(Icons.local_hospital,
+                          color: AppTheme.primaryDarkTeal),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(c.clinic.nameEn,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 15)),
+                      Row(
+                        children: [
+                          const Icon(Icons.location_on,
+                              size: 12, color: AppTheme.textMuted),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(c.area.isNotEmpty ? c.area : c.cityName,
+                                style: const TextStyle(
+                                    fontSize: 12, color: AppTheme.textMuted),
+                                overflow: TextOverflow.ellipsis),
                           ),
-                        );
-                      }
-
-                      return ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: filteredDocs.length,
-                        separatorBuilder: (context, index) => const SizedBox(height: 16),
-                        itemBuilder: (context, index) {
-                          final doc = filteredDocs[index];
-                          return Card(
-                            child: Padding(
-                              padding: const EdgeInsets.all(20),
-                              child: Row(
-                                children: [
-                                  CircleAvatar(
-                                    radius: 30,
-                                    backgroundColor: AppTheme.primaryLightTeal,
-                                    child: Text(
-                                      doc.name.split(' ').map((e) => e[0]).take(2).join(),
-                                      style: const TextStyle(
-                                        color: AppTheme.primaryTeal,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          doc.name,
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppTheme.textMain,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          doc.spec,
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            color: AppTheme.primaryTeal,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Row(
-                                          children: [
-                                            const Icon(Icons.star, color: Colors.amber, size: 16),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              '${doc.rating} (${doc.reviews} reviews)',
-                                              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
-                                            ),
-                                            const SizedBox(width: 12),
-                                            const Icon(Icons.work_outline, size: 16, color: AppTheme.textMuted),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              '${doc.expYears} yrs exp',
-                                              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        'SAR ${doc.feeSar.toStringAsFixed(0)}',
-                                        style: const TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                          color: AppTheme.textMain,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        doc.nextSlot,
-                                        style: const TextStyle(fontSize: 12, color: AppTheme.successGreen),
-                                      ),
-                                      const SizedBox(height: 10),
-                                      ElevatedButton(
-                                        onPressed: () => _showBookingDialog(doc),
-                                        child: const Text('Book Appointment'),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      );
-                    },
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          Row(mainAxisSize: MainAxisSize.min, children: [
+                            const Icon(Icons.star,
+                                size: 14, color: AppTheme.warningAmber),
+                            Text(
+                                ' ${c.clinic.overallRating.toStringAsFixed(1)} (${c.clinic.reviewCount})',
+                                style: const TextStyle(
+                                    fontSize: 11, color: AppTheme.textMuted)),
+                          ]),
+                          if (c.clinic.mohVerified)
+                            _Badge(
+                                text: 'MOH Verified',
+                                color: AppTheme.primaryTeal),
+                          if (c.clinic.isActive)
+                            _Badge(
+                                text: 'Active', color: AppTheme.successGreen),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
+            if (c.specNames.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: c.specNames
+                    .map((s) => _Tag(text: s, color: AppTheme.infoBlue))
+                    .toList(),
+              ),
+            ],
+            if (c.insuranceNames.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: c.insuranceNames
+                    .map((s) => _Tag(text: s, color: AppTheme.primaryDarkTeal))
+                    .toList(),
+              ),
+            ],
+            if (visibleDoctors.isNotEmpty) ...[
+              const Divider(height: 24),
+              ...visibleDoctors
+                  .map((doc) => _DoctorTile(doc: doc, onBook: widget.onBook)),
+            ],
+            if (c.doctors.length > 3)
+              Center(
+                child: TextButton(
+                  onPressed: () => setState(() => _expanded = !_expanded),
+                  child: Text(_expanded
+                      ? 'Show fewer doctors ▲'
+                      : 'Show more doctors at this facility ▼'),
+                ),
+              ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _DoctorTile extends StatelessWidget {
+  final DoctorCardDisplay doc;
+  final void Function(DoctorCardDisplay) onBook;
+
+  const _DoctorTile({required this.doc, required this.onBook});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 19,
+            backgroundColor: AppTheme.primaryLightTeal,
+            child: Text(
+              doc.doctor.fullName.trim().isEmpty
+                  ? 'DR'
+                  : doc.doctor.fullName
+                      .trim()
+                      .split(RegExp(r'\s+'))
+                      .map((e) => e.isNotEmpty ? e[0] : '')
+                      .take(2)
+                      .join()
+                      .toUpperCase(),
+              style: const TextStyle(
+                  color: AppTheme.primaryTeal,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Dr. ${doc.doctor.fullName}',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 13)),
+                Text(
+                    '${doc.doctor.experienceYears} yrs exp · SAR ${doc.doctor.consultationFeeSar.toStringAsFixed(0)}',
+                    style: const TextStyle(
+                        fontSize: 11, color: AppTheme.textMuted)),
+                Text(doc.nextSlot,
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: doc.avail == 'busy'
+                            ? AppTheme.dangerRed
+                            : AppTheme.successGreen)),
+              ],
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                minimumSize: const Size(0, 30),
+                textStyle: const TextStyle(fontSize: 12)),
+            onPressed: () => onBook(doc),
+            child: const Text('Book'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Badge extends StatelessWidget {
+  final String text;
+  final Color color;
+  const _Badge({required this.text, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+          color: color.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(4)),
+      child: Text(text,
+          style: TextStyle(
+              fontSize: 10, color: color, fontWeight: FontWeight.w600)),
+    );
+  }
+}
+
+class _Tag extends StatelessWidget {
+  final String text;
+  final Color color;
+  const _Tag({required this.text, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(20)),
+      child: Text(text, style: TextStyle(fontSize: 10.5, color: color)),
     );
   }
 }

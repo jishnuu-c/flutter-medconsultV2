@@ -56,10 +56,33 @@ class LanguageModel {
   }
 }
 
+class CityModel {
+  final String cityId;
+  final String nameEn;
+  final String nameAr;
+
+  CityModel({required this.cityId, required this.nameEn, required this.nameAr});
+
+  factory CityModel.fromJson(Map<String, dynamic> json) {
+    return CityModel(
+      cityId: json['cityId']?.toString() ?? '',
+      nameEn: json['nameEn']?.toString() ?? '',
+      nameAr: json['nameAr']?.toString() ?? '',
+    );
+  }
+}
+
 class ReferenceService {
   final Dio dio;
 
   ReferenceService({required this.dio});
+
+  // ── Cities ──────────────────────────────────────────────────────────
+  Future<List<CityModel>> getAllCities() async {
+    final res = await dio.get('/api/medconsult/cities/all');
+    final List list = res.data ?? [];
+    return list.map((e) => CityModel.fromJson(e)).toList();
+  }
 
   // ── Specialties ─────────────────────────────────────────────────────
   Future<List<SpecialtyModel>> getAllSpecialties() async {
