@@ -9,6 +9,7 @@ import '../../clinic_admin/data/clinic_models.dart';
 import '../../clinic_admin/data/clinic_service.dart';
 import '../../clinic_admin/data/doctor_models.dart';
 import '../../clinic_admin/data/doctor_service.dart';
+import '../../../core/network/api_client.dart';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Display models
@@ -1031,7 +1032,14 @@ class _ClinicCardState extends State<_ClinicCard> {
   @override
   Widget build(BuildContext context) {
     final c = widget.clinic;
-    final logoUrl = c.clinic.logoUrl ?? '';
+    final rawLogoUrl = c.clinic.logoUrl ?? '';
+    final logoUrl = rawLogoUrl.isNotEmpty
+        ? (rawLogoUrl.startsWith('http')
+            ? rawLogoUrl
+            : '$kBaseUrl${rawLogoUrl.startsWith('/') ? '' : '/'}$rawLogoUrl')
+        : '';
+
+    print('LOGOOOOOOOOOOOOO:$logoUrl');
     final totalDoctors = c.doctors.length;
 
     return Container(
@@ -1419,7 +1427,12 @@ class _DoctorTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final avatarUrl = doc.doctor.avatarUrl ?? '';
+    final rawAvatarUrl = doc.doctor.avatarUrl ?? '';
+    final avatarUrl = rawAvatarUrl.isNotEmpty
+        ? (rawAvatarUrl.startsWith('http')
+            ? rawAvatarUrl
+            : '$kBaseUrl${rawAvatarUrl.startsWith('/') ? '' : '/'}$rawAvatarUrl')
+        : '';
     final initials = _initials(doc.doctor.fullName);
 
     // Avail color — matches Angular: today=green, tomorrow=teal, busy=red

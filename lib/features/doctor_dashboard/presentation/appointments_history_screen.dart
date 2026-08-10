@@ -4,6 +4,7 @@ import '../../../core/auth/auth_provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../clinic_admin/data/doctor_service.dart';
 import '../../doctor_dashboard/data/appointment_service.dart';
+import '../../../core/network/api_client.dart';
 
 /// Mirrors Angular's doctor-dashboard/appointments-history — mobile view.
 class DoctorAppointmentsHistoryScreen extends ConsumerStatefulWidget {
@@ -450,6 +451,12 @@ class _DoctorAppointmentsHistoryScreenState
     final status = (a['status'] ?? '').toString();
     final sessionType = (a['sessionType'] ?? '').toString();
     final patientName = (a['patientName'] ?? 'Patient').toString();
+    final rawAvatarUrl = (a['patientAvatarUrl'] ?? a['patientAvatar'] ?? a['avatarUrl'] ?? '').toString();
+    final avatarUrl = rawAvatarUrl.isNotEmpty
+        ? (rawAvatarUrl.startsWith('http')
+            ? rawAvatarUrl
+            : '$kBaseUrl${rawAvatarUrl.startsWith('/') ? '' : '/'}$rawAvatarUrl')
+        : '';
     final scheduledDate = (a['scheduledDate'] ?? '').toString();
     final startTime = (a['startTime'] ?? '').toString();
     final clinicName = (a['clinicNameEn'] ?? '').toString();
@@ -471,19 +478,18 @@ class _DoctorAppointmentsHistoryScreenState
           children: [
             Row(
               children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: _avatarBgColors[idx],
-                    shape: BoxShape.circle,
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(_initials(patientName),
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                          color: _avatarFgColors[idx])),
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: _avatarBgColors[idx],
+                  backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+                  onBackgroundImageError: avatarUrl.isNotEmpty ? (_, __) {} : null,
+                  child: avatarUrl.isEmpty
+                      ? Text(_initials(patientName),
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                              color: _avatarFgColors[idx]))
+                      : null,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -584,6 +590,12 @@ class _DoctorAppointmentsHistoryScreenState
   void _openDetails(dynamic a) {
     final status = (a['status'] ?? '').toString();
     final patientName = (a['patientName'] ?? 'Patient').toString();
+    final rawAvatarUrl = (a['patientAvatarUrl'] ?? a['patientAvatar'] ?? a['avatarUrl'] ?? '').toString();
+    final avatarUrl = rawAvatarUrl.isNotEmpty
+        ? (rawAvatarUrl.startsWith('http')
+            ? rawAvatarUrl
+            : '$kBaseUrl${rawAvatarUrl.startsWith('/') ? '' : '/'}$rawAvatarUrl')
+        : '';
     final idx = _colorIdx(patientName);
 
     showModalBottomSheet(
@@ -614,19 +626,18 @@ class _DoctorAppointmentsHistoryScreenState
                   ),
                   child: Row(
                     children: [
-                      Container(
-                        width: 52,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          color: _avatarBgColors[idx],
-                          shape: BoxShape.circle,
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(_initials(patientName),
-                            style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 18,
-                                color: _avatarFgColors[idx])),
+                      CircleAvatar(
+                        radius: 26,
+                        backgroundColor: _avatarBgColors[idx],
+                        backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+                        onBackgroundImageError: avatarUrl.isNotEmpty ? (_, __) {} : null,
+                        child: avatarUrl.isEmpty
+                            ? Text(_initials(patientName),
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 18,
+                                    color: _avatarFgColors[idx]))
+                            : null,
                       ),
                       const SizedBox(width: 12),
                       Expanded(
