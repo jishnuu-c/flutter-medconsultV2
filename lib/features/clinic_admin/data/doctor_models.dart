@@ -1,12 +1,5 @@
 import 'dart:convert';
 
-// Defensive: some backend responses in this project have come back with
-// nested object fields double-encoded as a raw JSON string instead of an
-// actual object (same root cause as the top-level response sometimes
-// missing a proper application/json content-type). Decode defensively
-// wherever we're about to hand something to a fromJson(Map) factory,
-// instead of crashing with "type 'String' is not a subtype of type
-// 'Map<String, dynamic>'".
 Map<String, dynamic> _asMap(dynamic v) {
   if (v is String) return jsonDecode(v) as Map<String, dynamic>;
   return v as Map<String, dynamic>;
@@ -110,6 +103,7 @@ class DoctorModel {
   final int reviewCount;
   final double consultationFeeSar;
   final bool isActive;
+  final String? avatarUrl; // ← ADDED
   final String? createdAt;
   final String? updatedAt;
 
@@ -128,6 +122,7 @@ class DoctorModel {
     required this.reviewCount,
     required this.consultationFeeSar,
     required this.isActive,
+    this.avatarUrl, // ← ADDED
     this.createdAt,
     this.updatedAt,
   });
@@ -169,6 +164,11 @@ class DoctorModel {
           (json['consultation_fee'] as num?)?.toDouble() ??
           150.0,
       isActive: json['isActive'] ?? json['is_active'] ?? true,
+      // ← ADDED: defensive multi-key lookup matching Angular's avatarUrl
+      avatarUrl: json['avatarUrl']?.toString() ??
+          json['avatar_url']?.toString() ??
+          json['profileImage']?.toString() ??
+          json['profile_image']?.toString(),
       createdAt: json['createdAt'],
       updatedAt: json['updatedAt'],
     );
@@ -185,6 +185,7 @@ class DoctorModel {
         'experienceYears': experienceYears,
         'consultationFeeSar': consultationFeeSar,
         'isActive': isActive,
+        if (avatarUrl != null) 'avatarUrl': avatarUrl, // ← ADDED
       };
 }
 
@@ -465,6 +466,7 @@ class DoctorDetailResponse extends DoctorModel {
     required super.reviewCount,
     required super.consultationFeeSar,
     required super.isActive,
+    super.avatarUrl, // ← ADDED
     super.createdAt,
     super.updatedAt,
     required this.clinics,
@@ -492,6 +494,7 @@ class DoctorDetailResponse extends DoctorModel {
       reviewCount: base.reviewCount,
       consultationFeeSar: base.consultationFeeSar,
       isActive: base.isActive,
+      avatarUrl: base.avatarUrl, // ← ADDED
       createdAt: base.createdAt,
       updatedAt: base.updatedAt,
       clinics: (json['clinics'] as List? ?? [])
@@ -522,10 +525,6 @@ class DoctorDetailResponse extends DoctorModel {
           .toList(),
       languages: (json['languages'] as List? ?? [])
           .map((e) => e is String
-              // Backend sometimes sends this as a flat list of plain
-              // language-name strings instead of {languageId, proficiency}
-              // objects — wrap it into a model directly rather than trying
-              // (and failing) to JSON-decode a plain word like "Hindi".
               ? DoctorLanguageModel(
                   id: '',
                   doctorId: base.doctorId,
