@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/network/api_client.dart';
 import '../../clinic_admin/data/doctor_service.dart';
 import '../data/consultation_service.dart';
 import '../data/patient_record_service.dart';
@@ -675,6 +676,12 @@ class _DoctorConsultationsScreenState
       headerFg: AppTheme.primaryDarkTeal,
       bodyBuilder: (context, setSheetState) {
         final c = _selectedConsultation!;
+        final rawAvatarUrl = (c['patientAvatarUrl'] ?? c['patientAvatar'] ?? c['avatarUrl'] ?? '').toString();
+        final avatarUrl = rawAvatarUrl.isNotEmpty
+            ? (rawAvatarUrl.startsWith('http')
+                ? rawAvatarUrl
+                : '$kBaseUrl${rawAvatarUrl.startsWith('/') ? '' : '/'}$rawAvatarUrl')
+            : '';
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -684,15 +691,19 @@ class _DoctorConsultationsScreenState
                   CircleAvatar(
                     radius: 30,
                     backgroundColor: AppTheme.primaryTeal,
-                    child: Text(
-                      ((c['patientName'] as String?) ?? '?')
-                          .substring(0, 1)
-                          .toUpperCase(),
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold),
-                    ),
+                    backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+                    onBackgroundImageError: avatarUrl.isNotEmpty ? (_, __) {} : null,
+                    child: avatarUrl.isEmpty
+                        ? Text(
+                            ((c['patientName'] as String?) ?? '?')
+                                .substring(0, 1)
+                                .toUpperCase(),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold),
+                          )
+                        : null,
                   ),
                   const SizedBox(height: 8),
                   Text(c['patientName'] ?? '',
@@ -2255,17 +2266,27 @@ class _DoctorConsultationsScreenState
                                       const Divider(height: 1),
                                   itemBuilder: (context, index) {
                                     final c = _consultations[index];
+                                    final rawAvatarUrl = (c['patientAvatarUrl'] ?? c['patientAvatar'] ?? c['avatarUrl'] ?? '').toString();
+                                    final avatarUrl = rawAvatarUrl.isNotEmpty
+                                        ? (rawAvatarUrl.startsWith('http')
+                                            ? rawAvatarUrl
+                                            : '$kBaseUrl${rawAvatarUrl.startsWith('/') ? '' : '/'}$rawAvatarUrl')
+                                        : '';
                                     final status = c['status'] as String?;
                                     return ListTile(
                                       leading: CircleAvatar(
                                         backgroundColor: Colors.grey[300],
-                                        child: Text(
-                                          ((c['patientName'] as String?) ?? '?')
-                                              .substring(0, 1),
-                                          style: const TextStyle(
-                                              color: AppTheme.textMain,
-                                              fontWeight: FontWeight.bold),
-                                        ),
+                                        backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+                                        onBackgroundImageError: avatarUrl.isNotEmpty ? (_, __) {} : null,
+                                        child: avatarUrl.isEmpty
+                                            ? Text(
+                                                ((c['patientName'] as String?) ?? '?')
+                                                    .substring(0, 1),
+                                                style: const TextStyle(
+                                                    color: AppTheme.textMain,
+                                                    fontWeight: FontWeight.bold),
+                                              )
+                                            : null,
                                       ),
                                       title: Text(c['patientName'] ?? '',
                                           style: const TextStyle(
