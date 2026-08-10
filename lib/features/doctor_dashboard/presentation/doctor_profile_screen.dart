@@ -22,7 +22,8 @@ class _ProfileCardGroup extends StatelessWidget {
   final String title;
   final Widget child;
   // Mirrors Angular's per-card `border-left: 5px solid ...` accent —
-  // e.g. teal for Personal Overview, accent-amber for Credentials.
+  // e.g. #0f172a (var(--primary-dark)) for the Account card, teal for
+  // Personal Overview, amber/accent for Credentials.
   final Color accentColor;
   const _ProfileCardGroup({
     required this.title,
@@ -1521,6 +1522,16 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
     );
   }
 
+  // Mirrors Angular's `doctorDisplayName` getter:
+  //   `${title}. ${name}`  — falls back to 'Dr' / logged-in user's name.
+  String get _doctorDisplayName {
+    final title = _profile?.title.value ?? 'Dr';
+    final name = _profile?.fullName ??
+        ref.read(authNotifierProvider).currentUser?.fullName ??
+        'Doctor';
+    return '$title. $name';
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authNotifierProvider).currentUser;
@@ -1543,12 +1554,86 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
             const SizedBox(height: 24),
 
             // ── Card 0: User Account Settings & Profile Picture ─────────
+            // Angular border-left: var(--primary-dark, #0f172a)
             _buildAccountCard(user, isMobile),
             const SizedBox(height: 24),
 
-            // ── Card 1: Professional Profile & Credentials ──────────────
+            // ── Card 1: Personal Overview & Practice Details ────────────
+            // Angular border-left: var(--teal)
             _ProfileCardGroup(
-              title: 'Professional Profile & Credentials',
+              title: 'Personal Overview & Practice Details',
+              accentColor: AppTheme.primaryTeal,
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                runSpacing: 12,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(_doctorDisplayName,
+                          style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.textMain)),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 16,
+                        runSpacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text.rich(TextSpan(children: [
+                            const TextSpan(
+                                text: 'Experience: ',
+                                style: TextStyle(
+                                    fontSize: 12.5, color: AppTheme.textMuted)),
+                            TextSpan(
+                                text: '${profile?.experienceYears ?? 0} Years',
+                                style: const TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.textSecondary)),
+                          ])),
+                          Text.rich(TextSpan(children: [
+                            const TextSpan(
+                                text: 'Rating: ',
+                                style: TextStyle(
+                                    fontSize: 12.5, color: AppTheme.textMuted)),
+                            TextSpan(
+                                text:
+                                    '⭐ ${profile?.overallRating ?? 0} (${profile?.reviewCount ?? 0} reviews)',
+                                style: const TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.textSecondary)),
+                          ])),
+                          Text.rich(TextSpan(children: [
+                            const TextSpan(
+                                text: 'Standard Fee: ',
+                                style: TextStyle(
+                                    fontSize: 12.5, color: AppTheme.textMuted)),
+                            TextSpan(
+                                text:
+                                    'SAR ${profile?.consultationFeeSar ?? 150}',
+                                style: const TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF16A34A))),
+                          ])),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // ── Card 2: Professional Credentials & Qualifications ───────
+            // Angular border-left: var(--accent)
+            _ProfileCardGroup(
+              title: 'Professional Credentials, Bio & Qualifications',
               accentColor: AppTheme.warningAmber,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1567,6 +1652,8 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
 
   // Mirrors Angular's header banner: h2 title + subtitle on the left,
   // MOH-verified / registration-ID badges on the right (wraps on mobile).
+  // NOTE: rating/experience/fee live in the "Personal Overview" card
+  // below (Card 1), not here — matches the Angular markup exactly.
   Widget _buildHeaderBanner(DoctorDetailResponse? profile, bool isMobile) {
     return Container(
       padding: const EdgeInsets.only(bottom: 16),
@@ -1591,61 +1678,6 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
               const Text(
                   'Manage personal bio, clinical credentials, spoken languages, and academic qualifications',
                   style: TextStyle(fontSize: 13, color: AppTheme.textMuted)),
-              if (profile != null) ...[
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 16,
-                  runSpacing: 6,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.star_rounded,
-                            color: Colors.amber, size: 18),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${profile.overallRating.toStringAsFixed(1)} (${profile.reviewCount} reviews)',
-                          style: const TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textSecondary),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.work_outline_rounded,
-                            color: AppTheme.primaryTeal, size: 16),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${profile.experienceYears} Years Exp',
-                          style: const TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textSecondary),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.payments_outlined,
-                            color: Colors.green, size: 16),
-                        const SizedBox(width: 4),
-                        Text(
-                          'SAR ${profile.consultationFeeSar.toStringAsFixed(0)}',
-                          style: const TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textSecondary),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
             ],
           ),
           Wrap(
@@ -1689,7 +1721,9 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
   // Mirrors Angular Card 0: avatar upload + "1. User Account Details" form.
   // Uses ClipRRect + Stack/Positioned for the accent strip, same fix as
   // _ProfileCardGroup (uniform border/radius, colored strip drawn on top).
+  // Accent color matches Angular exactly: var(--primary-dark, #0f172a).
   Widget _buildAccountCard(dynamic user, bool isMobile) {
+    const accentColor = Color(0xFF0F172A);
     final pad = isMobile
         ? 14.0
         : 0.0; // wide-screen padding computed inline below via clamp
@@ -1771,7 +1805,7 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
                                       height: 24,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: AppTheme.primaryDarkTeal,
+                                        color: accentColor,
                                         border: Border.all(
                                             color: Colors.white, width: 2),
                                       ),
@@ -1834,14 +1868,18 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
                         if (!_isEditingAccount)
                           OutlinedButton(
                             onPressed: _enableAccountEdit,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: accentColor,
+                              side: const BorderSide(color: accentColor),
+                            ),
                             child: const Text('✏️ Edit Account Details'),
                           ),
                       ],
                     ),
                   ),
 
-                  // "User Account Details" form
-                  const Text('Account Settings',
+                  // "1. User Account Details" form
+                  const Text('1. User Account Details',
                       style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
@@ -1928,6 +1966,8 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
                           ElevatedButton(
                             onPressed:
                                 _isSavingAccount ? null : _saveAccountInfo,
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: accentColor),
                             child: _isSavingAccount
                                 ? const SizedBox(
                                     width: 18,
@@ -1944,12 +1984,12 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
               ),
             ),
           ),
-          Positioned(
+          const Positioned(
             left: 0,
             top: 0,
             bottom: 0,
             width: 5,
-            child: Container(color: AppTheme.primaryDarkTeal),
+            child: ColoredBox(color: accentColor),
           ),
         ],
       ),

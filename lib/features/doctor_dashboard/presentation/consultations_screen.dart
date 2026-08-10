@@ -2235,92 +2235,26 @@ class _DoctorConsultationsScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'My Consultations',
-              style: TextStyle(
-                  fontSize: isMobile ? 20 : 24,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textMain),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Manage patient tele-consultations and messages.',
-              style: TextStyle(fontSize: 14, color: AppTheme.textMuted),
-            ),
-            const SizedBox(height: 16),
             Expanded(
               child: _selectedConsultation == null
-                  ? Card(
-                      child: _isLoading
-                          ? const Center(child: CircularProgressIndicator())
-                          : (_consultations.isEmpty
-                              ? const Center(
-                                  child: Text(
-                                    'No consultations assigned to you.',
-                                    style: TextStyle(color: AppTheme.textMuted),
-                                  ),
-                                )
-                              : ListView.separated(
-                                  itemCount: _consultations.length,
-                                  separatorBuilder: (context, index) =>
-                                      const Divider(height: 1),
-                                  itemBuilder: (context, index) {
-                                    final c = _consultations[index];
-                                    final rawAvatarUrl = (c['patientAvatarUrl'] ?? c['patientAvatar'] ?? c['avatarUrl'] ?? '').toString();
-                                    final avatarUrl = rawAvatarUrl.isNotEmpty
-                                        ? (rawAvatarUrl.startsWith('http')
-                                            ? rawAvatarUrl
-                                            : '$kBaseUrl${rawAvatarUrl.startsWith('/') ? '' : '/'}$rawAvatarUrl')
-                                        : '';
-                                    final status = c['status'] as String?;
-                                    return ListTile(
-                                      leading: CircleAvatar(
-                                        backgroundColor: Colors.grey[300],
-                                        backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
-                                        onBackgroundImageError: avatarUrl.isNotEmpty ? (_, __) {} : null,
-                                        child: avatarUrl.isEmpty
-                                            ? Text(
-                                                ((c['patientName'] as String?) ?? '?')
-                                                    .substring(0, 1),
-                                                style: const TextStyle(
-                                                    color: AppTheme.textMain,
-                                                    fontWeight: FontWeight.bold),
-                                              )
-                                            : null,
-                                      ),
-                                      title: Text(c['patientName'] ?? '',
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.bold)),
-                                      subtitle: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(c['subject'] ?? '',
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis),
-                                          Text(
-                                            'Opened: ${(c['openedAt']?.toString().split('T').first) ?? ''}',
-                                            style: const TextStyle(
-                                                fontSize: 11,
-                                                color: AppTheme.textMuted),
-                                          ),
-                                        ],
-                                      ),
-                                      trailing: Chip(
-                                        label: Text(status ?? '',
-                                            style: const TextStyle(
-                                                fontSize: 11,
-                                                color: Colors.white)),
-                                        backgroundColor: _statusColor(status),
-                                        visualDensity: VisualDensity.compact,
-                                        materialTapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                      ),
-                                      onTap: () => _selectConsultation(c),
-                                    );
-                                  },
-                                )),
-                    )
+                  ? _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : (_consultations.isEmpty
+                          ? const Center(
+                              child: Text(
+                                'No consultations assigned to you.',
+                                style: TextStyle(color: AppTheme.textMuted),
+                              ),
+                            )
+                          : ListView.separated(
+                              itemCount: _consultations.length,
+                              separatorBuilder: (context, index) =>
+                                  const SizedBox(height: 12),
+                              itemBuilder: (context, index) {
+                                final c = _consultations[index];
+                                return _buildConsultationCard(c);
+                              },
+                            ))
                   : Card(
                       child: Column(
                         children: [
@@ -2390,6 +2324,207 @@ class _DoctorConsultationsScreenState
                     ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // Redesigns patient/consultation items with a clean, modern, and stylish UI card.
+  Widget _buildConsultationCard(Map<String, dynamic> c) {
+    final status = c['status'] as String?;
+    final isUrgent = c['isUrgent'] == true;
+    final rawAvatarUrl = (c['patientAvatarUrl'] ?? c['patientAvatar'] ?? c['avatarUrl'] ?? '').toString();
+    final avatarUrl = rawAvatarUrl.isNotEmpty
+        ? (rawAvatarUrl.startsWith('http')
+            ? rawAvatarUrl
+            : '$kBaseUrl${rawAvatarUrl.startsWith('/') ? '' : '/'}$rawAvatarUrl')
+        : '';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isUrgent ? AppTheme.dangerRed.withValues(alpha: 0.3) : AppTheme.borderGray,
+          width: isUrgent ? 1.5 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _selectConsultation(c),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                // Patient Avatar with optional urgent badge
+                Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 28,
+                      backgroundColor: AppTheme.primaryLightTeal,
+                      backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+                      onBackgroundImageError: avatarUrl.isNotEmpty ? (_, __) {} : null,
+                      child: avatarUrl.isEmpty
+                          ? Text(
+                              ((c['patientName'] as String?) ?? '?').substring(0, 1).toUpperCase(),
+                              style: const TextStyle(
+                                color: AppTheme.primaryDarkTeal,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                              ),
+                            )
+                          : null,
+                    ),
+                    if (isUrgent)
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          width: 14,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            color: AppTheme.dangerRed,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: 16),
+                
+                // Patient details & subject
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              c['patientName'] ?? 'Unknown Patient',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textMain,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (isUrgent) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFEF2F2),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: AppTheme.dangerRed.withValues(alpha: 0.3)),
+                              ),
+                              child: const Text(
+                                'URGENT',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.dangerRed,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        c['subject'] ?? 'No Subject Specified',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppTheme.textSecondary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(Icons.access_time_rounded, size: 13, color: AppTheme.textMuted),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Opened: ${_mediumDate(c['openedAt'])}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppTheme.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                
+                // Status pill and navigation arrow
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    _statusPill(status),
+                    const SizedBox(height: 10),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppTheme.textMuted,
+                      size: 20,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _statusPill(String? status) {
+    Color bg;
+    Color fg;
+    switch (status) {
+      case 'OPEN':
+        bg = const Color(0xFFDCFCE7);
+        fg = const Color(0xFF166534);
+        break;
+      case 'IN_PROGRESS':
+        bg = const Color(0xFFFEF3C7);
+        fg = const Color(0xFF92400E);
+        break;
+      case 'CLOSED':
+        bg = const Color(0xFFF3F4F6);
+        fg = const Color(0xFF374151);
+        break;
+      default:
+        bg = const Color(0xFFE0F2FE);
+        fg = const Color(0xFF075985);
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        status ?? 'UNKNOWN',
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          color: fg,
         ),
       ),
     );
