@@ -76,10 +76,10 @@ class _ProfileCardGroup extends StatelessWidget {
                     ),
                     child: Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 20,
-                          color: AppTheme.primaryTeal),
+                          color: accentColor),
                     ),
                   ),
                   child,
@@ -832,25 +832,25 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            const Text('Biography (English)',
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _bioEnController,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                  hintText: 'Enter your professional biography...'),
+            _labeled(
+              'Biography (English)',
+              TextField(
+                controller: _bioEnController,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                    hintText: 'Enter your professional biography...'),
+              ),
             ),
             const SizedBox(height: 16),
-            const Text('Biography (Arabic)',
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _bioArController,
-              maxLines: 4,
-              textDirection: TextDirection.rtl,
-              decoration:
-                  const InputDecoration(hintText: 'أدخل نبذتك المهنية...'),
+            _labeled(
+              'Biography (Arabic)',
+              TextField(
+                controller: _bioArController,
+                maxLines: 4,
+                textDirection: TextDirection.rtl,
+                decoration:
+                    const InputDecoration(hintText: 'أدخل نبذتك المهنية...'),
+              ),
             ),
             const SizedBox(height: 16),
             _responsivePair(
@@ -978,9 +978,18 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('🎓 ${_specialtyName(s.specialtyId)}',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w600)),
+                              Row(
+                                children: [
+                                  const Icon(Icons.health_and_safety_outlined, size: 18, color: AppTheme.primaryTeal),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      _specialtyName(s.specialtyId),
+                                      style: const TextStyle(fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                ],
+                              ),
                               const SizedBox(height: 4),
                               Chip(
                                 label: Text(
@@ -1084,9 +1093,11 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
                     ),
                     child: Row(
                       children: [
+                        const Icon(Icons.translate, size: 18, color: AppTheme.primaryTeal),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                              '🗣️ ${_languageName(l.languageId)} • ${l.proficiency.value}',
+                              '${_languageName(l.languageId)} • ${l.proficiency.value}',
                               style:
                                   const TextStyle(fontWeight: FontWeight.w600)),
                         ),
@@ -1302,8 +1313,11 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     alignment: Alignment.center,
-                                    child: const Text('🏥',
-                                        style: TextStyle(fontSize: 20)),
+                                    child: const Icon(
+                                      Icons.local_hospital_outlined,
+                                      color: AppTheme.primaryDarkTeal,
+                                      size: 22,
+                                    ),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
@@ -1528,19 +1542,9 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
             _buildAccountCard(user, isMobile),
             const SizedBox(height: 24),
 
-            // ── Card 1: Personal Overview & Practice Details ────────────
+            // ── Card 1: Professional Profile & Credentials ──────────────
             _ProfileCardGroup(
-              title: '2. Personal Overview & Practice Details',
-              accentColor: AppTheme.primaryTeal,
-              child: _buildOverviewDetails(profile, user),
-            ),
-            const SizedBox(height: 24),
-
-            // ── Card 2: Professional Credentials, Bio & Qualifications ──
-            // Single unified card: sub-nav tabs + active tab content live
-            // INSIDE it, same as Angular (no per-tab outer card).
-            _ProfileCardGroup(
-              title: '2. Professional Credentials, Bio & Qualifications',
+              title: 'Professional Profile & Credentials',
               accentColor: AppTheme.warningAmber,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1583,6 +1587,49 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
               const Text(
                   'Manage personal bio, clinical credentials, spoken languages, and academic qualifications',
                   style: TextStyle(fontSize: 13, color: AppTheme.textMuted)),
+              if (profile != null) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 16,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.star_rounded, color: Colors.amber, size: 18),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${profile.overallRating.toStringAsFixed(1)} (${profile.reviewCount} reviews)',
+                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.work_outline_rounded, color: AppTheme.primaryTeal, size: 16),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${profile.experienceYears} Years Exp',
+                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.payments_outlined, color: Colors.green, size: 16),
+                        const SizedBox(width: 4),
+                        Text(
+                          'SAR ${profile.consultationFeeSar.toStringAsFixed(0)}',
+                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
           Wrap(
@@ -1762,8 +1809,8 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
                     ),
                   ),
 
-                  // "1. User Account Details" form
-                  const Text('1. User Account Details',
+                  // "User Account Details" form
+                  const Text('Account Settings',
                       style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
@@ -1878,49 +1925,5 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
     );
   }
 
-  // Mirrors Angular Card 1 body: doctor display name + experience/rating/fee.
-  Widget _buildOverviewDetails(DoctorDetailResponse? profile, dynamic user) {
-    return Wrap(
-      alignment: WrapAlignment.spaceBetween,
-      crossAxisAlignment: WrapCrossAlignment.start,
-      runSpacing: 12,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              profile != null
-                  ? '${profile.title.value}. ${profile.fullName}'
-                  : (user?.fullName ?? 'Dr. Practitioner'),
-              style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textMain),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 16,
-              runSpacing: 6,
-              children: [
-                Text('Experience: ${profile?.experienceYears ?? 0} Years',
-                    style: const TextStyle(
-                        fontSize: 12.5, color: AppTheme.textMuted)),
-                Text(
-                    'Rating: ⭐ ${profile?.overallRating.toStringAsFixed(1) ?? '0.0'} (${profile?.reviewCount ?? 0} reviews)',
-                    style: const TextStyle(
-                        fontSize: 12.5, color: AppTheme.textMuted)),
-                Text(
-                    'Standard Fee: SAR ${profile?.consultationFeeSar.toStringAsFixed(0) ?? '150'}',
-                    style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF16A34A))),
-              ],
-            ),
-          ],
-        ),
-      ],
-    );
-  }
+
 }
