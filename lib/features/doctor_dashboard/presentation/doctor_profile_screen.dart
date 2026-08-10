@@ -7,6 +7,7 @@ import '../../clinic_admin/data/doctor_service.dart';
 import '../../clinic_admin/data/doctor_models.dart';
 import '../../system_admin/data/reference_service.dart';
 import '../../system_admin/data/reference_models.dart';
+import '../../../core/network/api_client.dart';
 
 class DoctorProfileScreen extends ConsumerStatefulWidget {
   const DoctorProfileScreen({super.key});
@@ -980,12 +981,14 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
                             children: [
                               Row(
                                 children: [
-                                  const Icon(Icons.health_and_safety_outlined, size: 18, color: AppTheme.primaryTeal),
+                                  const Icon(Icons.health_and_safety_outlined,
+                                      size: 18, color: AppTheme.primaryTeal),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
                                       _specialtyName(s.specialtyId),
-                                      style: const TextStyle(fontWeight: FontWeight.w600),
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w600),
                                     ),
                                   ),
                                 ],
@@ -1093,7 +1096,8 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.translate, size: 18, color: AppTheme.primaryTeal),
+                        const Icon(Icons.translate,
+                            size: 18, color: AppTheme.primaryTeal),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -1597,33 +1601,45 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.star_rounded, color: Colors.amber, size: 18),
+                        const Icon(Icons.star_rounded,
+                            color: Colors.amber, size: 18),
                         const SizedBox(width: 4),
                         Text(
                           '${profile.overallRating.toStringAsFixed(1)} (${profile.reviewCount} reviews)',
-                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+                          style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textSecondary),
                         ),
                       ],
                     ),
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.work_outline_rounded, color: AppTheme.primaryTeal, size: 16),
+                        const Icon(Icons.work_outline_rounded,
+                            color: AppTheme.primaryTeal, size: 16),
                         const SizedBox(width: 4),
                         Text(
                           '${profile.experienceYears} Years Exp',
-                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+                          style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textSecondary),
                         ),
                       ],
                     ),
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.payments_outlined, color: Colors.green, size: 16),
+                        const Icon(Icons.payments_outlined,
+                            color: Colors.green, size: 16),
                         const SizedBox(width: 4),
                         Text(
                           'SAR ${profile.consultationFeeSar.toStringAsFixed(0)}',
-                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+                          style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textSecondary),
                         ),
                       ],
                     ),
@@ -1677,6 +1693,13 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
     final pad = isMobile
         ? 14.0
         : 0.0; // wide-screen padding computed inline below via clamp
+    final rawAvatarUrl = _profile?.avatarUrl ?? user?.avatarUrl ?? '';
+    final avatarUrl = rawAvatarUrl.isNotEmpty
+        ? (rawAvatarUrl.startsWith('http')
+            ? rawAvatarUrl
+            : '$kBaseUrl${rawAvatarUrl.startsWith('/') ? '' : '/'}$rawAvatarUrl')
+        : '';
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Stack(
@@ -1724,13 +1747,21 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
                                   CircleAvatar(
                                     radius: 34,
                                     backgroundColor: AppTheme.primaryLightTeal,
-                                    child: Text(
-                                      user?.initials ?? 'DR',
-                                      style: const TextStyle(
-                                          color: AppTheme.primaryTeal,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 18),
-                                    ),
+                                    backgroundImage: avatarUrl.isNotEmpty
+                                        ? NetworkImage(avatarUrl)
+                                        : null,
+                                    onBackgroundImageError: avatarUrl.isNotEmpty
+                                        ? (_, __) {}
+                                        : null,
+                                    child: avatarUrl.isEmpty
+                                        ? Text(
+                                            user?.initials ?? 'DR',
+                                            style: const TextStyle(
+                                                color: AppTheme.primaryTeal,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 18),
+                                          )
+                                        : null,
                                   ),
                                   Positioned(
                                     bottom: -2,
@@ -1924,6 +1955,4 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
       ),
     );
   }
-
-
 }
