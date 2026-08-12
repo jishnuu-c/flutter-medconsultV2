@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/presentation/login_screen.dart';
+import '../../features/auth/presentation/oauth_success_screen.dart';
 import '../../features/auth/presentation/register_screen.dart';
 import '../../features/clinic_admin/presentation/clinics_screen.dart';
 import '../../features/clinic_admin/presentation/doctors_screen.dart';
@@ -119,6 +120,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/register',
         builder: (context, state) => const RegisterScreen(),
+      ),
+      GoRoute(
+        path: '/oauth-success',
+        builder: (context, state) => OauthSuccessScreen(
+          token: state.uri.queryParameters['token'],
+        ),
       ),
 
       // Protected Shell Routes with AppLayout

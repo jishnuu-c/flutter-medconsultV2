@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../clinic_admin/data/doctor_service.dart';
@@ -248,14 +249,17 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
   // your image_picker (or file_picker) call once the package is in
   // pubspec.yaml — kept as a stub here so this file compiles standalone.
   Future<void> _pickAvatar() async {
-    setState(() => _isEditingAccount = true);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text(
-                'Photo picker not wired yet — hook up image_picker here.')),
-      );
-    }
+    final picker = ImagePicker();
+    final XFile? picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
+    );
+    if (picked == null) return;
+
+    setState(() {
+      _isEditingAccount = true;
+      _stagedAvatarPath = picked.path;
+    });
   }
 
   // Mirrors Angular saveAccountInfo(): saves name/email/phone/gender/lang

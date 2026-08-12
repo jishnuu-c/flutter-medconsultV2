@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -283,8 +284,18 @@ class _DoctorPatientsScreenState extends ConsumerState<DoctorPatientsScreen> {
   Future<void> _downloadLabFile(String? fileId) async {
     if (fileId == null || fileId.isEmpty) return;
     try {
-      await ref.read(clinicalRecordServiceProvider).downloadFile(fileId);
       _toast('Report downloading...');
+      final bytes =
+          await ref.read(clinicalRecordServiceProvider).downloadFile(fileId);
+      final shortId = fileId.length > 8 ? fileId.substring(0, 8) : fileId;
+      final savedPath = await FilePicker.saveFile(
+        dialogTitle: 'Save Lab Report',
+        fileName: 'Lab_Report_$shortId.pdf',
+        bytes: Uint8List.fromList(bytes),
+      );
+      _toast(savedPath != null
+          ? 'Lab report saved to $savedPath'
+          : 'Download cancelled.');
     } catch (e) {
       debugPrint('download error: ${_errorMessage(e)}');
       _toast('Could not download lab report file.', error: true);
