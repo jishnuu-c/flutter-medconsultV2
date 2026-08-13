@@ -1,11 +1,18 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../clinic_admin/data/doctor_service.dart';
 import '../../doctor_dashboard/data/consultation_service.dart';
 import '../data/patient_service.dart';
+import '../data/chat_file_service.dart';
+import '../data/review_service.dart';
+import '../data/consultation_realtime_service.dart';
 
 class PatientConsultationsScreen extends ConsumerStatefulWidget {
   const PatientConsultationsScreen({super.key});
@@ -26,10 +33,32 @@ class _PatientConsultationsScreenState
   Map<String, dynamic>? _selectedConsultation;
   List<dynamic> _messages = [];
 
-  // Angular polls the messages endpoint every 3s while a thread is open
-  // (setInterval in ConsultationsComponent.startPolling). Mirrored here
-  // with a REST poll instead of a WebSocket stub that's never listened to.
-  Timer? _pollTimer;
+  // Mirrors ConsultationsComponent's chatSubscription — live push over STOMP
+  // (websocket.service.ts's watchConsultation), not a poll.
+  final _realtime = ConsultationRealtimeService();
+  StreamSubscription<Map<String, dynamic>>? _chatSubscription;
+
+  // ── File sharing state (mirrors selectedFile/isUploadingFile/fileMetadataCache) ──
+  PlatformFile? _selectedFile;
+  bool _isUploadingFile = false;
+  final Map<String, ChatFileMetadata> _fileMetadataCache = {};
+  final Map<String, Uint8List> _fileBytesCache = {};
+  final Map<String, String> _fileMimeCache = {};
+
+  // ── Image lightbox state (mirrors previewImageUrl/previewImageTitle/previewFileId) ──
+  Uint8List? _previewImageBytes;
+  String _previewImageTitle = '';
+  String? _previewFileId;
+
+  // ── Review modal state (mirrors showReviewModal / reviewForm) ──
+  bool _showReviewModal = false;
+  int _doctorRating = 5;
+  int _ratingBedside = 5;
+  int _ratingKnowledge = 5;
+  int _ratingWait = 5;
+  final _reviewTextController = TextEditingController();
+  bool _isAnonymous = false;
+  bool _isSubmittingReview = false;
 
   @override
   void initState() {
@@ -42,7 +71,9 @@ class _PatientConsultationsScreenState
   void dispose() {
     _msgController.dispose();
     _messagesScrollController.dispose();
-    _pollTimer?.cancel();
+    _reviewTextController.dispose();
+    _chatSubscription?.cancel();
+    _realtime.dispose();
     super.dispose();
   }
 
@@ -79,34 +110,62 @@ class _PatientConsultationsScreenState
   }
 
   Future<void> _selectConsultation(dynamic c) async {
-    _pollTimer?.cancel();
+    _chatSubscription?.cancel();
     setState(() {
       _selectedConsultation = Map<String, dynamic>.from(c);
       _isLoading = true;
     });
 
-    await _loadMessages(showSpinner: true);
-
-    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      _loadMessages(showSpinner: false);
-    });
+    await _loadMessages();
+    _setupRealtimeSubscription(_selectedConsultation!['consultationId']);
   }
 
-  Future<void> _loadMessages({required bool showSpinner}) async {
+  // Mirrors ConsultationsComponent.loadMessages: fetch history, and hydrate
+  // fileMetadata for any attachment messages.
+  Future<void> _loadMessages() async {
     if (_selectedConsultation == null) return;
-    if (showSpinner && mounted) setState(() => _isLoading = true);
+    if (mounted) setState(() => _isLoading = true);
     try {
       final msgs = await ref
           .read(consultationServiceProvider)
           .getMessagesForConsultation(_selectedConsultation!['consultationId']);
-      final isNewMessage = _messages.length != msgs.length;
       if (mounted) setState(() => _messages = msgs);
-      if (showSpinner || isNewMessage) _scrollToBottom();
+      for (final m in msgs) {
+        final fileId = (m is Map ? m['fileId'] : null)?.toString();
+        if (fileId != null && fileId.isNotEmpty) {
+          _ensureFileMetadata(fileId);
+          _ensureFileBlob(fileId);
+        }
+      }
+      _scrollToBottom();
     } catch (_) {
-      if (showSpinner && mounted) setState(() => _messages = []);
+      if (mounted) setState(() => _messages = []);
     } finally {
-      if (showSpinner && mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  // Mirrors ConsultationsComponent.setupWebSocketSubscription: live-push new
+  // messages onto the thread instead of polling for them.
+  void _setupRealtimeSubscription(String consultationId) {
+    _chatSubscription?.cancel();
+    _chatSubscription =
+        _realtime.watchConsultation(consultationId).listen((msg) {
+      if (!mounted) return;
+      if (msg['consultationId'] != _selectedConsultation?['consultationId']) {
+        return;
+      }
+      final exists =
+          _messages.any((m) => m is Map && m['messageId'] == msg['messageId']);
+      if (exists) return;
+      final fileId = msg['fileId']?.toString();
+      if (fileId != null && fileId.isNotEmpty) {
+        _ensureFileMetadata(fileId);
+        _ensureFileBlob(fileId);
+      }
+      setState(() => _messages.add(msg));
+      _scrollToBottom();
+    });
   }
 
   void _scrollToBottom() {
@@ -121,29 +180,256 @@ class _PatientConsultationsScreenState
   }
 
   void _closeThread() {
-    _pollTimer?.cancel();
+    _chatSubscription?.cancel();
+    _realtime.disconnect();
     setState(() => _selectedConsultation = null);
   }
 
-  Future<void> _sendMessage() async {
-    final text = _msgController.text.trim();
-    if (text.isEmpty || _selectedConsultation == null) return;
+  // ── File attach (mirrors onFileSelected / clearSelectedFile) ────────────
 
+  Future<void> _pickFile() async {
+    final result = await FilePicker.pickFiles(withData: true);
+    if (result != null && result.files.isNotEmpty) {
+      setState(() => _selectedFile = result.files.first);
+    }
+  }
+
+  void _clearSelectedFile() {
+    setState(() => _selectedFile = null);
+  }
+
+  // Mirrors ConsultationsComponent.sendMessage: plain text, or upload the
+  // attachment first then send a FILE message referencing it.
+  Future<void> _sendMessage() async {
+    if (_selectedConsultation == null) return;
+    final body = _msgController.text.trim();
+    if (body.isEmpty && _selectedFile == null) return;
+
+    if (_selectedFile != null) {
+      final file = _selectedFile!;
+      final bytes = file.bytes;
+      if (bytes == null) return;
+      setState(() => _isUploadingFile = true);
+      try {
+        final meta = await ref.read(chatFileServiceProvider).uploadChatFile(
+              bytes,
+              file.name,
+              mimeType: _guessMimeType(file.extension),
+              patientId: _patientId,
+            );
+        _fileMetadataCache[meta.fileId] = meta;
+        _fileBytesCache[meta.fileId] = bytes;
+        if (meta.mimeType != null) _fileMimeCache[meta.fileId] = meta.mimeType!;
+
+        final msg = await ref.read(consultationServiceProvider).sendMessage({
+          'consultationId': _selectedConsultation!['consultationId'],
+          'messageType': 'FILE',
+          'fileId': meta.fileId,
+          'body': body.isNotEmpty
+              ? body
+              : (meta.originalFilename ?? 'Sent an attachment'),
+        });
+        if (mounted) {
+          final msgMap = Map<String, dynamic>.from(msg);
+          final exists = _messages
+              .any((m) => m is Map && m['messageId'] == msgMap['messageId']);
+          setState(() {
+            if (!exists) _messages.add(msgMap);
+            _isUploadingFile = false;
+            _selectedFile = null;
+          });
+          _msgController.clear();
+          _scrollToBottom();
+        }
+      } catch (_) {
+        if (mounted) {
+          setState(() => _isUploadingFile = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to send attachment message.')),
+          );
+        }
+      }
+      return;
+    }
+
+    if (body.isEmpty) return;
     _msgController.clear();
     try {
       final msg = await ref.read(consultationServiceProvider).sendMessage({
         'consultationId': _selectedConsultation!['consultationId'],
         'messageType': 'TEXT',
-        'body': text,
+        'body': body,
       });
       if (mounted) {
-        setState(() => _messages.add(msg));
+        final msgMap = Map<String, dynamic>.from(msg);
+        final exists = _messages
+            .any((m) => m is Map && m['messageId'] == msgMap['messageId']);
+        if (!exists) setState(() => _messages.add(msgMap));
         _scrollToBottom();
       }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Failed to send message')),
+        );
+      }
+    }
+  }
+
+  String? _guessMimeType(String? extension) {
+    if (extension == null) return null;
+    switch (extension.toLowerCase()) {
+      case 'png':
+        return 'image/png';
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      case 'pdf':
+        return 'application/pdf';
+      default:
+        return null;
+    }
+  }
+
+  // ── File rendering / download (mirrors isImageFile / ensureFileBlob /
+  //    downloadChatFile / formatFileSize) ──────────────────────────────────
+
+  bool _isImageFile(dynamic msg) {
+    final fileId = msg['fileId']?.toString();
+    if (fileId == null || fileId.isEmpty) return false;
+    final mime = _fileMimeCache[fileId] ?? _fileMetadataCache[fileId]?.mimeType;
+    if (mime != null) return mime.startsWith('image/');
+    final name =
+        _fileMetadataCache[fileId]?.originalFilename ?? msg['body']?.toString();
+    if (name != null) {
+      return RegExp(r'\.(png|jpe?g|gif|webp|svg|bmp)$', caseSensitive: false)
+          .hasMatch(name);
+    }
+    return false;
+  }
+
+  Future<void> _ensureFileMetadata(String fileId) async {
+    if (_fileMetadataCache.containsKey(fileId)) return;
+    try {
+      final meta =
+          await ref.read(chatFileServiceProvider).getFileMetadata(fileId);
+      _fileMetadataCache[fileId] = meta;
+      if (meta.mimeType != null) _fileMimeCache[fileId] = meta.mimeType!;
+      if (mounted) setState(() {});
+    } catch (_) {}
+  }
+
+  Future<void> _ensureFileBlob(String fileId) async {
+    if (_fileBytesCache.containsKey(fileId)) return;
+    try {
+      final bytes =
+          await ref.read(chatFileServiceProvider).downloadFile(fileId);
+      _fileBytesCache[fileId] = Uint8List.fromList(bytes);
+      if (mounted) setState(() {});
+    } catch (_) {}
+  }
+
+  Future<void> _downloadChatFile(String fileId, String? filename) async {
+    try {
+      var bytes = _fileBytesCache[fileId];
+      bytes ??= Uint8List.fromList(
+          await ref.read(chatFileServiceProvider).downloadFile(fileId));
+      final dir = await getApplicationDocumentsDirectory();
+      final safeName = filename ?? 'attachment_${fileId.substring(0, 8)}';
+      final path = '${dir.path}/$safeName';
+      await File(path).writeAsBytes(bytes);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Saved to $path')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to download file attachment.')),
+        );
+      }
+    }
+  }
+
+  String _formatFileSize(int? bytes) {
+    if (bytes == null) return 'File';
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  // ── Image lightbox (mirrors openImageModal / closeImageModal) ───────────
+
+  void _openImageModal(Uint8List bytes, String title, String fileId) {
+    setState(() {
+      _previewImageBytes = bytes;
+      _previewImageTitle = title;
+      _previewFileId = fileId;
+    });
+  }
+
+  void _closeImageModal() {
+    setState(() {
+      _previewImageBytes = null;
+      _previewImageTitle = '';
+      _previewFileId = null;
+    });
+  }
+
+  // ── Review modal (mirrors openReviewModal / submitReview) ───────────────
+
+  void _openReviewModal() {
+    setState(() {
+      _doctorRating = 5;
+      _ratingBedside = 5;
+      _ratingKnowledge = 5;
+      _ratingWait = 5;
+      _reviewTextController.text = '';
+      _isAnonymous = false;
+      _showReviewModal = true;
+    });
+  }
+
+  void _closeReviewModal() {
+    setState(() => _showReviewModal = false);
+  }
+
+  Future<void> _submitReview() async {
+    if (_selectedConsultation == null) return;
+    setState(() => _isSubmittingReview = true);
+    final appOrConsId = _selectedConsultation!['appointmentId'] ??
+        _selectedConsultation!['consultationId'];
+    try {
+      await ref.read(reviewServiceProvider).submitDoctorReview({
+        'doctorId': _selectedConsultation!['doctorId'],
+        'appointmentId': appOrConsId,
+        'rating': _doctorRating,
+        'ratingBedside': _ratingBedside,
+        'ratingKnowledge': _ratingKnowledge,
+        'ratingWait': _ratingWait,
+        'reviewText': _reviewTextController.text,
+        'isAnonymous': _isAnonymous,
+      });
+      if (mounted) {
+        setState(() => _isSubmittingReview = false);
+        _closeReviewModal();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text(
+                  'Thank you! Your feedback has been submitted successfully.')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isSubmittingReview = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Failed to submit feedback. Please try again.')),
         );
       }
     }
@@ -370,6 +656,16 @@ class _PatientConsultationsScreenState
 
   // Shared bubble builder for message list.
   Widget _buildMessageBubble(dynamic msg, bool isMine, double maxWidth) {
+    final fileId = msg['fileId']?.toString();
+    final hasFile = fileId != null && fileId.isNotEmpty;
+    final meta = hasFile ? _fileMetadataCache[fileId] : null;
+    // Only show body text if it isn't just duplicating the uploaded filename
+    // (mirrors the *ngIf on msg.body in consultations.component.html).
+    final showBody = (msg['body'] ?? '').toString().isNotEmpty &&
+        (!hasFile ||
+            (msg['body'] != meta?.originalFilename &&
+                msg['body'] != 'Sent an attachment'));
+
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -404,14 +700,145 @@ class _PatientConsultationsScreenState
                   ),
                 ],
               ),
-              child: Text(
-                msg['body'] ?? '',
-                style:
-                    TextStyle(color: isMine ? Colors.white : AppTheme.textMain),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (showBody)
+                    Text(
+                      msg['body'] ?? '',
+                      style: TextStyle(
+                          color: isMine ? Colors.white : AppTheme.textMain),
+                    ),
+                  if (hasFile) _buildAttachment(msg, fileId, isMine),
+                ],
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // Mirrors the Image / Non-Image Attachment Display Cards in
+  // consultations.component.html.
+  Widget _buildAttachment(dynamic msg, String fileId, bool isMine) {
+    final meta = _fileMetadataCache[fileId];
+    final bytes = _fileBytesCache[fileId];
+    final filename = meta?.originalFilename ?? 'Attachment';
+
+    if (_isImageFile(msg)) {
+      return Container(
+        margin: const EdgeInsets.only(top: 6),
+        constraints: const BoxConstraints(maxWidth: 240),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: isMine
+                  ? Colors.white.withValues(alpha: 0.4)
+                  : Colors.black.withValues(alpha: 0.12)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (bytes == null)
+              Container(
+                height: 140,
+                alignment: Alignment.center,
+                color: Colors.black.withValues(alpha: 0.04),
+                child: const Text('Loading media...',
+                    style: TextStyle(fontSize: 11)),
+              )
+            else
+              GestureDetector(
+                onTap: () => _openImageModal(bytes, filename, fileId),
+                child: Image.memory(bytes,
+                    height: 160, width: double.infinity, fit: BoxFit.cover),
+              ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              color: isMine
+                  ? Colors.black.withValues(alpha: 0.22)
+                  : const Color(0xFFF8FAFC),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(filename,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: isMine ? Colors.white : AppTheme.textMain)),
+                  ),
+                  TextButton(
+                    onPressed: () => _downloadChatFile(fileId, filename),
+                    style: TextButton.styleFrom(
+                      backgroundColor:
+                          isMine ? Colors.white : AppTheme.primaryTeal,
+                      foregroundColor:
+                          isMine ? AppTheme.primaryTeal : Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      minimumSize: const Size(0, 0),
+                    ),
+                    child: const Text('Save', style: TextStyle(fontSize: 11)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: isMine
+            ? Colors.white.withValues(alpha: 0.18)
+            : AppTheme.backgroundApp,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+            color: isMine
+                ? Colors.white.withValues(alpha: 0.3)
+                : AppTheme.borderGray),
+      ),
+      child: Row(
+        children: [
+          const Text('📄', style: TextStyle(fontSize: 18)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(filename,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: isMine ? Colors.white : AppTheme.textMain)),
+                Text(_formatFileSize(meta?.sizeBytes),
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: isMine ? Colors.white70 : AppTheme.textMuted)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          TextButton(
+            onPressed: () => _downloadChatFile(fileId, filename),
+            style: TextButton.styleFrom(
+              backgroundColor: isMine ? Colors.white : AppTheme.primaryTeal,
+              foregroundColor: isMine ? AppTheme.primaryTeal : Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              minimumSize: const Size(0, 0),
+            ),
+            child: const Text('📥 Download', style: TextStyle(fontSize: 11)),
+          ),
+        ],
       ),
     );
   }
@@ -445,7 +872,8 @@ class _PatientConsultationsScreenState
     );
   }
 
-  // Reply bar, keyboard-safe; shows closed notice instead when relevant.
+  // Reply bar, keyboard-safe; shows a "Rate Consultation" footer instead
+  // when the thread is closed (mirrors the two chat-input-bar variants).
   Widget _buildReplyBar({required double bottomPadding}) {
     if (_selectedConsultation!['status'] == 'CLOSED') {
       return Container(
@@ -453,10 +881,23 @@ class _PatientConsultationsScreenState
         padding: EdgeInsets.only(
             left: 12, right: 12, top: 12, bottom: bottomPadding + 12),
         color: AppTheme.backgroundApp,
-        child: const Text(
-          'This consultation has been closed.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
+        child: Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'This consultation has been closed.',
+                style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: _openReviewModal,
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryTeal,
+                  foregroundColor: Colors.white),
+              icon: const Text('⭐', style: TextStyle(fontSize: 13)),
+              label: const Text('Rate Consultation'),
+            ),
+          ],
         ),
       );
     }
@@ -467,33 +908,86 @@ class _PatientConsultationsScreenState
         color: AppTheme.surfaceWhite,
         border: Border(top: BorderSide(color: AppTheme.borderGray)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: TextField(
-              controller: _msgController,
-              minLines: 1,
-              maxLines: 4,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: InputDecoration(
-                hintText: 'Type your message here...',
-                filled: true,
-                fillColor: AppTheme.backgroundApp,
-                isDense: true,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(22),
-                  borderSide: BorderSide.none,
+          if (_selectedFile != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppTheme.backgroundApp,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppTheme.borderGray),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        '📎 ${_selectedFile!.name} (${_formatFileSize(_selectedFile!.size)})',
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.primaryTeal),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 14),
+                      color: AppTheme.dangerRed,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: _clearSelectedFile,
+                    ),
+                  ],
                 ),
               ),
-              onSubmitted: (_) => _sendMessage(),
             ),
-          ),
-          const SizedBox(width: 6),
-          IconButton(
-            icon: const Icon(Icons.send, color: AppTheme.primaryTeal),
-            onPressed: _sendMessage,
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.attach_file, color: AppTheme.textMuted),
+                tooltip: 'Attach Document / Image',
+                onPressed: _isUploadingFile ? null : _pickFile,
+              ),
+              Expanded(
+                child: TextField(
+                  controller: _msgController,
+                  minLines: 1,
+                  maxLines: 4,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: InputDecoration(
+                    hintText: 'Type your message here...',
+                    filled: true,
+                    fillColor: AppTheme.backgroundApp,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(22),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  onSubmitted: (_) => _sendMessage(),
+                ),
+              ),
+              const SizedBox(width: 6),
+              _isUploadingFile
+                  ? const Padding(
+                      padding: EdgeInsets.all(10),
+                      child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2)),
+                    )
+                  : IconButton(
+                      icon: const Icon(Icons.send, color: AppTheme.primaryTeal),
+                      onPressed: _sendMessage,
+                    ),
+            ],
           ),
         ],
       ),
@@ -624,6 +1118,17 @@ class _PatientConsultationsScreenState
 
   @override
   Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        _buildScreen(context),
+        if (_showReviewModal && _selectedConsultation != null)
+          _buildReviewModalOverlay(),
+        if (_previewImageBytes != null) _buildImageLightbox(),
+      ],
+    );
+  }
+
+  Widget _buildScreen(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width <= 576;
 
     if (isMobile && _selectedConsultation != null) {
@@ -767,4 +1272,319 @@ class _PatientConsultationsScreenState
       ),
     );
   }
+
+  // ── Review submission modal (mirrors the REVIEW SUBMISSION MODAL DIALOG) ─
+
+  Widget _ratingDropdown({
+    required int value,
+    required List<int> options,
+    required ValueChanged<int> onChanged,
+    bool stars = false,
+  }) {
+    return DropdownButtonFormField<int>(
+      initialValue: value,
+      isExpanded: true,
+      decoration: const InputDecoration(
+        isDense: true,
+        filled: true,
+        fillColor: Color(0xFFF9FAFB),
+        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.all(Radius.circular(8))),
+      ),
+      items: options
+          .map((v) => DropdownMenuItem(
+              value: v,
+              child: Text(
+                  stars ? '${'⭐' * v} ($v/5)' : '${'★' * v}${'☆' * (5 - v)}')))
+          .toList(),
+      onChanged: (v) => v == null ? null : onChanged(v),
+    );
+  }
+
+  Widget _buildReviewModalOverlay() {
+    final doctorName =
+        _doctorLabel(_selectedDoctor(_selectedConsultation!['doctorId']));
+    return GestureDetector(
+      onTap: _closeReviewModal,
+      child: Container(
+        color: Colors.black54,
+        alignment: Alignment.center,
+        child: GestureDetector(
+          onTap: () {},
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: Card(
+              margin: const EdgeInsets.all(20),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    color: AppTheme.primaryTeal,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 14),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text('⭐ Rate Your Consultation',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 17)),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          onPressed: _closeReviewModal,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('👨‍⚕️ Doctor Review: $doctorName',
+                              style: const TextStyle(
+                                  color: AppTheme.primaryTeal,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15)),
+                          const SizedBox(height: 12),
+                          const Text('Overall Doctor Rating (1-5) *',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600, fontSize: 13)),
+                          const SizedBox(height: 6),
+                          _ratingDropdown(
+                            value: _doctorRating,
+                            options: const [5, 4, 3, 2, 1],
+                            stars: true,
+                            onChanged: (v) => setState(() => _doctorRating = v),
+                          ),
+                          const SizedBox(height: 14),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Bedside *',
+                                        style: TextStyle(
+                                            fontSize: 11,
+                                            color: AppTheme.textMuted)),
+                                    const SizedBox(height: 4),
+                                    _ratingDropdown(
+                                      value: _ratingBedside,
+                                      options: const [5, 4, 3, 2, 1],
+                                      onChanged: (v) =>
+                                          setState(() => _ratingBedside = v),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Knowledge *',
+                                        style: TextStyle(
+                                            fontSize: 11,
+                                            color: AppTheme.textMuted)),
+                                    const SizedBox(height: 4),
+                                    _ratingDropdown(
+                                      value: _ratingKnowledge,
+                                      options: const [5, 4, 3, 2, 1],
+                                      onChanged: (v) =>
+                                          setState(() => _ratingKnowledge = v),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Wait Time *',
+                                        style: TextStyle(
+                                            fontSize: 11,
+                                            color: AppTheme.textMuted)),
+                                    const SizedBox(height: 4),
+                                    _ratingDropdown(
+                                      value: _ratingWait,
+                                      options: const [5, 4, 3, 2, 1],
+                                      onChanged: (v) =>
+                                          setState(() => _ratingWait = v),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          const Text('Written Feedback (Optional)',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600, fontSize: 13)),
+                          const SizedBox(height: 6),
+                          TextField(
+                            controller: _reviewTextController,
+                            maxLength: 2000,
+                            maxLines: 3,
+                            decoration: InputDecoration(
+                              hintText: 'Share details of your experience...',
+                              filled: true,
+                              fillColor: const Color(0xFFF9FAFB),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                          CheckboxListTile(
+                            contentPadding: EdgeInsets.zero,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            value: _isAnonymous,
+                            title: const Text('Submit this review anonymously',
+                                style: TextStyle(fontSize: 13)),
+                            onChanged: (v) =>
+                                setState(() => _isAnonymous = v ?? false),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 14),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFF9FAFB),
+                      border:
+                          Border(top: BorderSide(color: AppTheme.borderGray)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        OutlinedButton(
+                          onPressed: _closeReviewModal,
+                          child: const Text('Cancel'),
+                        ),
+                        const SizedBox(width: 12),
+                        ElevatedButton(
+                          onPressed: _isSubmittingReview ? null : _submitReview,
+                          child: _isSubmittingReview
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white))
+                              : const Text('⭐ Submit Feedback'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Mirrors doctorSelectOptions's lookup — resolves the doctor object behind
+  // a doctorId for the review header, falling back to the consultation's own
+  // doctorName if the doctor list hasn't loaded.
+  dynamic _selectedDoctor(String? doctorId) {
+    try {
+      return _doctors.firstWhere((d) => d.doctorId == doctorId);
+    } catch (_) {
+      return _FallbackDoctorName(_selectedConsultation?['doctorName'] ?? '');
+    }
+  }
+
+  // ── Full image lightbox (mirrors the Full Image Lightbox Modal) ─────────
+
+  Widget _buildImageLightbox() {
+    return GestureDetector(
+      onTap: _closeImageModal,
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.88),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.all(20),
+        child: GestureDetector(
+          onTap: () {},
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.9,
+              maxHeight: MediaQuery.of(context).size.height * 0.9,
+            ),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    color: const Color(0xFF1E293B),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(_previewImageTitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600)),
+                        ),
+                        if (_previewFileId != null)
+                          TextButton.icon(
+                            onPressed: () => _downloadChatFile(
+                                _previewFileId!, _previewImageTitle),
+                            icon: const Icon(Icons.download,
+                                size: 14, color: Colors.white),
+                            label: const Text('Save',
+                                style: TextStyle(color: Colors.white)),
+                            style: TextButton.styleFrom(
+                                backgroundColor: AppTheme.primaryTeal),
+                          ),
+                        const SizedBox(width: 8),
+                        TextButton.icon(
+                          onPressed: _closeImageModal,
+                          icon: const Icon(Icons.close,
+                              size: 14, color: Colors.white),
+                          label: const Text('Close',
+                              style: TextStyle(color: Colors.white)),
+                          style: TextButton.styleFrom(
+                              backgroundColor: Colors.white24),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Flexible(
+                    child: Container(
+                      color: const Color(0xFF020617),
+                      padding: const EdgeInsets.all(16),
+                      child: Image.memory(_previewImageBytes!,
+                          fit: BoxFit.contain),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FallbackDoctorName {
+  final String fullName;
+  _FallbackDoctorName(this.fullName);
 }

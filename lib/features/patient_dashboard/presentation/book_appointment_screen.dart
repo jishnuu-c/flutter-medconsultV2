@@ -80,6 +80,8 @@ class BookAppointmentScreen extends ConsumerStatefulWidget {
 }
 
 class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
+  bool get isNarrow => MediaQuery.of(context).size.width < 480;
+
   final _reasonController = TextEditingController();
   final _searchController = TextEditingController();
 
@@ -577,6 +579,7 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
 
   @override
   Widget build(BuildContext context) {
+
     if (_needProfileInit) {
       return Scaffold(
         body: Center(
@@ -735,8 +738,8 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
           if (i != 4)
             const Padding(
               padding: EdgeInsets.only(bottom: 18),
-              child: Text('›',
-                  style: TextStyle(color: AppTheme.borderGray, fontSize: 16)),
+              child: Icon(Icons.chevron_right_rounded,
+                  color: AppTheme.borderGray, size: 16),
             ),
         ],
       ],
@@ -813,77 +816,146 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
             onChanged: (v) => setState(() => _selectedSpecialtyId = v ?? ''),
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
+          isNarrow
+              ? Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Years of Experience',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: _C.t3)),
-                    const SizedBox(height: 6),
-                    DropdownButtonFormField<int>(
-                      initialValue: _selectedMinExperience,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 10)),
-                      items: const [
-                        DropdownMenuItem(
-                            value: 0, child: Text('Any Experience')),
-                        DropdownMenuItem(value: 3, child: Text('3+ Years')),
-                        DropdownMenuItem(value: 5, child: Text('5+ Years')),
-                        DropdownMenuItem(value: 10, child: Text('10+ Years')),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Years of Experience',
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: _C.t3)),
+                        const SizedBox(height: 6),
+                        DropdownButtonFormField<int>(
+                          initialValue: _selectedMinExperience,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 10)),
+                          items: const [
+                            DropdownMenuItem(
+                                value: 0, child: Text('Any Experience')),
+                            DropdownMenuItem(value: 3, child: Text('3+ Years')),
+                            DropdownMenuItem(value: 5, child: Text('5+ Years')),
+                            DropdownMenuItem(value: 10, child: Text('10+ Years')),
+                          ],
+                          onChanged: (v) =>
+                              setState(() => _selectedMinExperience = v ?? 0),
+                        ),
                       ],
-                      onChanged: (v) =>
-                          setState(() => _selectedMinExperience = v ?? 0),
+                    ),
+                    const SizedBox(height: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Sort By',
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: _C.t3)),
+                        const SizedBox(height: 6),
+                        DropdownButtonFormField<String>(
+                          initialValue: _selectedSortOption,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 10)),
+                          items: const [
+                            DropdownMenuItem(
+                                value: 'rating', child: Text('Highest Rating')),
+                            DropdownMenuItem(
+                                value: 'experience',
+                                child: Text('Most Experienced')),
+                            DropdownMenuItem(
+                                value: 'fee_asc', child: Text('Fee: Low to High')),
+                            DropdownMenuItem(
+                                value: 'fee_desc', child: Text('Fee: High to Low')),
+                            DropdownMenuItem(
+                                value: 'name', child: Text('Name (A-Z)')),
+                          ],
+                          onChanged: (v) =>
+                              setState(() => _selectedSortOption = v ?? 'rating'),
+                        ),
+                      ],
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Years of Experience',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: _C.t3)),
+                          const SizedBox(height: 6),
+                          DropdownButtonFormField<int>(
+                            initialValue: _selectedMinExperience,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 10)),
+                            items: const [
+                              DropdownMenuItem(
+                                  value: 0, child: Text('Any Experience')),
+                              DropdownMenuItem(value: 3, child: Text('3+ Years')),
+                              DropdownMenuItem(value: 5, child: Text('5+ Years')),
+                              DropdownMenuItem(value: 10, child: Text('10+ Years')),
+                            ],
+                            onChanged: (v) =>
+                                setState(() => _selectedMinExperience = v ?? 0),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Sort By',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: _C.t3)),
+                          const SizedBox(height: 6),
+                          DropdownButtonFormField<String>(
+                            initialValue: _selectedSortOption,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 10)),
+                            items: const [
+                              DropdownMenuItem(
+                                  value: 'rating', child: Text('Highest Rating')),
+                              DropdownMenuItem(
+                                  value: 'experience',
+                                  child: Text('Most Experienced')),
+                              DropdownMenuItem(
+                                  value: 'fee_asc', child: Text('Fee: Low to High')),
+                              DropdownMenuItem(
+                                  value: 'fee_desc', child: Text('Fee: High to Low')),
+                              DropdownMenuItem(
+                                  value: 'name', child: Text('Name (A-Z)')),
+                            ],
+                            onChanged: (v) =>
+                                setState(() => _selectedSortOption = v ?? 'rating'),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Sort By',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: _C.t3)),
-                    const SizedBox(height: 6),
-                    DropdownButtonFormField<String>(
-                      initialValue: _selectedSortOption,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 10)),
-                      items: const [
-                        DropdownMenuItem(
-                            value: 'rating', child: Text('Highest Rating')),
-                        DropdownMenuItem(
-                            value: 'experience',
-                            child: Text('Most Experienced')),
-                        DropdownMenuItem(
-                            value: 'fee_asc', child: Text('Fee: Low to High')),
-                        DropdownMenuItem(
-                            value: 'fee_desc', child: Text('Fee: High to Low')),
-                        DropdownMenuItem(
-                            value: 'name', child: Text('Name (A-Z)')),
-                      ],
-                      onChanged: (v) =>
-                          setState(() => _selectedSortOption = v ?? 'rating'),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
           const SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -988,19 +1060,19 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
                           ),
                           if (!alreadyBooked) ...[
                             const SizedBox(height: 6),
-                            Row(
+                            Wrap(
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              spacing: 6,
+                              runSpacing: 4,
                               children: [
                                 Text('${doc.experienceYears} Yrs Exp',
                                     style: const TextStyle(
                                         fontSize: 11.5, color: _C.t3)),
-                                const SizedBox(width: 6),
                                 const Text('•',
                                     style:
                                         TextStyle(color: _C.t3, fontSize: 11)),
-                                const SizedBox(width: 6),
                                 const Icon(Icons.star,
                                     size: 13, color: Color(0xFFF59E0B)),
-                                const SizedBox(width: 2),
                                 Text(
                                     '${doc.overallRating} (${doc.reviewCount})',
                                     style: const TextStyle(
@@ -1036,35 +1108,41 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
                   const SizedBox(height: 10),
                   const Divider(height: 1),
                   const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: _C.feeBg,
-                          borderRadius: BorderRadius.circular(6),
+                  SizedBox(
+                    width: double.infinity,
+                    child: Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: _C.feeBg,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                              'Fee: SAR ${_fmtFee(doc.consultationFeeSar)}',
+                              style: const TextStyle(
+                                  fontSize: 11.5,
+                                  color: _C.feeText,
+                                  fontWeight: FontWeight.w700)),
                         ),
-                        child: Text(
-                            'Fee: SAR ${_fmtFee(doc.consultationFeeSar)}',
-                            style: const TextStyle(
-                                fontSize: 11.5,
-                                color: _C.feeText,
-                                fontWeight: FontWeight.w700)),
-                      ),
-                      TextButton.icon(
-                        onPressed: () =>
-                            context.push('/doctors/${doc.doctorId}'),
-                        style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 6),
-                            minimumSize: const Size(0, 0)),
-                        icon:
-                            const Icon(Icons.remove_red_eye_outlined, size: 14),
-                        label: const Text('View Profile',
-                            style: TextStyle(fontSize: 11.5)),
-                      ),
-                    ],
+                        TextButton.icon(
+                          onPressed: () =>
+                              context.push('/doctors/${doc.doctorId}'),
+                          style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 6),
+                              minimumSize: const Size(0, 0)),
+                          icon:
+                              const Icon(Icons.remove_red_eye_outlined, size: 14),
+                          label: const Text('View Profile',
+                              style: TextStyle(fontSize: 11.5)),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ],
@@ -1169,7 +1247,9 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Row(
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -1184,7 +1264,6 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
                                 color: _C.t3,
                                 fontWeight: FontWeight.w600)),
                       ),
-                      const SizedBox(width: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 7, vertical: 2),
@@ -1231,7 +1310,7 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
                 fontSize: 12.5, fontWeight: FontWeight.w600, color: _C.t3)),
         const SizedBox(height: 8),
         SizedBox(
-          height: 74,
+          height: 88,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: _nextDays.length,
@@ -1244,7 +1323,7 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
                 onTap: () => _selectDate(day.date),
                 child: Container(
                   width: 60,
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  padding: const EdgeInsets.symmetric(vertical: 6),
                   decoration: BoxDecoration(
                     color: selected ? AppTheme.primaryTeal : Colors.white,
                     borderRadius: BorderRadius.circular(12),
@@ -1393,56 +1472,98 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
         const Text('Session Mode *',
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _modeCard(
-                icon: Icons.local_hospital_outlined,
-                title: 'In Clinic',
-                desc:
-                    'Visit the doctor physically at the selected branch location.',
-                selected: _selectedSessionType == 'IN_CLINIC',
-                onTap: () => setState(() => _selectedSessionType = 'IN_CLINIC'),
+        isNarrow
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _modeCard(
+                    icon: Icons.local_hospital_outlined,
+                    title: 'In Clinic',
+                    desc:
+                        'Visit the doctor physically at the selected branch location.',
+                    selected: _selectedSessionType == 'IN_CLINIC',
+                    onTap: () => setState(() => _selectedSessionType = 'IN_CLINIC'),
+                  ),
+                  const SizedBox(height: 10),
+                  _modeCard(
+                    icon: Icons.videocam_outlined,
+                    title: 'Virtual',
+                    desc: 'Consult online via text chat and attachments upload.',
+                    selected: _selectedSessionType == 'VIRTUAL',
+                    onTap: () => setState(() => _selectedSessionType = 'VIRTUAL'),
+                  ),
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(
+                    child: _modeCard(
+                      icon: Icons.local_hospital_outlined,
+                      title: 'In Clinic',
+                      desc:
+                          'Visit the doctor physically at the selected branch location.',
+                      selected: _selectedSessionType == 'IN_CLINIC',
+                      onTap: () => setState(() => _selectedSessionType = 'IN_CLINIC'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _modeCard(
+                      icon: Icons.videocam_outlined,
+                      title: 'Virtual',
+                      desc: 'Consult online via text chat and attachments upload.',
+                      selected: _selectedSessionType == 'VIRTUAL',
+                      onTap: () => setState(() => _selectedSessionType = 'VIRTUAL'),
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _modeCard(
-                icon: Icons.videocam_outlined,
-                title: 'Virtual',
-                desc: 'Consult online via text chat and attachments upload.',
-                selected: _selectedSessionType == 'VIRTUAL',
-                onTap: () => setState(() => _selectedSessionType = 'VIRTUAL'),
-              ),
-            ),
-          ],
-        ),
         const SizedBox(height: 18),
         const Text('Appointment Type *',
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _typeCard(
-                title: 'New Patient',
-                desc:
-                    'First consultation for this specific illness or checkup.',
-                selected: _selectedApptType == 'NEW_PATIENT',
-                onTap: () => setState(() => _selectedApptType = 'NEW_PATIENT'),
+        isNarrow
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _typeCard(
+                    title: 'New Patient',
+                    desc:
+                        'First consultation for this specific illness or checkup.',
+                    selected: _selectedApptType == 'NEW_PATIENT',
+                    onTap: () => setState(() => _selectedApptType == 'NEW_PATIENT'),
+                  ),
+                  const SizedBox(height: 10),
+                  _typeCard(
+                    title: 'Follow Up',
+                    desc: 'Routine diagnostic checkup or continuous test reviews.',
+                    selected: _selectedApptType == 'FOLLOW_UP',
+                    onTap: () => setState(() => _selectedApptType == 'FOLLOW_UP'),
+                  ),
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(
+                    child: _typeCard(
+                      title: 'New Patient',
+                      desc:
+                          'First consultation for this specific illness or checkup.',
+                      selected: _selectedApptType == 'NEW_PATIENT',
+                      onTap: () => setState(() => _selectedApptType == 'NEW_PATIENT'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _typeCard(
+                      title: 'Follow Up',
+                      desc: 'Routine diagnostic checkup or continuous test reviews.',
+                      selected: _selectedApptType == 'FOLLOW_UP',
+                      onTap: () => setState(() => _selectedApptType == 'FOLLOW_UP'),
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _typeCard(
-                title: 'Follow Up',
-                desc: 'Routine diagnostic checkup or continuous test reviews.',
-                selected: _selectedApptType == 'FOLLOW_UP',
-                onTap: () => setState(() => _selectedApptType = 'FOLLOW_UP'),
-              ),
-            ),
-          ],
-        ),
         const SizedBox(height: 18),
         const Text('Reason for Visit / Symptoms',
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
@@ -1550,6 +1671,7 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 14, color: _C.t3),
             const SizedBox(width: 5),
@@ -1558,11 +1680,16 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
                     fontSize: 12, color: _C.t3, fontWeight: FontWeight.w500)),
           ],
         ),
-        const Spacer(),
+        const SizedBox(width: 12),
         if (trailing != null)
-          trailing
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: trailing,
+            ),
+          )
         else
-          Flexible(
+          Expanded(
             child: Text(value ?? '',
                 textAlign: TextAlign.right,
                 style: TextStyle(
@@ -1717,7 +1844,7 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
                   child: CircularProgressIndicator(
                       strokeWidth: 2, color: Colors.white))
               : const Icon(Icons.check_circle_outline, size: 16),
-          label: const Text('Confirm & Book Appointment'),
+          label: Text(isNarrow ? 'Book Now' : 'Confirm & Book Appointment'),
         );
         break;
       default:

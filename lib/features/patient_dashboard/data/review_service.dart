@@ -61,6 +61,20 @@ class ReviewService {
   final Dio dio;
   ReviewService({required this.dio});
 
+  /// Mirrors review.service.ts's submitDoctorReview.
+  Future<dynamic> submitDoctorReview(Map<String, dynamic> dto) async {
+    final res =
+        await dio.post('/api/medconsult/reviews/doctors/submit', data: dto);
+    return res.data;
+  }
+
+  /// Mirrors review.service.ts's submitClinicReview.
+  Future<dynamic> submitClinicReview(Map<String, dynamic> dto) async {
+    final res =
+        await dio.post('/api/medconsult/reviews/clinics/submit', data: dto);
+    return res.data;
+  }
+
   /// Mirrors review.service.ts's getClinicReviews — public paged review
   /// listing for a clinic. Accepts either a bare list or a Spring Page
   /// envelope ({content: [...]}) from the backend, same defensive handling
