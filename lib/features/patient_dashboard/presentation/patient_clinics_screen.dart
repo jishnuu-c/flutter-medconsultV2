@@ -20,8 +20,16 @@ class PatientClinicsScreen extends ConsumerStatefulWidget {
 class _ClinicEnrichment {
   final int branchCount;
   final List<String> specialtyNames;
-  const _ClinicEnrichment(
-      {required this.branchCount, required this.specialtyNames});
+  final Set<String> specialtyIds;
+  final Set<String> cityIds;
+  final Set<String> insuranceProviderIds;
+  const _ClinicEnrichment({
+    required this.branchCount,
+    required this.specialtyNames,
+    required this.specialtyIds,
+    required this.cityIds,
+    required this.insuranceProviderIds,
+  });
 }
 
 class _PatientClinicsScreenState extends ConsumerState<PatientClinicsScreen> {
@@ -29,6 +37,15 @@ class _PatientClinicsScreenState extends ConsumerState<PatientClinicsScreen> {
   List<ClinicModel> _clinics = [];
   final Map<String, _ClinicEnrichment> _enrichment = {};
   final _searchController = TextEditingController();
+
+  // Filters — mirrors Angular's clinic-explorer filter panel
+  // (specialty / city / insurance provider, single-select each).
+  List<SpecialtyModel> _specialties = [];
+  List<CityModel> _cities = [];
+  List<InsuranceProviderModel> _insuranceProviders = [];
+  String? _selectedSpecialtyId;
+  String? _selectedCityId;
+  String? _selectedInsuranceProviderId;
 
   @override
   void initState() {
@@ -51,25 +68,39 @@ class _PatientClinicsScreenState extends ConsumerState<PatientClinicsScreen> {
       final results = await Future.wait([
         clinicService.getAllClinics(),
         referenceService.getAllSpecialties(),
+        referenceService.getAllCities(),
+        referenceService.getAllInsuranceProviders(),
       ]);
       final clinics = results[0] as List<ClinicModel>;
       final specialties = results[1] as List<SpecialtyModel>;
+      final cities = results[2] as List<CityModel>;
+      final insuranceProviders = results[3] as List<InsuranceProviderModel>;
       final specialtyNameById = {
         for (final s in specialties) s.specialtyId: s.nameEn,
       };
 
-      if (mounted) setState(() => _clinics = clinics);
+      if (mounted) {
+        setState(() {
+          _clinics = clinics;
+          _specialties = specialties;
+          _cities = cities;
+          _insuranceProviders = insuranceProviders;
+        });
+      }
 
-      // Enrich each clinic with its branch count & top specialties, in
-      // parallel — mirrors the Angular forkJoin enrichment pass.
+      // Enrich each clinic with its branches, specialties & insurance
+      // networks, in parallel — mirrors the Angular forkJoin enrichment pass
+      // that also feeds the specialty/city/insurance filter dropdowns.
       await Future.wait(clinics.map((c) async {
         try {
-          final branchesAndSpecs = await Future.wait([
+          final branchesSpecsIns = await Future.wait([
             clinicService.getClinicBranches(c.clinicId),
             clinicService.getClinicSpecialties(c.clinicId),
+            clinicService.getClinicInsurances(c.clinicId),
           ]);
-          final branches = branchesAndSpecs[0] as List<ClinicBranchModel>;
-          final specs = branchesAndSpecs[1] as List<ClinicSpecialtyModel>;
+          final branches = branchesSpecsIns[0] as List<ClinicBranchModel>;
+          final specs = branchesSpecsIns[1] as List<ClinicSpecialtyModel>;
+          final insurances = branchesSpecsIns[2] as List<ClinicInsuranceModel>;
           _enrichment[c.clinicId] = _ClinicEnrichment(
             branchCount: branches.length,
             specialtyNames: specs
@@ -78,6 +109,12 @@ class _PatientClinicsScreenState extends ConsumerState<PatientClinicsScreen> {
                 .where((n) => n.isNotEmpty)
                 .take(2)
                 .toList(),
+            specialtyIds: specs.map((s) => s.specialtyId).toSet(),
+            cityIds: branches.map((b) => b.cityId).toSet(),
+            insuranceProviderIds: insurances
+                .where((i) => i.isActive)
+                .map((i) => i.providerId)
+                .toSet(),
           );
         } catch (_) {
           // Skip enrichment for this clinic on failure; card still renders.
@@ -96,12 +133,87 @@ class _PatientClinicsScreenState extends ConsumerState<PatientClinicsScreen> {
 
   List<ClinicModel> get _filtered {
     final q = _searchController.text.trim().toLowerCase();
-    if (q.isEmpty) return _clinics;
     return _clinics.where((c) {
-      final name = c.nameEn.toLowerCase();
-      final desc = (c.descriptionEn ?? '').toLowerCase();
-      return name.contains(q) || desc.contains(q);
+      if (q.isNotEmpty) {
+        final name = c.nameEn.toLowerCase();
+        final desc = (c.descriptionEn ?? '').toLowerCase();
+        if (!name.contains(q) && !desc.contains(q)) return false;
+      }
+      final enr = _enrichment[c.clinicId];
+      if ((_selectedSpecialtyId ?? '').isNotEmpty) {
+        if (enr == null || !enr.specialtyIds.contains(_selectedSpecialtyId)) {
+          return false;
+        }
+      }
+      if ((_selectedCityId ?? '').isNotEmpty) {
+        if (enr == null || !enr.cityIds.contains(_selectedCityId)) {
+          return false;
+        }
+      }
+      if ((_selectedInsuranceProviderId ?? '').isNotEmpty) {
+        if (enr == null ||
+            !enr.insuranceProviderIds.contains(_selectedInsuranceProviderId)) {
+          return false;
+        }
+      }
+      return true;
     }).toList();
+  }
+
+  int get _activeFilterCount => [
+        _selectedSpecialtyId,
+        _selectedCityId,
+        _selectedInsuranceProviderId,
+      ].where((v) => (v ?? '').isNotEmpty).length;
+
+  String _specialtyName(String id) {
+    final m = _specialties.where((s) => s.specialtyId == id);
+    return m.isNotEmpty ? m.first.nameEn : '';
+  }
+
+  String _cityName(String id) {
+    final m = _cities.where((c) => c.cityId == id);
+    return m.isNotEmpty ? m.first.nameEn : '';
+  }
+
+  String _insuranceName(String id) {
+    final m = _insuranceProviders.where((p) => p.providerId == id);
+    return m.isNotEmpty ? m.first.nameEn : '';
+  }
+
+  void _clearFilters() {
+    setState(() {
+      _selectedSpecialtyId = null;
+      _selectedCityId = null;
+      _selectedInsuranceProviderId = null;
+    });
+  }
+
+  void _openFilterSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (sheetCtx, setSheetState) => _FilterSheet(
+          specialties: _specialties,
+          cities: _cities,
+          insuranceProviders: _insuranceProviders,
+          selectedSpecialtyId: _selectedSpecialtyId,
+          selectedCityId: _selectedCityId,
+          selectedInsuranceProviderId: _selectedInsuranceProviderId,
+          resultCount: _filtered.length,
+          onSpecialtyChanged: (v) =>
+              setSheetState(() => setState(() => _selectedSpecialtyId = v)),
+          onCityChanged: (v) =>
+              setSheetState(() => setState(() => _selectedCityId = v)),
+          onInsuranceChanged: (v) => setSheetState(
+              () => setState(() => _selectedInsuranceProviderId = v)),
+          onReset: () => setSheetState(() => _clearFilters()),
+          onShowResults: () => Navigator.of(sheetCtx).pop(),
+        ),
+      ),
+    );
   }
 
   @override
@@ -121,33 +233,115 @@ class _PatientClinicsScreenState extends ConsumerState<PatientClinicsScreen> {
               style: TextStyle(fontSize: 13, color: _Colors.textMuted)),
           const SizedBox(height: 14),
 
-          // Mobile search bar (mirrors .mobile-search-input-wrapper).
-          TextField(
-            controller: _searchController,
-            onChanged: (_) => setState(() {}),
-            style: const TextStyle(fontSize: 14),
-            decoration: InputDecoration(
-              hintText: 'Search clinic name or description...',
-              hintStyle:
-                  const TextStyle(fontSize: 13.5, color: _Colors.textMuted),
-              prefixIcon:
-                  const Icon(Icons.search, size: 19, color: _Colors.textMuted),
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              border: OutlineInputBorder(
+          // Mobile search bar (mirrors .mobile-search-input-wrapper) + filter
+          // trigger (mirrors .btn-mobile-filter-trigger).
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (_) => setState(() {}),
+                  style: const TextStyle(fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'Search clinic name or description...',
+                    hintStyle: const TextStyle(
+                        fontSize: 13.5, color: _Colors.textMuted),
+                    prefixIcon: const Icon(Icons.search,
+                        size: 19, color: _Colors.textMuted),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 12),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: _Colors.border)),
+                    enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: _Colors.border)),
+                    focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            const BorderSide(color: _Colors.teal, width: 1.5)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Material(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: _Colors.border)),
-              enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: _Colors.border)),
-              focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide:
-                      const BorderSide(color: _Colors.teal, width: 1.5)),
-            ),
+                  onTap: _openFilterSheet,
+                  child: Container(
+                    height: 46,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: _Colors.border),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.filter_list,
+                            size: 18, color: _Colors.textDark),
+                        if (_activeFilterCount > 0) ...[
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: _Colors.teal,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text('$_activeFilterCount',
+                                style: const TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white)),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
+
+          if (_activeFilterCount > 0) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 32,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  if ((_selectedSpecialtyId ?? '').isNotEmpty)
+                    _FilterChip(
+                      label: _specialtyName(_selectedSpecialtyId!),
+                      onRemove: () =>
+                          setState(() => _selectedSpecialtyId = null),
+                    ),
+                  if ((_selectedCityId ?? '').isNotEmpty)
+                    _FilterChip(
+                      label: _cityName(_selectedCityId!),
+                      onRemove: () => setState(() => _selectedCityId = null),
+                    ),
+                  if ((_selectedInsuranceProviderId ?? '').isNotEmpty)
+                    _FilterChip(
+                      label: _insuranceName(_selectedInsuranceProviderId!),
+                      onRemove: () =>
+                          setState(() => _selectedInsuranceProviderId = null),
+                    ),
+                  TextButton(
+                    onPressed: _clearFilters,
+                    child: const Text('Clear All',
+                        style: TextStyle(fontSize: 12.5)),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
 
           if (_isLoading)
@@ -161,6 +355,9 @@ class _PatientClinicsScreenState extends ConsumerState<PatientClinicsScreen> {
               hasClinics: _clinics.isNotEmpty,
               onClear: () {
                 _searchController.clear();
+                _selectedSpecialtyId = null;
+                _selectedCityId = null;
+                _selectedInsuranceProviderId = null;
                 setState(() {});
               },
             )
@@ -485,6 +682,214 @@ class _Pill extends StatelessWidget {
               style: TextStyle(
                   fontSize: 11.5, fontWeight: FontWeight.w600, color: fg)),
         ],
+      ),
+    );
+  }
+}
+
+/// Small removable chip — mirrors .active-filter-chip.
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final VoidCallback onRemove;
+  const _FilterChip({required this.label, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0FDFA),
+        border: Border.all(color: const Color(0xFFCCFBF1)),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label.isEmpty ? '—' : label,
+              style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: _Colors.teal)),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onRemove,
+            child: const Icon(Icons.close, size: 13, color: _Colors.teal),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bottom-sheet filter drawer — mirrors .mobile-filter-drawer-card: search
+/// context stays on the page, this covers specialty / city / insurance.
+class _FilterSheet extends StatelessWidget {
+  final List<SpecialtyModel> specialties;
+  final List<CityModel> cities;
+  final List<InsuranceProviderModel> insuranceProviders;
+  final String? selectedSpecialtyId;
+  final String? selectedCityId;
+  final String? selectedInsuranceProviderId;
+  final int resultCount;
+  final ValueChanged<String?> onSpecialtyChanged;
+  final ValueChanged<String?> onCityChanged;
+  final ValueChanged<String?> onInsuranceChanged;
+  final VoidCallback onReset;
+  final VoidCallback onShowResults;
+
+  const _FilterSheet({
+    required this.specialties,
+    required this.cities,
+    required this.insuranceProviders,
+    required this.selectedSpecialtyId,
+    required this.selectedCityId,
+    required this.selectedInsuranceProviderId,
+    required this.resultCount,
+    required this.onSpecialtyChanged,
+    required this.onCityChanged,
+    required this.onInsuranceChanged,
+    required this.onReset,
+    required this.onShowResults,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding:
+            EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: _Colors.border)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.filter_list, size: 18),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text('Filter Clinics',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w700)),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Medical Specialty',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _Colors.textMuted)),
+                  const SizedBox(height: 6),
+                  DropdownButtonFormField<String>(
+                    initialValue: (selectedSpecialtyId ?? '').isEmpty
+                        ? null
+                        : selectedSpecialtyId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                        hintText: 'All Specialties',
+                        border: OutlineInputBorder(),
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                    items: specialties
+                        .map((s) => DropdownMenuItem(
+                            value: s.specialtyId, child: Text(s.nameEn)))
+                        .toList(),
+                    onChanged: onSpecialtyChanged,
+                  ),
+                  const SizedBox(height: 14),
+                  const Text('Location / City',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _Colors.textMuted)),
+                  const SizedBox(height: 6),
+                  DropdownButtonFormField<String>(
+                    initialValue:
+                        (selectedCityId ?? '').isEmpty ? null : selectedCityId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                        hintText: 'All Cities',
+                        border: OutlineInputBorder(),
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                    items: cities
+                        .map((c) => DropdownMenuItem(
+                            value: c.cityId, child: Text(c.nameEn)))
+                        .toList(),
+                    onChanged: onCityChanged,
+                  ),
+                  const SizedBox(height: 14),
+                  const Text('Insurance Network',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _Colors.textMuted)),
+                  const SizedBox(height: 6),
+                  DropdownButtonFormField<String>(
+                    initialValue: (selectedInsuranceProviderId ?? '').isEmpty
+                        ? null
+                        : selectedInsuranceProviderId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                        hintText: 'All Insurance Providers',
+                        border: OutlineInputBorder(),
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                    items: insuranceProviders
+                        .map((p) => DropdownMenuItem(
+                            value: p.providerId, child: Text(p.nameEn)))
+                        .toList(),
+                    onChanged: onInsuranceChanged,
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: _Colors.border)),
+              ),
+              child: Row(
+                children: [
+                  OutlinedButton(
+                    onPressed: onReset,
+                    child: const Text('Reset All'),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: onShowResults,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _Colors.teal,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: Text('Show Clinics ($resultCount)'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
