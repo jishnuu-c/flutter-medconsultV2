@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../clinic_admin/data/clinic_service.dart';
 import '../../clinic_admin/data/clinic_models.dart';
 import '../../../core/services/references_service.dart';
+import '../../../core/network/api_client.dart';
 
 /// Mirrors Angular's patient-dashboard/clinic-explorer ("Clinics & Branches"),
 /// mobile list layout: executive-clinic-list-item cards with verified badge,
@@ -257,6 +258,7 @@ class _ClinicListCard extends StatelessWidget {
             .substring(0, 1)
             .toUpperCase() +
         (clinic.nameEn.length > 1 ? clinic.nameEn.substring(1, 2) : '');
+    final resolvedUrl = _resolveLogoUrl(clinic.logoUrl);
 
     return Material(
       color: Colors.white,
@@ -291,8 +293,8 @@ class _ClinicListCard extends StatelessWidget {
                     ),
                     clipBehavior: Clip.antiAlias,
                     alignment: Alignment.center,
-                    child: (clinic.logoUrl ?? '').isNotEmpty
-                        ? Image.network(clinic.logoUrl!,
+                    child: resolvedUrl != null
+                        ? Image.network(resolvedUrl,
                             fit: BoxFit.cover,
                             errorBuilder: (_, __, ___) => Text(initials,
                                 style: const TextStyle(
@@ -493,4 +495,16 @@ class _Colors {
   static const textDark = Color(0xFF0F172A);
   static const textMuted = Color(0xFF64748B);
   static const border = Color(0xFFE2E8F0);
+}
+
+String? _resolveLogoUrl(String? raw) {
+  if (raw == null || raw.trim().isEmpty) return null;
+  final value = raw.trim();
+  final uri = Uri.tryParse(value);
+  if (uri != null && uri.hasScheme && uri.host.isNotEmpty) return value;
+  final base = kBaseUrl.endsWith('/')
+      ? kBaseUrl.substring(0, kBaseUrl.length - 1)
+      : kBaseUrl;
+  final path = value.startsWith('/') ? value : '/$value';
+  return '$base$path';
 }

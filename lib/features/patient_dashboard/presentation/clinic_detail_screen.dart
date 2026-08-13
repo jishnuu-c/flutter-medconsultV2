@@ -5,6 +5,7 @@ import '../../clinic_admin/data/clinic_models.dart';
 import '../../clinic_admin/data/clinic_service.dart';
 import '../../clinic_admin/data/doctor_service.dart';
 import '../../../core/services/references_service.dart';
+import '../../../core/network/api_client.dart';
 
 /// Full facility detail page — mirrors Angular's clinic-detail route
 /// (branch selector step, reached from clinic-explorer via selectClinic()).
@@ -129,8 +130,8 @@ class _ClinicDetailScreenState extends ConsumerState<ClinicDetailScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               clipBehavior: Clip.antiAlias,
-              child: (detail.logoUrl ?? '').isNotEmpty
-                  ? Image.network(detail.logoUrl!,
+              child: _resolveLogoUrl(detail.logoUrl) != null
+                  ? Image.network(_resolveLogoUrl(detail.logoUrl)!,
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => const Icon(
                           Icons.local_hospital,
@@ -503,4 +504,16 @@ class _Colors {
   static const textMuted = Color(0xFF94A3B8);
   static const border = Color(0xFFE2E8F0);
   static const off = Color(0xFFF8FAFC);
+}
+
+String? _resolveLogoUrl(String? raw) {
+  if (raw == null || raw.trim().isEmpty) return null;
+  final value = raw.trim();
+  final uri = Uri.tryParse(value);
+  if (uri != null && uri.hasScheme && uri.host.isNotEmpty) return value;
+  final base = kBaseUrl.endsWith('/')
+      ? kBaseUrl.substring(0, kBaseUrl.length - 1)
+      : kBaseUrl;
+  final path = value.startsWith('/') ? value : '/$value';
+  return '$base$path';
 }
