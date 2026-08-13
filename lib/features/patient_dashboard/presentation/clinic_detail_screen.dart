@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../clinic_admin/data/clinic_models.dart';
 import '../../clinic_admin/data/clinic_service.dart';
+import '../../clinic_admin/data/doctor_service.dart';
+import '../../../core/services/references_service.dart';
 
-/// Full facility detail page — mirrors Angular's clinic detail route
-/// (navigated to from landing/clinic-explorer via selectClinic()).
+/// Full facility detail page — mirrors Angular's clinic-detail route
+/// (branch selector step, reached from clinic-explorer via selectClinic()).
 class ClinicDetailScreen extends ConsumerStatefulWidget {
   final String clinicId;
 
@@ -19,6 +21,8 @@ class _ClinicDetailScreenState extends ConsumerState<ClinicDetailScreen> {
   bool _loading = true;
   String? _error;
   ClinicDetailResponse? _detail;
+  final Map<String, String> _cityNameById = {};
+  final Map<String, int> _doctorCountByBranch = {};
 
   @override
   void initState() {
@@ -36,11 +40,47 @@ class _ClinicDetailScreenState extends ConsumerState<ClinicDetailScreen> {
           .read(clinicServiceProvider)
           .getClinicDetail(widget.clinicId);
       if (mounted) setState(() => _detail = d);
+      _loadBranchExtras(d);
     } catch (e) {
       if (mounted) setState(() => _error = 'Could not load facility details.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Fills in branch city names and per-branch doctor counts in the
+  /// background, mirroring Angular's getBranchCityName / getBranchDoctorCount.
+  Future<void> _loadBranchExtras(ClinicDetailResponse detail) async {
+    try {
+      final cities = await ref.read(referenceServiceProvider).getAllCities();
+      if (mounted) {
+        setState(() {
+          _cityNameById
+              .addEntries(cities.map((c) => MapEntry(c.cityId, c.nameEn)));
+        });
+      }
+    } catch (_) {}
+
+    if (detail.branches.isEmpty) return;
+    try {
+      final doctorService = ref.read(doctorServiceProvider);
+      final doctors = await doctorService.getAllDoctors();
+      final branchIds = detail.branches.map((b) => b.branchId).toSet();
+      final counts = <String, int>{for (final id in branchIds) id: 0};
+
+      await Future.wait(doctors.map((doc) async {
+        try {
+          final links = await doctorService.getDoctorClinics(doc.doctorId);
+          for (final link in links) {
+            if (branchIds.contains(link.branchId)) {
+              counts[link.branchId] = (counts[link.branchId] ?? 0) + 1;
+            }
+          }
+        } catch (_) {}
+      }));
+
+      if (mounted) setState(() => _doctorCountByBranch.addAll(counts));
+    } catch (_) {}
   }
 
   @override
@@ -189,56 +229,38 @@ class _ClinicDetailScreenState extends ConsumerState<ClinicDetailScreen> {
         ),
         const SizedBox(height: 24),
 
-        // Branches
-        if (detail.branches.isNotEmpty) ...[
-          const Text('Branches & Locations',
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: _Colors.tealDark)),
-          const SizedBox(height: 10),
-          ...detail.branches.map((b) => Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _Colors.border),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.location_on,
-                            size: 14, color: _Colors.textMuted),
-                        const SizedBox(width: 5),
-                        Expanded(
-                          child: Text(b.branchNameEn,
-                              style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: _Colors.textMain)),
-                        ),
-                        if (b.isPrimary)
-                          const _Badge(
-                              label: 'Primary Location',
-                              bg: Color(0xFFCCFBF1),
-                              fg: _Colors.tealDark),
-                      ],
-                    ),
-                    const SizedBox(height: 5),
-                    Text(b.addressLine1,
-                        style: const TextStyle(
-                            fontSize: 12, color: _Colors.textMuted)),
-                    if ((b.phone ?? '').isNotEmpty) ...[
-                      const SizedBox(height: 5),
-                      _InfoRow(icon: Icons.phone_outlined, label: b.phone!),
-                    ],
-                  ],
-                ),
+        // Branch Selection Header — mirrors .branches-section-header
+        const Text('🏢  Select a Branch Location',
+            style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                color: _Colors.textMain)),
+        const SizedBox(height: 3),
+        const Text(
+            'Choose a branch below to view its working hours, address, and available doctors for booking.',
+            style: TextStyle(fontSize: 12, color: _Colors.textMuted)),
+        const SizedBox(height: 12),
+
+        // Branch Cards — mirrors .executive-branch-card
+        if (detail.branches.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(20),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _Colors.border),
+            ),
+            child: const Text('No active branches found for this clinic.',
+                style: TextStyle(color: _Colors.textMuted)),
+          )
+        else
+          ...detail.branches.map((b) => _BranchCard(
+                branch: b,
+                clinicPhone: detail.phonePrimary,
+                cityName: _cityNameById[b.cityId],
+                doctorCount: _doctorCountByBranch[b.branchId],
               )),
-        ],
 
         const SizedBox(height: 12),
         SizedBox(
@@ -294,6 +316,180 @@ class _Badge extends StatelessWidget {
       child: Text(label,
           style: TextStyle(
               fontSize: 10.5, color: fg, fontWeight: FontWeight.w700)),
+    );
+  }
+}
+
+/// Mirrors .executive-branch-card — name + city/doctor-count badges, address,
+/// and a footer split by a divider with phone + two action buttons.
+class _BranchCard extends StatelessWidget {
+  final ClinicBranchModel branch;
+  final String clinicPhone;
+  final String? cityName;
+  final int? doctorCount;
+
+  const _BranchCard({
+    required this.branch,
+    required this.clinicPhone,
+    required this.cityName,
+    required this.doctorCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final phone = (branch.phone ?? '').isNotEmpty ? branch.phone! : clinicPhone;
+    final hasLocation = branch.latitude != null && branch.longitude != null;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _Colors.border),
+        boxShadow: const [
+          BoxShadow(
+              color: Color(0x08172A), blurRadius: 8, offset: Offset(0, 2)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(branch.branchNameEn,
+                        style: const TextStyle(
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w700,
+                            color: _Colors.textMain)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        if ((cityName ?? '').isNotEmpty)
+                          _Badge(
+                              label: '📍 $cityName',
+                              bg: const Color(0xFFF8FAFC),
+                              fg: _Colors.teal),
+                        _Badge(
+                            label: '👥 ${doctorCount ?? 0} Doctors',
+                            bg: const Color(0xFFF8FAFC),
+                            fg: const Color(0xFF334155)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDCFCE7),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _Dot(),
+                    SizedBox(width: 4),
+                    Text('Open Today',
+                        style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF16A34A))),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            [branch.addressLine1, branch.addressLine2]
+                .where((s) => (s ?? '').isNotEmpty)
+                .join(', '),
+            style: const TextStyle(fontSize: 12, color: _Colors.textMuted),
+          ),
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            padding: const EdgeInsets.only(top: 12),
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
+            ),
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              runSpacing: 8,
+              children: [
+                if (phone.isNotEmpty)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.phone_outlined,
+                          size: 13, color: _Colors.textMuted),
+                      const SizedBox(width: 4),
+                      Text(phone,
+                          style: const TextStyle(
+                              fontSize: 12, color: _Colors.textMuted)),
+                    ],
+                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    OutlinedButton(
+                      onPressed: hasLocation
+                          ? () => ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text(
+                                        '${branch.branchNameEn}: ${branch.latitude}, ${branch.longitude}')),
+                              )
+                          : null,
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: _Colors.border),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6)),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                      ),
+                      child: const Text('📍 View Location',
+                          style: TextStyle(fontSize: 11.5)),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () => context.push('/patient/doctors'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _Colors.teal,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6)),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                      ),
+                      child: const Text('View Doctors & Book →',
+                          style: TextStyle(fontSize: 11.5)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Dot extends StatelessWidget {
+  const _Dot();
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 6,
+      height: 6,
+      decoration:
+          const BoxDecoration(color: Color(0xFF16A34A), shape: BoxShape.circle),
     );
   }
 }
