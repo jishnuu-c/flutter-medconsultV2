@@ -6,13 +6,120 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../../core/auth/auth_provider.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../clinic_admin/data/doctor_service.dart';
+import '../../clinic_admin/data/doctor_models.dart';
 import '../../doctor_dashboard/data/consultation_service.dart';
 import '../data/patient_service.dart';
 import '../data/chat_file_service.dart';
 import '../data/review_service.dart';
 import '../data/consultation_realtime_service.dart';
+
+String? _resolveAvatarUrl(String? raw) {
+  if (raw == null || raw.trim().isEmpty) return null;
+  final value = raw.trim();
+  final uri = Uri.tryParse(value);
+  if (uri != null && uri.hasScheme && uri.host.isNotEmpty) return value;
+  final base = kBaseUrl.endsWith('/')
+      ? kBaseUrl.substring(0, kBaseUrl.length - 1)
+      : kBaseUrl;
+  final path = value.startsWith('/') ? value : '/$value';
+  return '$base$path';
+}
+
+String? _findDoctorAvatarUrl({
+  String? explicitAvatarUrl,
+  String? doctorId,
+  String? doctorName,
+  List<dynamic>? doctors,
+}) {
+  final resolvedExplicit = _resolveAvatarUrl(explicitAvatarUrl);
+  if (resolvedExplicit != null) return resolvedExplicit;
+
+  if (doctors != null) {
+    if (doctorId != null && doctorId.isNotEmpty) {
+      for (final d in doctors) {
+        if (d is DoctorModel && d.doctorId == doctorId) {
+          final res = _resolveAvatarUrl(d.avatarUrl);
+          if (res != null) return res;
+        } else if (d is Map && (d['doctorId'] == doctorId || d['id'] == doctorId)) {
+          final res = _resolveAvatarUrl(d['avatarUrl']?.toString() ?? d['doctorAvatarUrl']?.toString());
+          if (res != null) return res;
+        }
+      }
+    }
+    if (doctorName != null && doctorName.trim().isNotEmpty) {
+      final cleanDoc = doctorName.replaceAll(RegExp(r'^(Dr\.\s*|dr\.\s*)', caseSensitive: false), '').trim().toLowerCase();
+      if (cleanDoc.isNotEmpty) {
+        for (final d in doctors) {
+          if (d is DoctorModel) {
+            final dName = d.fullName.replaceAll(RegExp(r'^(Dr\.\s*|dr\.\s*)', caseSensitive: false), '').trim().toLowerCase();
+            if (dName == cleanDoc || (dName.isNotEmpty && (cleanDoc.contains(dName) || dName.contains(cleanDoc)))) {
+              final res = _resolveAvatarUrl(d.avatarUrl);
+              if (res != null) return res;
+            }
+          } else if (d is Map) {
+            final rawName = (d['fullName'] ?? d['name'] ?? d['doctorName'] ?? '').toString();
+            final dName = rawName.replaceAll(RegExp(r'^(Dr\.\s*|dr\.\s*)', caseSensitive: false), '').trim().toLowerCase();
+            if (dName == cleanDoc || (dName.isNotEmpty && (cleanDoc.contains(dName) || dName.contains(cleanDoc)))) {
+              final res = _resolveAvatarUrl(d['avatarUrl']?.toString() ?? d['doctorAvatarUrl']?.toString());
+              if (res != null) return res;
+            }
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+Widget _buildDoctorAvatarWidget(
+  String doctorName, {
+  double radius = 20,
+  String? avatarUrl,
+  String? doctorId,
+  List<dynamic>? doctors,
+}) {
+  final resolvedUrl = _findDoctorAvatarUrl(
+    explicitAvatarUrl: avatarUrl,
+    doctorId: doctorId,
+    doctorName: doctorName,
+    doctors: doctors,
+  );
+
+  String initials = '';
+  final nameClean = doctorName.replaceAll(RegExp(r'^(Dr\.\s*|dr\.\s*)', caseSensitive: false), '').trim();
+  final nameParts = nameClean.split(' ');
+  if (nameParts.isNotEmpty) {
+    if (nameParts.length >= 2) {
+      initials = (nameParts[0].isNotEmpty ? nameParts[0][0] : '') +
+          (nameParts[nameParts.length - 1].isNotEmpty ? nameParts[nameParts.length - 1][0] : '');
+    } else {
+      initials = nameParts[0].isNotEmpty ? nameParts[0][0] : '';
+    }
+  }
+  initials = initials.toUpperCase();
+  if (initials.isEmpty) initials = 'D';
+
+  return CircleAvatar(
+    radius: radius,
+    backgroundColor: AppTheme.primaryLightTeal,
+    backgroundImage: resolvedUrl != null ? NetworkImage(resolvedUrl) : null,
+    onBackgroundImageError: resolvedUrl != null ? (_, __) {} : null,
+    child: resolvedUrl == null
+        ? Text(
+            initials,
+            style: TextStyle(
+              color: AppTheme.primaryDarkTeal,
+              fontWeight: FontWeight.bold,
+              fontSize: radius * 0.8,
+            ),
+          )
+        : null,
+  );
+}
+
 
 class PatientConsultationsScreen extends ConsumerStatefulWidget {
   const PatientConsultationsScreen({super.key});
@@ -24,57 +131,17 @@ class PatientConsultationsScreen extends ConsumerStatefulWidget {
 
 class _PatientConsultationsScreenState
     extends ConsumerState<PatientConsultationsScreen> {
-  final _msgController = TextEditingController();
-  final _messagesScrollController = ScrollController();
   bool _isLoading = false;
   String? _patientId;
   List<dynamic> _consultations = [];
   List<dynamic> _doctors = [];
   Map<String, dynamic>? _selectedConsultation;
-  List<dynamic> _messages = [];
-
-  // Mirrors ConsultationsComponent's chatSubscription — live push over STOMP
-  // (websocket.service.ts's watchConsultation), not a poll.
-  final _realtime = ConsultationRealtimeService();
-  StreamSubscription<Map<String, dynamic>>? _chatSubscription;
-
-  // ── File sharing state (mirrors selectedFile/isUploadingFile/fileMetadataCache) ──
-  PlatformFile? _selectedFile;
-  bool _isUploadingFile = false;
-  final Map<String, ChatFileMetadata> _fileMetadataCache = {};
-  final Map<String, Uint8List> _fileBytesCache = {};
-  final Map<String, String> _fileMimeCache = {};
-
-  // ── Image lightbox state (mirrors previewImageUrl/previewImageTitle/previewFileId) ──
-  Uint8List? _previewImageBytes;
-  String _previewImageTitle = '';
-  String? _previewFileId;
-
-  // ── Review modal state (mirrors showReviewModal / reviewForm) ──
-  bool _showReviewModal = false;
-  int _doctorRating = 5;
-  int _ratingBedside = 5;
-  int _ratingKnowledge = 5;
-  int _ratingWait = 5;
-  final _reviewTextController = TextEditingController();
-  bool _isAnonymous = false;
-  bool _isSubmittingReview = false;
 
   @override
   void initState() {
     super.initState();
     _loadPatientProfile();
     _loadDoctors();
-  }
-
-  @override
-  void dispose() {
-    _msgController.dispose();
-    _messagesScrollController.dispose();
-    _reviewTextController.dispose();
-    _chatSubscription?.cancel();
-    _realtime.dispose();
-    super.dispose();
   }
 
   Future<void> _loadPatientProfile() async {
@@ -109,26 +176,661 @@ class _PatientConsultationsScreenState
     if (mounted) setState(() => _consultations = res);
   }
 
-  Future<void> _selectConsultation(dynamic c) async {
-    _chatSubscription?.cancel();
-    setState(() {
-      _selectedConsultation = Map<String, dynamic>.from(c);
-      _isLoading = true;
-    });
-
-    await _loadMessages();
-    _setupRealtimeSubscription(_selectedConsultation!['consultationId']);
+  void _selectConsultation(dynamic c) {
+    if (MediaQuery.of(context).size.width <= 768) {
+      // Mobile: Push chat screen as a fullscreen route on root navigator.
+      // This completely overlays the ShellRoute's top bar and bottom navbar.
+      Navigator.of(context, rootNavigator: true).push(
+        MaterialPageRoute(
+          builder: (context) => Scaffold(
+            backgroundColor: AppTheme.backgroundApp,
+            body: ConsultationChatView(
+              consultation: Map<String, dynamic>.from(c),
+              patientId: _patientId,
+              doctors: _doctors,
+              isMobile: true,
+              onClose: () => Navigator.of(context).pop(),
+            ),
+          ),
+        ),
+      ).then((_) {
+        _loadConsultations();
+      });
+    } else {
+      // Desktop: Show inline in split-screen (master-detail) layout
+      setState(() {
+        _selectedConsultation = Map<String, dynamic>.from(c);
+      });
+    }
   }
 
-  // Mirrors ConsultationsComponent.loadMessages: fetch history, and hydrate
-  // fileMetadata for any attachment messages.
+  void _closeThread() {
+    setState(() => _selectedConsultation = null);
+  }
+
+  Color _statusColor(String? status) {
+    switch (status) {
+      case 'OPEN':
+        return AppTheme.primaryTeal;
+      case 'IN_PROGRESS':
+        return AppTheme.warningAmber;
+      case 'CLOSED':
+        return AppTheme.textMuted;
+      default:
+        return AppTheme.textMuted;
+    }
+  }
+
+  String _formatStatus(String? status) {
+    if (status == null) return '';
+    switch (status) {
+      case 'OPEN':
+        return 'Open';
+      case 'IN_PROGRESS':
+        return 'In Progress';
+      case 'CLOSED':
+        return 'Closed';
+      default:
+        return status;
+    }
+  }
+
+  String _doctorLabel(dynamic d) => 'Dr. ${d.fullName}';
+
+  void _openBookDialog() {
+    String? doctorId = _doctors.isNotEmpty ? _doctors.first.doctorId : null;
+    final subjectController = TextEditingController();
+    bool isUrgent = false;
+    bool submitting = false;
+    bool subjectTouched = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final subjectValid = subjectController.text.trim().isNotEmpty &&
+              subjectController.text.trim().length <= 255;
+          final formValid = doctorId != null && subjectValid;
+
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: Container(
+              decoration: const BoxDecoration(
+                color: AppTheme.surfaceWhite,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 20),
+                        decoration: BoxDecoration(
+                          color: AppTheme.borderGray,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const Text(
+                      'Book a Tele-Consultation',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textMain,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Select Doctor',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      initialValue: doctorId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        filled: true,
+                        fillColor: AppTheme.backgroundApp,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        border: OutlineInputBorder(
+                          borderSide: BorderSide.none,
+                          borderRadius: BorderRadius.all(Radius.circular(10)),
+                        ),
+                      ),
+                      hint: const Text('-- Choose a Doctor --'),
+                      items: _doctors
+                          .map((d) => DropdownMenuItem<String>(
+                                value: d.doctorId,
+                                child: Text(_doctorLabel(d)),
+                              ))
+                          .toList(),
+                      onChanged: (val) => setDialogState(() => doctorId = val),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Subject / Reason for Consultation',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: subjectController,
+                      maxLength: 255,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        filled: true,
+                        fillColor: AppTheme.backgroundApp,
+                        hintText: 'Briefly describe your health concern',
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        border: const OutlineInputBorder(
+                          borderSide: BorderSide.none,
+                          borderRadius: BorderRadius.all(Radius.circular(10)),
+                        ),
+                        errorText: subjectTouched && !subjectValid
+                            ? 'Subject is required.'
+                            : null,
+                      ),
+                      onChanged: (_) => setDialogState(() {}),
+                      onTapOutside: (_) => setDialogState(() => subjectTouched = true),
+                    ),
+                    const SizedBox(height: 4),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      title: const Text(
+                        'Mark as Urgent',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                      ),
+                      value: isUrgent,
+                      activeColor: AppTheme.primaryTeal,
+                      onChanged: (val) => setDialogState(() => isUrgent = val ?? false),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: submitting || !formValid
+                                ? null
+                                : () async {
+                                    setDialogState(() => submitting = true);
+                                    try {
+                                      await ref.read(consultationServiceProvider).openConsultation({
+                                        'patientId': _patientId,
+                                        'doctorId': doctorId,
+                                        'subject': subjectController.text.trim(),
+                                        'isUrgent': isUrgent,
+                                      });
+                                      if (mounted) Navigator.pop(ctx);
+                                      _loadConsultations();
+                                    } catch (_) {
+                                      setDialogState(() => submitting = false);
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Failed to book consultation.'),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                            child: submitting
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text('Book Consultation'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildDoctorAvatar(
+    String doctorName, {
+    double radius = 20,
+    String? avatarUrl,
+    String? doctorId,
+  }) {
+    return _buildDoctorAvatarWidget(
+      doctorName,
+      radius: radius,
+      avatarUrl: avatarUrl,
+      doctorId: doctorId,
+      doctors: _doctors,
+    );
+  }
+
+  Widget _buildStatusBadge(String? status) {
+    final color = _statusColor(status);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Text(
+        _formatStatus(status),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
+      ),
+    );
+  }
+
+  String _mediumDate(String? iso) {
+    if (iso == null) return '';
+    final dt = DateTime.tryParse(iso)?.toLocal();
+    if (dt == null) return '';
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
+  }
+
+  Widget _buildConsultationListItem(dynamic c, bool isSelected) {
+    final status = c['status'] as String?;
+    final doctorName = c['doctorName'] ?? '';
+    final doctorId = c['doctorId']?.toString();
+    final avatarUrl = (c['doctorAvatarUrl'] ??
+            c['avatarUrl'] ??
+            c['doctorProfileImage'] ??
+            c['imageUrl'])
+        ?.toString();
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: isSelected ? AppTheme.primaryLightTeal.withValues(alpha: 0.4) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isSelected ? AppTheme.primaryTeal : AppTheme.borderGray,
+          width: isSelected ? 1.5 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        leading: _buildDoctorAvatar(
+          doctorName,
+          avatarUrl: avatarUrl,
+          doctorId: doctorId,
+        ),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Dr. $doctorName',
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: AppTheme.textMain,
+                ),
+              ),
+            ),
+            if (c['isUrgent'] == true)
+              Container(
+                margin: const EdgeInsets.only(left: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppTheme.dangerRed.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppTheme.dangerRed.withValues(alpha: 0.2)),
+                ),
+                child: const Text(
+                  'Urgent',
+                  style: TextStyle(
+                    color: AppTheme.dangerRed,
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Text(
+              c['subject'] ?? '',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Opened: ${_mediumDate(c['openedAt'] as String?)}',
+              style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+            ),
+          ],
+        ),
+        trailing: _buildStatusBadge(status),
+        onTap: () => _selectConsultation(c),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: AppTheme.primaryLightTeal,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.chat_bubble_outline,
+                size: 48,
+                color: AppTheme.primaryTeal,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'No Consultations Yet',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textMain,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Start a new consultation with a doctor.',
+              style: TextStyle(
+                fontSize: 13,
+                color: AppTheme.textMuted,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopPlaceholder() {
+    return Container(
+      color: AppTheme.backgroundApp,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.video_call,
+                size: 64,
+                color: AppTheme.primaryTeal,
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Select a Consultation',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textMain,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Choose a consultation from the left side list\nto start messaging your doctor.',
+              style: TextStyle(
+                fontSize: 14,
+                color: AppTheme.textMuted,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final isMobile = size.width <= 768;
+
+    return Scaffold(
+      floatingActionButton: (isMobile && _selectedConsultation == null)
+          ? FloatingActionButton.extended(
+              onPressed: _patientId == null ? null : _openBookDialog,
+              icon: const Icon(Icons.add),
+              label: const Text('New Consultation'),
+              backgroundColor: AppTheme.primaryTeal,
+              foregroundColor: Colors.white,
+            )
+          : null,
+      body: Row(
+        children: [
+          // Left Sidebar (always shown on Desktop, takes full width on Mobile if no chat is open)
+          Expanded(
+            flex: isMobile ? 1 : 0,
+            child: Container(
+              width: isMobile ? double.infinity : 320,
+              color: Colors.white,
+              child: SafeArea(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Consultations',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.textMain,
+                            ),
+                          ),
+                          if (!isMobile) ...[
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: _patientId == null ? null : _openBookDialog,
+                                icon: const Icon(Icons.add, size: 16),
+                                label: const Text('New Consultation'),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: _isLoading && _consultations.isEmpty
+                          ? const Center(child: CircularProgressIndicator())
+                          : _consultations.isEmpty
+                              ? _buildEmptyState()
+                              : ListView.builder(
+                                  itemCount: _consultations.length,
+                                  itemBuilder: (context, index) {
+                                    final c = _consultations[index];
+                                    final isSelected = _selectedConsultation != null &&
+                                        c['consultationId'] == _selectedConsultation!['consultationId'];
+                                    return _buildConsultationListItem(c, isSelected);
+                                  },
+                                ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // Right Chat Panel (Desktop Only)
+          if (!isMobile)
+            Expanded(
+              child: _selectedConsultation == null
+                  ? _buildDesktopPlaceholder()
+                  : Container(
+                      color: AppTheme.backgroundApp,
+                      child: ConsultationChatView(
+                        consultation: _selectedConsultation!,
+                        patientId: _patientId,
+                        doctors: _doctors,
+                        isMobile: false,
+                        onClose: _closeThread,
+                      ),
+                    ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class ConsultationChatView extends ConsumerStatefulWidget {
+  final Map<String, dynamic> consultation;
+  final String? patientId;
+  final List<dynamic> doctors;
+  final bool isMobile;
+  final VoidCallback? onClose;
+
+  const ConsultationChatView({
+    super.key,
+    required this.consultation,
+    required this.patientId,
+    required this.doctors,
+    required this.isMobile,
+    this.onClose,
+  });
+
+  @override
+  ConsumerState<ConsultationChatView> createState() => _ConsultationChatViewState();
+}
+
+class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
+  final _msgController = TextEditingController();
+  final _messagesScrollController = ScrollController();
+  bool _isLoading = false;
+  List<dynamic> _messages = [];
+
+  final _realtime = ConsultationRealtimeService();
+  StreamSubscription<Map<String, dynamic>>? _chatSubscription;
+
+  PlatformFile? _selectedFile;
+  bool _isUploadingFile = false;
+  final Map<String, ChatFileMetadata> _fileMetadataCache = {};
+  final Map<String, Uint8List> _fileBytesCache = {};
+  final Map<String, String> _fileMimeCache = {};
+
+  Uint8List? _previewImageBytes;
+  String _previewImageTitle = '';
+  String? _previewFileId;
+
+  bool _showReviewModal = false;
+  int _doctorRating = 5;
+  int _ratingBedside = 5;
+  int _ratingKnowledge = 5;
+  int _ratingWait = 5;
+  final _reviewTextController = TextEditingController();
+  bool _isAnonymous = false;
+  bool _isSubmittingReview = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMessages();
+    _setupRealtimeSubscription(widget.consultation['consultationId']);
+  }
+
+  @override
+  void dispose() {
+    _msgController.dispose();
+    _messagesScrollController.dispose();
+    _reviewTextController.dispose();
+    _chatSubscription?.cancel();
+    _realtime.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant ConsultationChatView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.consultation['consultationId'] != oldWidget.consultation['consultationId']) {
+      _chatSubscription?.cancel();
+      _selectedFile = null;
+      _isUploadingFile = false;
+      _messages.clear();
+      _loadMessages();
+      _setupRealtimeSubscription(widget.consultation['consultationId']);
+    }
+  }
+
   Future<void> _loadMessages() async {
-    if (_selectedConsultation == null) return;
-    if (mounted) setState(() => _isLoading = true);
+    setState(() => _isLoading = true);
     try {
       final msgs = await ref
           .read(consultationServiceProvider)
-          .getMessagesForConsultation(_selectedConsultation!['consultationId']);
+          .getMessagesForConsultation(widget.consultation['consultationId']);
       if (mounted) setState(() => _messages = msgs);
       for (final m in msgs) {
         final fileId = (m is Map ? m['fileId'] : null)?.toString();
@@ -145,14 +847,12 @@ class _PatientConsultationsScreenState
     }
   }
 
-  // Mirrors ConsultationsComponent.setupWebSocketSubscription: live-push new
-  // messages onto the thread instead of polling for them.
   void _setupRealtimeSubscription(String consultationId) {
     _chatSubscription?.cancel();
     _chatSubscription =
         _realtime.watchConsultation(consultationId).listen((msg) {
       if (!mounted) return;
-      if (msg['consultationId'] != _selectedConsultation?['consultationId']) {
+      if (msg['consultationId'] != widget.consultation['consultationId']) {
         return;
       }
       final exists =
@@ -179,14 +879,6 @@ class _PatientConsultationsScreenState
     });
   }
 
-  void _closeThread() {
-    _chatSubscription?.cancel();
-    _realtime.disconnect();
-    setState(() => _selectedConsultation = null);
-  }
-
-  // ── File attach (mirrors onFileSelected / clearSelectedFile) ────────────
-
   Future<void> _pickFile() async {
     final result = await FilePicker.pickFiles(withData: true);
     if (result != null && result.files.isNotEmpty) {
@@ -198,10 +890,7 @@ class _PatientConsultationsScreenState
     setState(() => _selectedFile = null);
   }
 
-  // Mirrors ConsultationsComponent.sendMessage: plain text, or upload the
-  // attachment first then send a FILE message referencing it.
   Future<void> _sendMessage() async {
-    if (_selectedConsultation == null) return;
     final body = _msgController.text.trim();
     if (body.isEmpty && _selectedFile == null) return;
 
@@ -215,14 +904,14 @@ class _PatientConsultationsScreenState
               bytes,
               file.name,
               mimeType: _guessMimeType(file.extension),
-              patientId: _patientId,
+              patientId: widget.patientId,
             );
         _fileMetadataCache[meta.fileId] = meta;
         _fileBytesCache[meta.fileId] = bytes;
         if (meta.mimeType != null) _fileMimeCache[meta.fileId] = meta.mimeType!;
 
         final msg = await ref.read(consultationServiceProvider).sendMessage({
-          'consultationId': _selectedConsultation!['consultationId'],
+          'consultationId': widget.consultation['consultationId'],
           'messageType': 'FILE',
           'fileId': meta.fileId,
           'body': body.isNotEmpty
@@ -256,7 +945,7 @@ class _PatientConsultationsScreenState
     _msgController.clear();
     try {
       final msg = await ref.read(consultationServiceProvider).sendMessage({
-        'consultationId': _selectedConsultation!['consultationId'],
+        'consultationId': widget.consultation['consultationId'],
         'messageType': 'TEXT',
         'body': body,
       });
@@ -294,9 +983,6 @@ class _PatientConsultationsScreenState
         return null;
     }
   }
-
-  // ── File rendering / download (mirrors isImageFile / ensureFileBlob /
-  //    downloadChatFile / formatFileSize) ──────────────────────────────────
 
   bool _isImageFile(dynamic msg) {
     final fileId = msg['fileId']?.toString();
@@ -363,8 +1049,6 @@ class _PatientConsultationsScreenState
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
-  // ── Image lightbox (mirrors openImageModal / closeImageModal) ───────────
-
   void _openImageModal(Uint8List bytes, String title, String fileId) {
     setState(() {
       _previewImageBytes = bytes;
@@ -380,8 +1064,6 @@ class _PatientConsultationsScreenState
       _previewFileId = null;
     });
   }
-
-  // ── Review modal (mirrors openReviewModal / submitReview) ───────────────
 
   void _openReviewModal() {
     setState(() {
@@ -400,13 +1082,12 @@ class _PatientConsultationsScreenState
   }
 
   Future<void> _submitReview() async {
-    if (_selectedConsultation == null) return;
     setState(() => _isSubmittingReview = true);
-    final appOrConsId = _selectedConsultation!['appointmentId'] ??
-        _selectedConsultation!['consultationId'];
+    final appOrConsId = widget.consultation['appointmentId'] ??
+        widget.consultation['consultationId'];
     try {
       await ref.read(reviewServiceProvider).submitDoctorReview({
-        'doctorId': _selectedConsultation!['doctorId'],
+        'doctorId': widget.consultation['doctorId'],
         'appointmentId': appOrConsId,
         'rating': _doctorRating,
         'ratingBedside': _ratingBedside,
@@ -438,13 +1119,27 @@ class _PatientConsultationsScreenState
   Color _statusColor(String? status) {
     switch (status) {
       case 'OPEN':
-        return AppTheme.infoBlue;
+        return AppTheme.primaryTeal;
       case 'IN_PROGRESS':
         return AppTheme.warningAmber;
       case 'CLOSED':
         return AppTheme.textMuted;
       default:
         return AppTheme.textMuted;
+    }
+  }
+
+  String _formatStatus(String? status) {
+    if (status == null) return '';
+    switch (status) {
+      case 'OPEN':
+        return 'Open';
+      case 'IN_PROGRESS':
+        return 'In Progress';
+      case 'CLOSED':
+        return 'Closed';
+      default:
+        return status;
     }
   }
 
@@ -458,209 +1153,47 @@ class _PatientConsultationsScreenState
     return '$h:$m $ampm';
   }
 
-  String _mediumDate(String? iso) {
-    if (iso == null) return '';
-    final dt = DateTime.tryParse(iso)?.toLocal();
-    if (dt == null) return '';
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec'
-    ];
-    return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
-  }
-
-  // Mirrors Angular's doctorSelectOptions getter — "Dr. {fullName}".
   String _doctorLabel(dynamic d) => 'Dr. ${d.fullName}';
 
-  void _openBookDialog() {
-    String? doctorId = _doctors.isNotEmpty ? _doctors.first.doctorId : null;
-    final subjectController = TextEditingController();
-    bool isUrgent = false;
-    bool submitting = false;
-    bool subjectTouched = false;
+  Widget _buildDoctorAvatar(
+    String doctorName, {
+    double radius = 20,
+    String? avatarUrl,
+    String? doctorId,
+  }) {
+    return _buildDoctorAvatarWidget(
+      doctorName,
+      radius: radius,
+      avatarUrl: avatarUrl,
+      doctorId: doctorId,
+      doctors: widget.doctors,
+    );
+  }
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          final subjectValid = subjectController.text.trim().isNotEmpty &&
-              subjectController.text.trim().length <= 255;
-          final formValid = doctorId != null && subjectValid;
-
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-            ),
-            child: Container(
-              decoration: const BoxDecoration(
-                color: AppTheme.surfaceWhite,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: AppTheme.borderGray,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    const Text('Book a Tele-Consultation',
-                        style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textMain)),
-                    const SizedBox(height: 16),
-                    const Text('Select Doctor',
-                        style: TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 6),
-                    DropdownButtonFormField<String>(
-                      initialValue: doctorId,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        filled: true,
-                        fillColor: AppTheme.backgroundApp,
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        border: OutlineInputBorder(
-                            borderSide: BorderSide.none,
-                            borderRadius:
-                                BorderRadius.all(Radius.circular(10))),
-                      ),
-                      hint: const Text('-- Choose a Doctor --'),
-                      items: _doctors
-                          .map((d) => DropdownMenuItem<String>(
-                              value: d.doctorId, child: Text(_doctorLabel(d))))
-                          .toList(),
-                      onChanged: (val) => setDialogState(() => doctorId = val),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text('Subject / Reason for Consultation',
-                        style: TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: subjectController,
-                      maxLength: 255,
-                      decoration: InputDecoration(
-                        isDense: true,
-                        filled: true,
-                        fillColor: AppTheme.backgroundApp,
-                        hintText: 'Briefly describe your health concern',
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 10),
-                        border: const OutlineInputBorder(
-                            borderSide: BorderSide.none,
-                            borderRadius:
-                                BorderRadius.all(Radius.circular(10))),
-                        errorText: subjectTouched && !subjectValid
-                            ? 'Subject is required.'
-                            : null,
-                      ),
-                      onChanged: (_) => setDialogState(() {}),
-                      onTapOutside: (_) =>
-                          setDialogState(() => subjectTouched = true),
-                    ),
-                    const SizedBox(height: 4),
-                    CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      controlAffinity: ListTileControlAffinity.leading,
-                      title: const Text('Mark as Urgent'),
-                      value: isUrgent,
-                      onChanged: (val) =>
-                          setDialogState(() => isUrgent = val ?? false),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.pop(ctx),
-                            child: const Text('Cancel'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: submitting || !formValid
-                                ? null
-                                : () async {
-                                    setDialogState(() => submitting = true);
-                                    try {
-                                      await ref
-                                          .read(consultationServiceProvider)
-                                          .openConsultation({
-                                        'patientId': _patientId,
-                                        'doctorId': doctorId,
-                                        'subject':
-                                            subjectController.text.trim(),
-                                        'isUrgent': isUrgent,
-                                      });
-                                      if (mounted) Navigator.pop(ctx);
-                                      _loadConsultations();
-                                    } catch (_) {
-                                      setDialogState(() => submitting = false);
-                                      if (mounted) {
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          const SnackBar(
-                                              content: Text(
-                                                  'Failed to book consultation.')),
-                                        );
-                                      }
-                                    }
-                                  },
-                            child: submitting
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2, color: Colors.white),
-                                  )
-                                : const Text('Book Consultation'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
+  Widget _buildStatusBadge(String? status) {
+    final color = _statusColor(status);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Text(
+        _formatStatus(status),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
       ),
     );
   }
 
-  // Shared bubble builder for message list.
   Widget _buildMessageBubble(dynamic msg, bool isMine, double maxWidth) {
     final fileId = msg['fileId']?.toString();
     final hasFile = fileId != null && fileId.isNotEmpty;
     final meta = hasFile ? _fileMetadataCache[fileId] : null;
-    // Only show body text if it isn't just duplicating the uploaded filename
-    // (mirrors the *ngIf on msg.body in consultations.component.html).
     final showBody = (msg['body'] ?? '').toString().isNotEmpty &&
         (!hasFile ||
             (msg['body'] != meta?.originalFilename &&
@@ -670,33 +1203,34 @@ class _PatientConsultationsScreenState
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         constraints: BoxConstraints(maxWidth: maxWidth * 0.78),
-        margin: const EdgeInsets.symmetric(vertical: 4),
+        margin: const EdgeInsets.symmetric(vertical: 6),
         child: Column(
-          crossAxisAlignment:
-              isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 6),
               child: Text(
                 '${msg['senderName'] ?? ''} • ${_shortTime(msg['sentAt'])}',
-                style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                style: const TextStyle(fontSize: 10, color: AppTheme.textMuted),
               ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 3),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: isMine ? AppTheme.primaryTeal : Colors.white,
                 borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(12),
-                  topRight: const Radius.circular(12),
-                  bottomRight: Radius.circular(isMine ? 4 : 12),
-                  bottomLeft: Radius.circular(isMine ? 12 : 4),
+                  topLeft: const Radius.circular(16),
+                  topRight: const Radius.circular(16),
+                  bottomRight: Radius.circular(isMine ? 4 : 16),
+                  bottomLeft: Radius.circular(isMine ? 16 : 4),
                 ),
+                border: isMine ? null : Border.all(color: AppTheme.borderGray, width: 0.7),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 3,
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
                   ),
                 ],
               ),
@@ -707,7 +1241,10 @@ class _PatientConsultationsScreenState
                     Text(
                       msg['body'] ?? '',
                       style: TextStyle(
-                          color: isMine ? Colors.white : AppTheme.textMain),
+                        fontSize: 14,
+                        color: isMine ? Colors.white : AppTheme.textMain,
+                        height: 1.3,
+                      ),
                     ),
                   if (hasFile) _buildAttachment(msg, fileId, isMine),
                 ],
@@ -719,8 +1256,6 @@ class _PatientConsultationsScreenState
     );
   }
 
-  // Mirrors the Image / Non-Image Attachment Display Cards in
-  // consultations.component.html.
   Widget _buildAttachment(dynamic msg, String fileId, bool isMine) {
     final meta = _fileMetadataCache[fileId];
     final bytes = _fileBytesCache[fileId];
@@ -733,9 +1268,10 @@ class _PatientConsultationsScreenState
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-              color: isMine
-                  ? Colors.white.withValues(alpha: 0.4)
-                  : Colors.black.withValues(alpha: 0.12)),
+            color: isMine
+                ? Colors.white.withValues(alpha: 0.4)
+                : Colors.black.withValues(alpha: 0.12),
+          ),
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(
@@ -746,40 +1282,36 @@ class _PatientConsultationsScreenState
                 height: 140,
                 alignment: Alignment.center,
                 color: Colors.black.withValues(alpha: 0.04),
-                child: const Text('Loading media...',
-                    style: TextStyle(fontSize: 11)),
+                child: const Text('Loading media...', style: TextStyle(fontSize: 11)),
               )
             else
               GestureDetector(
                 onTap: () => _openImageModal(bytes, filename, fileId),
-                child: Image.memory(bytes,
-                    height: 160, width: double.infinity, fit: BoxFit.cover),
+                child: Image.memory(bytes, height: 160, width: double.infinity, fit: BoxFit.cover),
               ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              color: isMine
-                  ? Colors.black.withValues(alpha: 0.22)
-                  : const Color(0xFFF8FAFC),
+              color: isMine ? Colors.black.withValues(alpha: 0.22) : const Color(0xFFF8FAFC),
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(filename,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: isMine ? Colors.white : AppTheme.textMain)),
+                    child: Text(
+                      filename,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: isMine ? Colors.white : AppTheme.textMain,
+                      ),
+                    ),
                   ),
                   TextButton(
                     onPressed: () => _downloadChatFile(fileId, filename),
                     style: TextButton.styleFrom(
-                      backgroundColor:
-                          isMine ? Colors.white : AppTheme.primaryTeal,
-                      foregroundColor:
-                          isMine ? AppTheme.primaryTeal : Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
+                      backgroundColor: isMine ? Colors.white : AppTheme.primaryTeal,
+                      foregroundColor: isMine ? AppTheme.primaryTeal : Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       minimumSize: const Size(0, 0),
                     ),
                     child: const Text('Save', style: TextStyle(fontSize: 11)),
@@ -796,14 +1328,11 @@ class _PatientConsultationsScreenState
       margin: const EdgeInsets.only(top: 6),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: isMine
-            ? Colors.white.withValues(alpha: 0.18)
-            : AppTheme.backgroundApp,
+        color: isMine ? Colors.white.withValues(alpha: 0.18) : AppTheme.backgroundApp,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-            color: isMine
-                ? Colors.white.withValues(alpha: 0.3)
-                : AppTheme.borderGray),
+          color: isMine ? Colors.white.withValues(alpha: 0.3) : AppTheme.borderGray,
+        ),
       ),
       child: Row(
         children: [
@@ -813,17 +1342,23 @@ class _PatientConsultationsScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(filename,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: isMine ? Colors.white : AppTheme.textMain)),
-                Text(_formatFileSize(meta?.sizeBytes),
-                    style: TextStyle(
-                        fontSize: 10,
-                        color: isMine ? Colors.white70 : AppTheme.textMuted)),
+                Text(
+                  filename,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: isMine ? Colors.white : AppTheme.textMain,
+                  ),
+                ),
+                Text(
+                  _formatFileSize(meta?.sizeBytes),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: isMine ? Colors.white70 : AppTheme.textMuted,
+                  ),
+                ),
               ],
             ),
           ),
@@ -836,7 +1371,7 @@ class _PatientConsultationsScreenState
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               minimumSize: const Size(0, 0),
             ),
-            child: const Text('📥 Download', style: TextStyle(fontSize: 11)),
+            child: const Text('Download', style: TextStyle(fontSize: 11)),
           ),
         ],
       ),
@@ -872,29 +1407,38 @@ class _PatientConsultationsScreenState
     );
   }
 
-  // Reply bar, keyboard-safe; shows a "Rate Consultation" footer instead
-  // when the thread is closed (mirrors the two chat-input-bar variants).
   Widget _buildReplyBar({required double bottomPadding}) {
-    if (_selectedConsultation!['status'] == 'CLOSED') {
+    if (widget.consultation['status'] == 'CLOSED') {
       return Container(
         width: double.infinity,
         padding: EdgeInsets.only(
-            left: 12, right: 12, top: 12, bottom: bottomPadding + 12),
-        color: AppTheme.backgroundApp,
+          left: 16,
+          right: 16,
+          top: 12,
+          bottom: bottomPadding + 12,
+        ),
+        color: const Color(0xFFF1F5F9),
         child: Row(
           children: [
             const Expanded(
               child: Text(
-                'This consultation has been closed.',
-                style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
+                'This consultation is closed.',
+                style: TextStyle(
+                  color: AppTheme.textMuted,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
             ElevatedButton.icon(
               onPressed: _openReviewModal,
               style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryTeal,
-                  foregroundColor: Colors.white),
-              icon: const Text('⭐', style: TextStyle(fontSize: 13)),
+                backgroundColor: AppTheme.primaryTeal,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              ),
+              icon: const Icon(Icons.star_rounded, size: 16),
               label: const Text('Rate Consultation'),
             ),
           ],
@@ -903,9 +1447,13 @@ class _PatientConsultationsScreenState
     }
     return Container(
       padding: EdgeInsets.only(
-          left: 12, right: 8, top: 8, bottom: bottomPadding + 8),
+        left: 16,
+        right: 16,
+        top: 10,
+        bottom: bottomPadding + 10,
+      ),
       decoration: const BoxDecoration(
-        color: AppTheme.surfaceWhite,
+        color: Colors.white,
         border: Border(top: BorderSide(color: AppTheme.borderGray)),
       ),
       child: Column(
@@ -915,32 +1463,32 @@ class _PatientConsultationsScreenState
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: AppTheme.backgroundApp,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: AppTheme.borderGray),
+                  color: AppTheme.primaryLightTeal.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.primaryLightTeal),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    const Icon(Icons.attach_file, size: 14, color: AppTheme.primaryTeal),
+                    const SizedBox(width: 6),
                     Flexible(
                       child: Text(
-                        '📎 ${_selectedFile!.name} (${_formatFileSize(_selectedFile!.size)})',
+                        '${_selectedFile!.name} (${_formatFileSize(_selectedFile!.size)})',
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.primaryTeal),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primaryDarkTeal,
+                        ),
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 14),
-                      color: AppTheme.dangerRed,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      onPressed: _clearSelectedFile,
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: _clearSelectedFile,
+                      child: const Icon(Icons.cancel, size: 16, color: AppTheme.dangerRed),
                     ),
                   ],
                 ),
@@ -949,8 +1497,8 @@ class _PatientConsultationsScreenState
           Row(
             children: [
               IconButton(
-                icon: const Icon(Icons.attach_file, color: AppTheme.textMuted),
-                tooltip: 'Attach Document / Image',
+                icon: const Icon(Icons.add_circle_outline, color: AppTheme.primaryTeal, size: 26),
+                tooltip: 'Attach file',
                 onPressed: _isUploadingFile ? null : _pickFile,
               ),
               Expanded(
@@ -960,32 +1508,45 @@ class _PatientConsultationsScreenState
                   maxLines: 4,
                   textCapitalization: TextCapitalization.sentences,
                   decoration: InputDecoration(
-                    hintText: 'Type your message here...',
+                    hintText: 'Type your message...',
+                    hintStyle: const TextStyle(color: AppTheme.textMuted),
                     filled: true,
                     fillColor: AppTheme.backgroundApp,
                     isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(22),
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
                       borderSide: BorderSide.none,
                     ),
                   ),
                   onSubmitted: (_) => _sendMessage(),
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 8),
               _isUploadingFile
                   ? const Padding(
                       padding: EdgeInsets.all(10),
                       child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2)),
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
                     )
-                  : IconButton(
-                      icon: const Icon(Icons.send, color: AppTheme.primaryTeal),
-                      onPressed: _sendMessage,
+                  : CircleAvatar(
+                      backgroundColor: AppTheme.primaryTeal,
+                      radius: 20,
+                      child: IconButton(
+                        icon: const Icon(Icons.send, color: Colors.white, size: 16),
+                        onPressed: _sendMessage,
+                      ),
                     ),
             ],
           ),
@@ -994,317 +1555,47 @@ class _PatientConsultationsScreenState
     );
   }
 
-  Widget _buildConsultationListItem(dynamic c) {
-    final status = c['status'] as String?;
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: AppTheme.primaryLightTeal,
-        child: const Icon(Icons.video_call, color: AppTheme.primaryDarkTeal),
-      ),
-      title: Row(
-        children: [
-          Expanded(
-            child: Text('Dr. ${c['doctorName'] ?? ''}',
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.bold)),
-          ),
-          if (c['isUrgent'] == true)
-            const Padding(
-              padding: EdgeInsets.only(left: 4),
-              child: Icon(Icons.priority_high,
-                  color: AppTheme.dangerRed, size: 16),
+  Widget _buildStarRatingSelector({
+    required int rating,
+    required ValueChanged<int> onChanged,
+    double size = 28,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(5, (index) {
+        final starValue = index + 1;
+        final isSelected = starValue <= rating;
+        return GestureDetector(
+          onTap: () => onChanged(starValue),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Icon(
+              isSelected ? Icons.star_rounded : Icons.star_outline_rounded,
+              color: isSelected ? Colors.amber : AppTheme.textMuted,
+              size: size,
             ),
-        ],
-      ),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(c['subject'] ?? '',
-              maxLines: 1, overflow: TextOverflow.ellipsis),
-          Text(
-            'Opened: ${_mediumDate(c['openedAt'] as String?)}',
-            style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
           ),
-        ],
-      ),
-      trailing: Chip(
-        label: Text(status ?? '',
-            style: const TextStyle(fontSize: 11, color: Colors.white)),
-        backgroundColor: _statusColor(status),
-        visualDensity: VisualDensity.compact,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
-      onTap: () => _selectConsultation(c),
+        );
+      }),
     );
   }
 
-  // ── Dedicated full-screen, keyboard-safe chat view for mobile ──────────
-  // Angular's side-by-side list/chat layout doesn't fit a narrow screen
-  // with a keyboard open, so on mobile the open thread becomes its own
-  // screen: slim AppBar, message list that shrinks with the keyboard, and
-  // the reply bar pinned just above it.
-  Widget _buildMobileChatScreen() {
-    final c = _selectedConsultation!;
-
-    return Scaffold(
-      resizeToAvoidBottomInset: true,
-      backgroundColor: AppTheme.backgroundApp,
-      appBar: AppBar(
-        backgroundColor: AppTheme.primaryLightTeal,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: _closeThread,
-        ),
-        titleSpacing: 0,
-        title: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              c['subject'] ?? '',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textMain),
-            ),
-            Text(
-              'Dr. ${c['doctorName'] ?? ''}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
-            ),
-          ],
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: Chip(
-              label: Text(c['status'] ?? '',
-                  style: const TextStyle(color: Colors.white, fontSize: 11)),
-              backgroundColor: _statusColor(c['status'] as String?),
-              visualDensity: VisualDensity.compact,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-          ),
-          if (c['isUrgent'] == true)
-            const Padding(
-              padding: EdgeInsets.only(right: 12),
-              child: Chip(
-                label: Text('Urgent',
-                    style: TextStyle(color: Colors.white, fontSize: 11)),
-                backgroundColor: AppTheme.dangerRed,
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-            ),
-        ],
-      ),
-      body: SafeArea(
-        top: false,
-        child: Column(
-          children: [
-            Expanded(
-              child: _buildMessagesList(MediaQuery.of(context).size.width),
-            ),
-            _buildReplyBar(bottomPadding: 0),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
+  Widget _buildSubRatingItem(String label, int rating, ValueChanged<int> onChanged) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildScreen(context),
-        if (_showReviewModal && _selectedConsultation != null)
-          _buildReviewModalOverlay(),
-        if (_previewImageBytes != null) _buildImageLightbox(),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.textSecondary),
+        ),
+        const SizedBox(height: 4),
+        _buildStarRatingSelector(rating: rating, onChanged: onChanged, size: 22),
       ],
     );
   }
 
-  Widget _buildScreen(BuildContext context) {
-    final isMobile = MediaQuery.of(context).size.width <= 576;
-
-    if (isMobile && _selectedConsultation != null) {
-      return _buildMobileChatScreen();
-    }
-
-    return Scaffold(
-      floatingActionButton: (isMobile && _selectedConsultation == null)
-          ? FloatingActionButton.extended(
-              onPressed: _patientId == null ? null : _openBookDialog,
-              icon: const Icon(Icons.add),
-              label: const Text('New Consultation'),
-            )
-          : null,
-      body: Container(
-        padding: EdgeInsets.all(isMobile ? 14 : 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('My Tele-Consultations',
-                          style: TextStyle(
-                              fontSize: isMobile ? 20 : 24,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.textMain)),
-                      const SizedBox(height: 4),
-                      const Text(
-                          'Virtual consultation sessions and direct doctor messaging portal.',
-                          style: TextStyle(
-                              fontSize: 14, color: AppTheme.textMuted)),
-                    ],
-                  ),
-                ),
-                if (!isMobile && _selectedConsultation == null)
-                  ElevatedButton.icon(
-                    onPressed: _patientId == null ? null : _openBookDialog,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('New Consultation'),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: _selectedConsultation == null
-                  ? Card(
-                      child: _isLoading
-                          ? const Center(child: CircularProgressIndicator())
-                          : _consultations.isEmpty
-                              ? const Center(
-                                  child: Text(
-                                      'No consultations yet. Start one above.',
-                                      style:
-                                          TextStyle(color: AppTheme.textMuted)),
-                                )
-                              : ListView.separated(
-                                  itemCount: _consultations.length,
-                                  separatorBuilder: (context, index) =>
-                                      const Divider(height: 1),
-                                  itemBuilder: (context, index) =>
-                                      _buildConsultationListItem(
-                                          _consultations[index]),
-                                ),
-                    )
-                  // Desktop/tablet: side panel-free single card, matches
-                  // Angular's two-pane feel without a keyboard to worry about.
-                  : Card(
-                      child: Column(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            color: AppTheme.primaryLightTeal,
-                            child: Row(
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.arrow_back, size: 20),
-                                  onPressed: _closeThread,
-                                ),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        _selectedConsultation!['subject'] ?? '',
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 16),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      Text(
-                                        'Consulting with Dr. ${_selectedConsultation!['doctorName'] ?? ''}',
-                                        style: const TextStyle(
-                                            fontSize: 12,
-                                            color: AppTheme.textMuted),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                if (_selectedConsultation!['isUrgent'] == true)
-                                  const Padding(
-                                    padding: EdgeInsets.only(right: 8),
-                                    child: Chip(
-                                      label: Text('Urgent',
-                                          style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 11)),
-                                      backgroundColor: AppTheme.dangerRed,
-                                      visualDensity: VisualDensity.compact,
-                                    ),
-                                  ),
-                                Chip(
-                                  label: Text(
-                                      _selectedConsultation!['status'] ?? '',
-                                      style: const TextStyle(
-                                          color: Colors.white, fontSize: 11)),
-                                  backgroundColor: _statusColor(
-                                      _selectedConsultation!['status']
-                                          as String?),
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                              ],
-                            ),
-                          ),
-                          Expanded(
-                            child: _buildMessagesList(
-                                MediaQuery.of(context).size.width * 0.6),
-                          ),
-                          _buildReplyBar(bottomPadding: 0),
-                        ],
-                      ),
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Review submission modal (mirrors the REVIEW SUBMISSION MODAL DIALOG) ─
-
-  Widget _ratingDropdown({
-    required int value,
-    required List<int> options,
-    required ValueChanged<int> onChanged,
-    bool stars = false,
-  }) {
-    return DropdownButtonFormField<int>(
-      initialValue: value,
-      isExpanded: true,
-      decoration: const InputDecoration(
-        isDense: true,
-        filled: true,
-        fillColor: Color(0xFFF9FAFB),
-        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        border: OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(8))),
-      ),
-      items: options
-          .map((v) => DropdownMenuItem(
-              value: v,
-              child: Text(
-                  stars ? '${'⭐' * v} ($v/5)' : '${'★' * v}${'☆' * (5 - v)}')))
-          .toList(),
-      onChanged: (v) => v == null ? null : onChanged(v),
-    );
-  }
-
   Widget _buildReviewModalOverlay() {
-    final doctorName =
-        _doctorLabel(_selectedDoctor(_selectedConsultation!['doctorId']));
+    final doctorName = _doctorLabel(_selectedDoctor(widget.consultation['doctorId']));
     return GestureDetector(
       onTap: _closeReviewModal,
       child: Container(
@@ -1322,16 +1613,18 @@ class _PatientConsultationsScreenState
                 children: [
                   Container(
                     color: AppTheme.primaryTeal,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 14),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                     child: Row(
                       children: [
                         const Expanded(
-                          child: Text('⭐ Rate Your Consultation',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 17)),
+                          child: Text(
+                            'Rate Your Consultation',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 17,
+                            ),
+                          ),
                         ),
                         IconButton(
                           icon: const Icon(Icons.close, color: Colors.white),
@@ -1346,87 +1639,39 @@ class _PatientConsultationsScreenState
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('👨‍⚕️ Doctor Review: $doctorName',
-                              style: const TextStyle(
-                                  color: AppTheme.primaryTeal,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15)),
-                          const SizedBox(height: 12),
-                          const Text('Overall Doctor Rating (1-5) *',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w600, fontSize: 13)),
-                          const SizedBox(height: 6),
-                          _ratingDropdown(
-                            value: _doctorRating,
-                            options: const [5, 4, 3, 2, 1],
-                            stars: true,
-                            onChanged: (v) => setState(() => _doctorRating = v),
-                          ),
-                          const SizedBox(height: 14),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text('Bedside *',
-                                        style: TextStyle(
-                                            fontSize: 11,
-                                            color: AppTheme.textMuted)),
-                                    const SizedBox(height: 4),
-                                    _ratingDropdown(
-                                      value: _ratingBedside,
-                                      options: const [5, 4, 3, 2, 1],
-                                      onChanged: (v) =>
-                                          setState(() => _ratingBedside = v),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text('Knowledge *',
-                                        style: TextStyle(
-                                            fontSize: 11,
-                                            color: AppTheme.textMuted)),
-                                    const SizedBox(height: 4),
-                                    _ratingDropdown(
-                                      value: _ratingKnowledge,
-                                      options: const [5, 4, 3, 2, 1],
-                                      onChanged: (v) =>
-                                          setState(() => _ratingKnowledge = v),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text('Wait Time *',
-                                        style: TextStyle(
-                                            fontSize: 11,
-                                            color: AppTheme.textMuted)),
-                                    const SizedBox(height: 4),
-                                    _ratingDropdown(
-                                      value: _ratingWait,
-                                      options: const [5, 4, 3, 2, 1],
-                                      onChanged: (v) =>
-                                          setState(() => _ratingWait = v),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                          Text(
+                            'Doctor Review: $doctorName',
+                            style: const TextStyle(
+                              color: AppTheme.primaryTeal,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
                           ),
                           const SizedBox(height: 16),
-                          const Text('Written Feedback (Optional)',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w600, fontSize: 13)),
+                          const Text(
+                            'Overall Doctor Rating *',
+                            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                          ),
+                          const SizedBox(height: 8),
+                          _buildStarRatingSelector(
+                            rating: _doctorRating,
+                            onChanged: (v) => setState(() => _doctorRating = v),
+                            size: 32,
+                          ),
+                          const SizedBox(height: 20),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              _buildSubRatingItem('Bedside Manner *', _ratingBedside, (v) => setState(() => _ratingBedside = v)),
+                              _buildSubRatingItem('Knowledge *', _ratingKnowledge, (v) => setState(() => _ratingKnowledge = v)),
+                              _buildSubRatingItem('Wait Time *', _ratingWait, (v) => setState(() => _ratingWait = v)),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          const Text(
+                            'Written Feedback (Optional)',
+                            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                          ),
                           const SizedBox(height: 6),
                           TextField(
                             controller: _reviewTextController,
@@ -1434,6 +1679,7 @@ class _PatientConsultationsScreenState
                             maxLines: 3,
                             decoration: InputDecoration(
                               hintText: 'Share details of your experience...',
+                              hintStyle: const TextStyle(color: AppTheme.textMuted),
                               filled: true,
                               fillColor: const Color(0xFFF9FAFB),
                               border: OutlineInputBorder(
@@ -1445,22 +1691,21 @@ class _PatientConsultationsScreenState
                             contentPadding: EdgeInsets.zero,
                             controlAffinity: ListTileControlAffinity.leading,
                             value: _isAnonymous,
-                            title: const Text('Submit this review anonymously',
-                                style: TextStyle(fontSize: 13)),
-                            onChanged: (v) =>
-                                setState(() => _isAnonymous = v ?? false),
+                            title: const Text(
+                              'Submit this review anonymously',
+                              style: TextStyle(fontSize: 13),
+                            ),
+                            onChanged: (v) => setState(() => _isAnonymous = v ?? false),
                           ),
                         ],
                       ),
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 14),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                     decoration: const BoxDecoration(
                       color: Color(0xFFF9FAFB),
-                      border:
-                          Border(top: BorderSide(color: AppTheme.borderGray)),
+                      border: Border(top: BorderSide(color: AppTheme.borderGray)),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.end,
@@ -1477,8 +1722,11 @@ class _PatientConsultationsScreenState
                                   width: 16,
                                   height: 16,
                                   child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: Colors.white))
-                              : const Text('⭐ Submit Feedback'),
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text('Submit Feedback'),
                         ),
                       ],
                     ),
@@ -1492,18 +1740,13 @@ class _PatientConsultationsScreenState
     );
   }
 
-  // Mirrors doctorSelectOptions's lookup — resolves the doctor object behind
-  // a doctorId for the review header, falling back to the consultation's own
-  // doctorName if the doctor list hasn't loaded.
   dynamic _selectedDoctor(String? doctorId) {
     try {
-      return _doctors.firstWhere((d) => d.doctorId == doctorId);
+      return widget.doctors.firstWhere((d) => d.doctorId == doctorId);
     } catch (_) {
-      return _FallbackDoctorName(_selectedConsultation?['doctorName'] ?? '');
+      return _FallbackDoctorName(widget.consultation['doctorName'] ?? '');
     }
   }
-
-  // ── Full image lightbox (mirrors the Full Image Lightbox Modal) ─────────
 
   Widget _buildImageLightbox() {
     return GestureDetector(
@@ -1530,38 +1773,33 @@ class _PatientConsultationsScreenState
                 children: [
                   Container(
                     color: const Color(0xFF1E293B),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     child: Row(
                       children: [
                         Expanded(
-                          child: Text(_previewImageTitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600)),
+                          child: Text(
+                            _previewImageTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                         if (_previewFileId != null)
                           TextButton.icon(
-                            onPressed: () => _downloadChatFile(
-                                _previewFileId!, _previewImageTitle),
-                            icon: const Icon(Icons.download,
-                                size: 14, color: Colors.white),
-                            label: const Text('Save',
-                                style: TextStyle(color: Colors.white)),
-                            style: TextButton.styleFrom(
-                                backgroundColor: AppTheme.primaryTeal),
+                            onPressed: () => _downloadChatFile(_previewFileId!, _previewImageTitle),
+                            icon: const Icon(Icons.download, size: 14, color: Colors.white),
+                            label: const Text('Save', style: TextStyle(color: Colors.white)),
+                            style: TextButton.styleFrom(backgroundColor: AppTheme.primaryTeal),
                           ),
                         const SizedBox(width: 8),
                         TextButton.icon(
                           onPressed: _closeImageModal,
-                          icon: const Icon(Icons.close,
-                              size: 14, color: Colors.white),
-                          label: const Text('Close',
-                              style: TextStyle(color: Colors.white)),
-                          style: TextButton.styleFrom(
-                              backgroundColor: Colors.white24),
+                          icon: const Icon(Icons.close, size: 14, color: Colors.white),
+                          label: const Text('Close', style: TextStyle(color: Colors.white)),
+                          style: TextButton.styleFrom(backgroundColor: Colors.white24),
                         ),
                       ],
                     ),
@@ -1570,8 +1808,7 @@ class _PatientConsultationsScreenState
                     child: Container(
                       color: const Color(0xFF020617),
                       padding: const EdgeInsets.all(16),
-                      child: Image.memory(_previewImageBytes!,
-                          fit: BoxFit.contain),
+                      child: Image.memory(_previewImageBytes!, fit: BoxFit.contain),
                     ),
                   ),
                 ],
@@ -1580,6 +1817,109 @@ class _PatientConsultationsScreenState
           ),
         ),
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+
+    return Stack(
+      children: [
+        SafeArea(
+          child: Column(
+            children: [
+              // Chat Header
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border: Border(bottom: BorderSide(color: AppTheme.borderGray)),
+                ),
+                child: Row(
+                  children: [
+                    if (widget.isMobile)
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back, color: AppTheme.textMain),
+                        onPressed: widget.onClose,
+                      ),
+                    _buildDoctorAvatar(
+                      widget.consultation['doctorName'] ?? '',
+                      avatarUrl: (widget.consultation['doctorAvatarUrl'] ??
+                              widget.consultation['avatarUrl'] ??
+                              widget.consultation['doctorProfileImage'] ??
+                              widget.consultation['imageUrl'])
+                          ?.toString(),
+                      doctorId: widget.consultation['doctorId']?.toString(),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Dr. ${widget.consultation['doctorName'] ?? ''}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: AppTheme.textMain,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            widget.consultation['subject'] ?? '',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppTheme.textMuted,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (widget.consultation['isUrgent'] == true)
+                      Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppTheme.dangerRed.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'Urgent',
+                          style: TextStyle(
+                            color: AppTheme.dangerRed,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    _buildStatusBadge(widget.consultation['status'] as String?),
+                    if (!widget.isMobile) ...[
+                      const SizedBox(width: 12),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: AppTheme.textMuted),
+                        onPressed: widget.onClose,
+                        tooltip: 'Close Chat View',
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              // Message List
+              Expanded(
+                child: _buildMessagesList(widget.isMobile ? size.width : size.width - 320),
+              ),
+              // Reply Bar
+              _buildReplyBar(bottomPadding: widget.isMobile ? 8 : 12),
+            ],
+          ),
+        ),
+        if (_showReviewModal) _buildReviewModalOverlay(),
+        if (_previewImageBytes != null) _buildImageLightbox(),
+      ],
     );
   }
 }

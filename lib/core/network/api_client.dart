@@ -5,8 +5,8 @@ import '../auth/auth_session.dart';
 
 const String kBaseUrl = String.fromEnvironment(
   'API_URL',
-  defaultValue: 'http://192.168.1.110:8080',
-  // defaultValue: 'http://192.168.1.142:8080',
+  // defaultValue: 'http://192.168.1.110:8080',
+  defaultValue: 'http://192.168.1.142:8080',
   // defaultValue: 'http://103.199.210.172:8080',
 );
 
