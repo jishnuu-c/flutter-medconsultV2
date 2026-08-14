@@ -30,6 +30,9 @@ class MenuItemData {
       {required this.label, required this.route, required this.icon});
 }
 
+/// Allows sub-pages (e.g. Clinic Details) to request hiding the top header bar and bottom navigation bar.
+final hideAppLayoutBarsProvider = StateProvider<bool>((ref) => false);
+
 class AppLayout extends ConsumerWidget {
   final Widget child;
 
@@ -282,16 +285,19 @@ class AppLayout extends ConsumerWidget {
       ),
     );
 
+    final hideBarsExplicit = ref.watch(hideAppLayoutBarsProvider);
+    final hideBars = hideBarsExplicit || location.contains('/patient/clinics/');
+
     return Scaffold(
-      drawer: isDesktop ? null : Drawer(child: sidebarWidget),
-      bottomNavigationBar: (!isDesktop && bottomNavItems.length >= 2)
+      drawer: (isDesktop || hideBars) ? null : Drawer(child: sidebarWidget),
+      bottomNavigationBar: (!hideBars && !isDesktop && bottomNavItems.length >= 2)
           ? BottomNavigationBar(
               type: bottomNavItems.length > 3
                   ? BottomNavigationBarType.fixed
                   : BottomNavigationBarType.shifting,
               backgroundColor: Colors.white,
               selectedItemColor: AppTheme.primaryTeal,
-              unselectedItemColor: AppTheme.textMain.withOpacity(0.5),
+              unselectedItemColor: AppTheme.textMain.withValues(alpha: 0.5),
               currentIndex: bottomNavIndex < 0 ? 0 : bottomNavIndex,
               onTap: (index) => context.go(bottomNavItems[index].route),
               items: bottomNavItems
@@ -307,24 +313,25 @@ class AppLayout extends ConsumerWidget {
       body: SafeArea(
         child: Row(
           children: [
-            if (isDesktop) sidebarWidget,
+            if (isDesktop && !hideBarsExplicit) sidebarWidget,
             Expanded(
               child: Column(
                 children: [
                   // Top Header Bar
-                  Container(
-                    height: 70,
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      border: Border(
-                          bottom: BorderSide(color: AppTheme.borderGray)),
-                    ),
-                    child: Row(
-                      children: [
-                        if (!isDesktop)
-                          Builder(
-                            builder: (ctx) => IconButton(
+                  if (!hideBars)
+                    Container(
+                      height: 70,
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        border: Border(
+                            bottom: BorderSide(color: AppTheme.borderGray)),
+                      ),
+                      child: Row(
+                        children: [
+                          if (!isDesktop)
+                            Builder(
+                              builder: (ctx) => IconButton(
                               icon: const Icon(Icons.menu),
                               onPressed: () => Scaffold.of(ctx).openDrawer(),
                             ),
