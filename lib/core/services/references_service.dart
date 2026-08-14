@@ -72,6 +72,32 @@ class CityModel {
   }
 }
 
+// Mirrors reference.model.ts's LocalityResponseDto. Localities cascade from
+// a selected city (used by the branch-location form's city -> locality
+// dropdowns, same as clinics.component.ts's onCityChange/onCitySelectChange).
+class LocalityModel {
+  final String localityId;
+  final String cityId;
+  final String nameEn;
+  final String nameAr;
+
+  LocalityModel({
+    required this.localityId,
+    required this.cityId,
+    required this.nameEn,
+    required this.nameAr,
+  });
+
+  factory LocalityModel.fromJson(Map<String, dynamic> json) {
+    return LocalityModel(
+      localityId: json['localityId']?.toString() ?? '',
+      cityId: json['cityId']?.toString() ?? '',
+      nameEn: json['nameEn']?.toString() ?? '',
+      nameAr: json['nameAr']?.toString() ?? '',
+    );
+  }
+}
+
 class ReferenceService {
   final Dio dio;
 
@@ -82,6 +108,14 @@ class ReferenceService {
     final res = await dio.get('/api/medconsult/cities/all');
     final List list = res.data ?? [];
     return list.map((e) => CityModel.fromJson(e)).toList();
+  }
+
+  // ── Localities ──────────────────────────────────────────────────────
+  // Mirrors reference.service.ts's getLocalities(cityId).
+  Future<List<LocalityModel>> getLocalities(String cityId) async {
+    final res = await dio.get('/api/medconsult/cities/$cityId/localities');
+    final List list = res.data ?? [];
+    return list.map((e) => LocalityModel.fromJson(e)).toList();
   }
 
   // ── Specialties ─────────────────────────────────────────────────────

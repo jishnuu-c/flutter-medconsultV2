@@ -1,27 +1,33 @@
+import 'dart:async';
 import 'dart:math' as math;
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/references_service.dart';
-import '../../../core/theme/app_theme.dart';
 import '../data/clinic_models.dart';
 import '../data/clinic_service.dart';
 
-// Shared visual polish for every popup dialog in this screen: rounded
-// corners consistent with the rest of the UI, and a max width that never
-// exceeds the available screen width (fixes horizontal overflow on small
-// screens where dialogs previously used a hard-coded width like 560).
+// Brand colors matching the web design in the screenshots
+const Color _kPrimaryGreen = Color(0xFF059669);
+const Color _kPrimaryLight = Color(0xFFE6F4EA);
+const Color _kAmber = Color(0xFFD97706);
+const Color _kDangerRed = Color(0xFFDC2626);
+const Color _kDangerLight = Color(0xFFFEE2E2);
+const Color _kBorderColor = Color(0xFFE2E8F0);
+const Color _kOffWhite = Color(0xFFF8FAFC);
+const Color _kTextMain = Color(0xFF0F172A);
+const Color _kTextMuted = Color(0xFF64748B);
+const Color _kDotPink = Color(0xFFE11D48);
+
 RoundedRectangleBorder _dialogShape() =>
     RoundedRectangleBorder(borderRadius: BorderRadius.circular(16));
 
-double _dialogMaxHeight(BuildContext context, {double preferred = 560}) {
+double _dialogMaxHeight(BuildContext context, {double preferred = 640}) {
   final screenHeight = MediaQuery.of(context).size.height;
-  return math.min(preferred, screenHeight * 0.8);
+  return math.min(preferred, screenHeight * 0.88);
 }
 
-// Fixed, comfortable dialog width: capped by the screen on small devices,
-// but not left to shrink-wrap to tiny intrinsic content width on large
-// screens either (that's what made fields look squeezed together).
-double _dialogWidth(BuildContext context, {double preferred = 420}) {
+double _dialogWidth(BuildContext context, {double preferred = 640}) {
   final screenWidth = MediaQuery.of(context).size.width;
   return math.min(preferred, screenWidth - 32);
 }
@@ -34,10 +40,10 @@ class ClinicsScreen extends ConsumerStatefulWidget {
 }
 
 class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
-  int _activeSubTab = 0; // 0=branches,1=specialties,2=insurances,3=languages
+  int _activeSubTab = 0; // 0=branches, 1=specialties, 2=insurances, 3=languages
 
-  bool _isLoading = false; // drives the "My Clinics" sidebar list only
-  bool _isDetailLoading = false; // drives the branches/specialties/etc tabs
+  bool _isLoading = false;
+  bool _isDetailLoading = false;
   List<ClinicModel> _clinics = [];
   ClinicModel? _selectedClinic;
   String _searchTerm = '';
@@ -48,7 +54,7 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
     return _clinics
         .where((c) =>
             c.nameEn.toLowerCase().contains(q) ||
-            (c.mohLicenseNumber.toLowerCase().contains(q)))
+            c.mohLicenseNumber.toLowerCase().contains(q))
         .toList();
   }
 
@@ -58,10 +64,11 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
   List<ClinicInsuranceModel> _insurances = [];
   List<ClinicLanguageModel> _languages = [];
 
-  // Global lookup lists for the link/associate dialogs
+  // Global lookup lists
   List<SpecialtyModel> _globalSpecialties = [];
   List<InsuranceProviderModel> _globalInsurances = [];
   List<LanguageModel> _globalLanguages = [];
+  List<CityModel> _globalCities = [];
 
   @override
   void initState() {
@@ -77,7 +84,6 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
       if (mounted) setState(() => _globalSpecialties = specialties);
     } catch (e) {
       debugPrint('[ManageClinics] getAllSpecialties failed: $e');
-      if (mounted) _showError('Failed to load specialties list: $e');
     }
     try {
       final insurances =
@@ -85,7 +91,6 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
       if (mounted) setState(() => _globalInsurances = insurances);
     } catch (e) {
       debugPrint('[ManageClinics] getAllInsuranceProviders failed: $e');
-      if (mounted) _showError('Failed to load insurance providers list: $e');
     }
     try {
       final languages =
@@ -93,14 +98,15 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
       if (mounted) setState(() => _globalLanguages = languages);
     } catch (e) {
       debugPrint('[ManageClinics] getAllLanguages failed: $e');
-      if (mounted) _showError('Failed to load languages list: $e');
+    }
+    try {
+      final cities = await ref.read(referenceServiceProvider).getAllCities();
+      if (mounted) setState(() => _globalCities = cities);
+    } catch (e) {
+      debugPrint('[ManageClinics] getAllCities failed: $e');
     }
   }
 
-  // ── Name resolvers, mirror clinics.component.ts's getSpecialtyName /
-  // getInsuranceName / getLanguageName. Clinic-specialty/insurance/language
-  // link records only carry the foreign-key id; the display name has to be
-  // looked up in the global reference lists loaded above.
   String _getSpecialtyName(String specialtyId) {
     final match = _globalSpecialties.where((s) => s.specialtyId == specialtyId);
     return match.isEmpty ? 'Unknown Specialty' : match.first.nameEn;
@@ -120,11 +126,16 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
     setState(() => _isLoading = true);
     try {
       final res = await ref.read(clinicServiceProvider).getAllClinics();
-      debugPrint(
-          '[ManageClinics] getAllClinics -> ${res.length} clinics: ${res.map((c) => '${c.clinicId}:${c.nameEn}').join(', ')}');
       setState(() => _clinics = res);
       if (res.isNotEmpty) {
-        await _selectClinic(res.first);
+        if (_selectedClinic == null ||
+            !res.any((c) => c.clinicId == _selectedClinic!.clinicId)) {
+          await _selectClinic(res.first);
+        } else {
+          final updated =
+              res.firstWhere((c) => c.clinicId == _selectedClinic!.clinicId);
+          await _selectClinic(updated);
+        }
       } else {
         setState(() {
           _selectedClinic = null;
@@ -134,24 +145,18 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
           _languages = [];
         });
       }
-    } catch (e, st) {
+    } catch (e) {
       debugPrint('[ManageClinics] getAllClinics failed: $e');
-      debugPrintStack(stackTrace: st);
-      if (mounted)
-        _showError('Failed to load clinics: $e', retry: _loadClinics);
+      if (mounted) _showError('Failed to load clinics: $e', retry: _loadClinics);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // Mirrors clinics.component.ts's loadClinicDetails(): four independent
-  // calls against the real API, each updating its own section so a failure
-  // in one (e.g. insurance) doesn't blank out the others.
   Future<void> _selectClinic(ClinicModel clinic) async {
     setState(() {
       _selectedClinic = clinic;
       _isDetailLoading = true;
-      _activeSubTab = 0;
     });
 
     final service = ref.read(clinicServiceProvider);
@@ -191,15 +196,14 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
     if (mounted) setState(() => _isDetailLoading = false);
   }
 
-  // Small helpers mirroring UiService.showSuccess/showError from Angular.
   void _showError(String message, {VoidCallback? retry}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: AppTheme.dangerRed,
-        duration: const Duration(seconds: 5),
+        backgroundColor: _kDangerRed,
+        duration: const Duration(seconds: 4),
         action: retry != null
-            ? SnackBarAction(label: 'Retry', onPressed: retry)
+            ? SnackBarAction(label: 'Retry', textColor: Colors.white, onPressed: retry)
             : null,
       ),
     );
@@ -207,14 +211,45 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
 
   void _showSuccess(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
+      SnackBar(
+        content: Text(message),
+        backgroundColor: _kPrimaryGreen,
+        duration: const Duration(seconds: 3),
+      ),
     );
   }
+
+  Future<List<dynamic>> _searchBranchLocation(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return [];
+    final dio = Dio();
+    final encoded = Uri.encodeComponent(q);
+    Future<List<dynamic>> run(String url) async {
+      final res = await dio.get(url,
+          options: Options(headers: {'Accept-Language': 'en'}));
+      return (res.data is List) ? res.data as List : [];
+    }
+
+    try {
+      final primary = await run(
+          'https://nominatim.openstreetmap.org/search?format=json&q=$encoded&limit=10&addressdetails=1&countrycodes=sa');
+      if (primary.isNotEmpty) return primary;
+      return await run(
+          'https://nominatim.openstreetmap.org/search?format=json&q=$encoded&limit=10&addressdetails=1');
+    } catch (e) {
+      debugPrint('[ManageClinics] location search failed: $e');
+      return [];
+    }
+  }
+
+  // ── Dialogs ─────────────────────────────────────────────────────────────
 
   void _openClinicDialog(ClinicModel? clinic) {
     final isEdit = clinic != null;
     final nameEnController = TextEditingController(text: clinic?.nameEn ?? '');
     final nameArController = TextEditingController(text: clinic?.nameAr ?? '');
+    final descEnController =
+        TextEditingController(text: clinic?.descriptionEn ?? '');
     final emailController = TextEditingController(text: clinic?.email ?? '');
     final phoneController =
         TextEditingController(text: clinic?.phonePrimary ?? '');
@@ -226,63 +261,146 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: _dialogShape(),
-        title: Text(isEdit ? 'Edit Clinic' : 'Add New Clinic'),
-        content: SizedBox(
-          width: _dialogWidth(ctx),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: _dialogMaxHeight(ctx),
+        titlePadding: const EdgeInsets.fromLTRB(24, 20, 16, 12),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              isEdit ? 'Edit Clinic Facility' : 'Add New Clinic Facility',
+              style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: _kTextMain),
             ),
+            IconButton(
+              icon: const Icon(Icons.close, color: _kTextMuted, size: 20),
+              onPressed: () => Navigator.pop(ctx),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: _dialogWidth(ctx, preferred: 560),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: _dialogMaxHeight(ctx)),
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   TextField(
-                      controller: nameEnController,
-                      decoration:
-                          const InputDecoration(labelText: 'Clinic Name (EN)')),
+                    controller: nameEnController,
+                    decoration: const InputDecoration(
+                      labelText: 'Clinic Name (EN) *',
+                      hintText: 'e.g. City Health Clinic',
+                    ),
+                  ),
                   const SizedBox(height: 12),
                   TextField(
-                      controller: nameArController,
-                      decoration:
-                          const InputDecoration(labelText: 'Clinic Name (AR)')),
+                    controller: nameArController,
+                    decoration: const InputDecoration(
+                      labelText: 'Clinic Name (AR) *',
+                      hintText: 'e.g. مجمع صحة المدينة الطبي',
+                    ),
+                  ),
                   const SizedBox(height: 12),
                   TextField(
-                      controller: emailController,
-                      decoration:
-                          const InputDecoration(labelText: 'Email Address')),
+                    controller: descEnController,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Overview Description',
+                      hintText: 'Brief summary of clinic services',
+                    ),
+                  ),
                   const SizedBox(height: 12),
-                  TextField(
-                      controller: phoneController,
-                      decoration:
-                          const InputDecoration(labelText: 'Primary Phone')),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: mohController,
+                          decoration: const InputDecoration(
+                            labelText: 'MOH License *',
+                            hintText: 'MOH-12345',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: vatController,
+                          decoration: const InputDecoration(
+                            labelText: 'VAT Number',
+                            hintText: '300000000000003',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 12),
-                  TextField(
-                      controller: mohController,
-                      decoration: const InputDecoration(
-                          labelText: 'MOH License Number')),
-                  const SizedBox(height: 12),
-                  TextField(
-                      controller: vatController,
-                      decoration:
-                          const InputDecoration(labelText: 'VAT Number')),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: phoneController,
+                          keyboardType: TextInputType.phone,
+                          decoration: const InputDecoration(
+                            labelText: 'Primary Phone *',
+                            hintText: '+966 11 123 4567',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: const InputDecoration(
+                            labelText: 'Email Address',
+                            hintText: 'info@clinic.com',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
           ),
         ),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            ),
+            child: const Text('Cancel'),
+          ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _kPrimaryGreen,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+            ),
             onPressed: () async {
+              final nameEn = nameEnController.text.trim();
+              final nameAr = nameArController.text.trim();
+              final phone = phoneController.text.trim();
+              final moh = mohController.text.trim();
+              if (nameEn.isEmpty || nameAr.isEmpty || phone.isEmpty || moh.isEmpty) {
+                _showError('Please fill all required clinic fields (*).');
+                return;
+              }
               final payload = {
-                'nameEn': nameEnController.text.trim(),
-                'nameAr': nameArController.text.trim(),
+                'nameEn': nameEn,
+                'nameAr': nameAr,
+                'descriptionEn': descEnController.text.trim(),
+                'descriptionAr': descEnController.text.trim(),
                 'email': emailController.text.trim(),
-                'phonePrimary': phoneController.text.trim(),
-                'mohLicenseNumber': mohController.text.trim(),
+                'phonePrimary': phone,
+                'mohLicenseNumber': moh,
                 'vatNumber': vatController.text.trim(),
                 'isActive': true,
               };
@@ -323,105 +441,669 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
         TextEditingController(text: branch?.branchNameEn ?? '');
     final nameArController =
         TextEditingController(text: branch?.branchNameAr ?? '');
-    final addressController =
+    final address1Controller =
         TextEditingController(text: branch?.addressLine1 ?? '');
+    final address2Controller =
+        TextEditingController(text: branch?.addressLine2 ?? '');
     final phoneController = TextEditingController(text: branch?.phone ?? '');
+    final emailController = TextEditingController(text: branch?.email ?? '');
+    final latController =
+        TextEditingController(text: branch?.latitude?.toStringAsFixed(6) ?? '24.713600');
+    final lngController = TextEditingController(
+        text: branch?.longitude?.toStringAsFixed(6) ?? '46.675300');
+    final searchController = TextEditingController();
     bool isPrimary = branch?.isPrimary ?? false;
+    String? cityId = branch?.cityId.isNotEmpty == true ? branch!.cityId : null;
+    String? localityId = branch?.localityId;
+    List<LocalityModel> localities = [];
+    bool localitiesHydratedForEdit = false;
+    List<dynamic> searchResults = [];
+    bool isSearching = false;
+    String? searchError;
+    Timer? debounce;
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          shape: _dialogShape(),
-          title: Text(isEdit
-              ? 'Edit Branch'
-              : 'Add Branch to ${_selectedClinic!.nameEn}'),
-          content: SizedBox(
-            width: _dialogWidth(context),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: _dialogMaxHeight(context),
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    TextField(
-                        controller: nameEnController,
-                        decoration: const InputDecoration(
-                            labelText: 'Branch Name (EN)')),
-                    const SizedBox(height: 12),
-                    TextField(
-                        controller: nameArController,
-                        decoration: const InputDecoration(
-                            labelText: 'Branch Name (AR)')),
-                    const SizedBox(height: 12),
-                    TextField(
-                        controller: addressController,
-                        decoration:
-                            const InputDecoration(labelText: 'Address Line 1')),
-                    const SizedBox(height: 12),
-                    TextField(
-                        controller: phoneController,
-                        decoration:
-                            const InputDecoration(labelText: 'Branch Phone')),
-                    const SizedBox(height: 12),
-                    SwitchListTile(
-                      title: const Text('Primary Branch'),
-                      value: isPrimary,
-                      onChanged: (val) => setDialogState(() => isPrimary = val),
+        builder: (context, setDialogState) {
+          if (isEdit && cityId != null && !localitiesHydratedForEdit) {
+            localitiesHydratedForEdit = true;
+            ref
+                .read(referenceServiceProvider)
+                .getLocalities(cityId!)
+                .then((data) {
+              if (ctx.mounted) setDialogState(() => localities = data);
+            }).catchError((_) {});
+          }
+
+          Future<void> onCityChanged(String? newCityId) async {
+            setDialogState(() {
+              cityId = newCityId;
+              localityId = null;
+              localities = [];
+            });
+            if (newCityId == null) return;
+            try {
+              final data = await ref
+                  .read(referenceServiceProvider)
+                  .getLocalities(newCityId);
+              setDialogState(() => localities = data);
+            } catch (_) {
+              setDialogState(() => localities = []);
+            }
+          }
+
+          void onSearchChanged(String value) {
+            debounce?.cancel();
+            if (value.trim().length < 2) {
+              setDialogState(() {
+                searchResults = [];
+                searchError = null;
+                isSearching = false;
+              });
+              return;
+            }
+            debounce = Timer(const Duration(milliseconds: 350), () async {
+              setDialogState(() => isSearching = true);
+              final results = await _searchBranchLocation(value);
+              if (!ctx.mounted) return;
+              setDialogState(() {
+                isSearching = false;
+                searchResults = results;
+                searchError = results.isEmpty
+                    ? 'No locations found matching your query. Try searching by city or landmark name.'
+                    : null;
+              });
+            });
+          }
+
+          void selectSearchResult(dynamic r) {
+            final lat = double.tryParse(r['lat']?.toString() ?? '');
+            final lon = double.tryParse(r['lon']?.toString() ?? '');
+            setDialogState(() {
+              if (lat != null) latController.text = lat.toStringAsFixed(6);
+              if (lon != null) lngController.text = lon.toStringAsFixed(6);
+              searchResults = [];
+              searchController.text = r['display_name']?.toString() ?? '';
+            });
+          }
+
+          void useCurrentLocation() {
+            setDialogState(() {
+              latController.text = '24.713600';
+              lngController.text = '46.675300';
+              searchController.text = 'Riyadh, Saudi Arabia';
+            });
+          }
+
+          final screenWidth = MediaQuery.of(context).size.width;
+          final isCompact = screenWidth < 680;
+
+          return AlertDialog(
+            shape: _dialogShape(),
+            backgroundColor: Colors.white,
+            surfaceTintColor: Colors.transparent,
+            titlePadding: const EdgeInsets.fromLTRB(24, 20, 16, 12),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+            actionsPadding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
+            title: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    isEdit ? 'Edit Clinic Branch Location' : 'Add Clinic Branch Location',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: _kTextMain,
                     ),
-                  ],
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: _kTextMuted, size: 20),
+                  tooltip: 'Close',
+                  onPressed: () {
+                    debounce?.cancel();
+                    Navigator.pop(ctx);
+                  },
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: _dialogWidth(context, preferred: 760),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                    maxHeight: _dialogMaxHeight(context, preferred: 800)),
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Row 1: Branch Names
+                      if (isCompact) ...[
+                        _buildField(
+                          label: 'Branch Name (EN) *',
+                          controller: nameEnController,
+                          hintText: 'e.g. Downtown Clinic',
+                        ),
+                        const SizedBox(height: 12),
+                        _buildField(
+                          label: 'Branch Name (AR) *',
+                          controller: nameArController,
+                          hintText: 'e.g. فرع وسط المدينة',
+                        ),
+                      ] else ...[
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: _buildField(
+                                label: 'Branch Name (EN) *',
+                                controller: nameEnController,
+                                hintText: 'e.g. Downtown Clinic',
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: _buildField(
+                                label: 'Branch Name (AR) *',
+                                controller: nameArController,
+                                hintText: 'e.g. فرع وسط المدينة',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+
+                      // Row 2: City & Locality
+                      if (isCompact) ...[
+                        _buildDropdownField<String>(
+                          label: 'City *',
+                          value: cityId,
+                          items: _globalCities
+                              .map((c) => DropdownMenuItem(value: c.cityId, child: Text(c.nameEn)))
+                              .toList(),
+                          onChanged: onCityChanged,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildDropdownField<String>(
+                          label: 'Locality / District *',
+                          value: localityId,
+                          items: localities
+                              .map((l) => DropdownMenuItem(value: l.localityId, child: Text(l.nameEn)))
+                              .toList(),
+                          onChanged: cityId == null ? null : (v) => setDialogState(() => localityId = v),
+                        ),
+                      ] else ...[
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: _buildDropdownField<String>(
+                                label: 'City *',
+                                value: cityId,
+                                items: _globalCities
+                                    .map((c) => DropdownMenuItem(value: c.cityId, child: Text(c.nameEn)))
+                                    .toList(),
+                                onChanged: onCityChanged,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: _buildDropdownField<String>(
+                                label: 'Locality / District *',
+                                value: localityId,
+                                items: localities
+                                    .map((l) => DropdownMenuItem(value: l.localityId, child: Text(l.nameEn)))
+                                    .toList(),
+                                onChanged: cityId == null ? null : (v) => setDialogState(() => localityId = v),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+
+                      // Row 3: Address Line 1
+                      _buildField(
+                        label: 'Address Line 1 *',
+                        controller: address1Controller,
+                        hintText: 'Street name, building number, or district',
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Row 4: Address Line 2
+                      _buildField(
+                        label: 'Address Line 2',
+                        controller: address2Controller,
+                        hintText: 'Apartment, suite, or landmark (optional)',
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Row 5: Phone & Email
+                      if (isCompact) ...[
+                        _buildField(
+                          label: 'Branch Phone',
+                          controller: phoneController,
+                          keyboardType: TextInputType.phone,
+                          hintText: '+966 11 123 4567',
+                        ),
+                        const SizedBox(height: 12),
+                        _buildField(
+                          label: 'Branch Email',
+                          controller: emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          hintText: 'branch@clinic.com',
+                        ),
+                      ] else ...[
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: _buildField(
+                                label: 'Branch Phone',
+                                controller: phoneController,
+                                keyboardType: TextInputType.phone,
+                                hintText: '+966 11 123 4567',
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: _buildField(
+                                label: 'Branch Email',
+                                controller: emailController,
+                                keyboardType: TextInputType.emailAddress,
+                                hintText: 'branch@clinic.com',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: 18),
+
+                      // ── Map Location Box (matches screenshots 2 & 3) ──
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: _kOffWhite,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: _kBorderColor),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Wrap(
+                              alignment: WrapAlignment.spaceBetween,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text('📍', style: TextStyle(fontSize: 16)),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Branch Location on Map *',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: _kTextMain,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                OutlinedButton.icon(
+                                  onPressed: useCurrentLocation,
+                                  style: OutlinedButton.styleFrom(
+                                    backgroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                                    minimumSize: Size.zero,
+                                    side: const BorderSide(color: _kBorderColor),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  icon: const Icon(Icons.gps_fixed, size: 14, color: _kDangerRed),
+                                  label: const Text(
+                                    'Use My Current Location',
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _kTextMain),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            const Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('💡', style: TextStyle(fontSize: 13)),
+                                SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'Click anywhere on the map or drag the marker pin to pinpoint the exact branch location.',
+                                    style: TextStyle(fontSize: 11, color: _kTextMuted),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+
+                            // Search bar with explicit Search button
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: searchController,
+                                    decoration: InputDecoration(
+                                      hintText: 'Search location on map (e.g., Al Olaya, Riyadh)...',
+                                      isDense: true,
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                      prefixIcon: const Icon(Icons.search, size: 18, color: _kTextMuted),
+                                      suffixIcon: isSearching
+                                          ? const Padding(
+                                              padding: EdgeInsets.all(10),
+                                              child: SizedBox(
+                                                  width: 16,
+                                                  height: 16,
+                                                  child: CircularProgressIndicator(strokeWidth: 2)),
+                                            )
+                                          : null,
+                                    ),
+                                    onSubmitted: (v) => onSearchChanged(v),
+                                    onChanged: onSearchChanged,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.white,
+                                    foregroundColor: _kPrimaryGreen,
+                                    elevation: 0,
+                                    side: const BorderSide(color: _kPrimaryGreen),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  icon: const Icon(Icons.search, size: 16),
+                                  label: const Text('Search', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                  onPressed: () => onSearchChanged(searchController.text),
+                                ),
+                              ],
+                            ),
+                            if (searchError != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(searchError!,
+                                    style: const TextStyle(fontSize: 11, color: _kDangerRed)),
+                              ),
+                            if (searchResults.isNotEmpty)
+                              Container(
+                                margin: const EdgeInsets.only(top: 8),
+                                constraints: const BoxConstraints(maxHeight: 160),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  border: Border.all(color: _kBorderColor),
+                                  borderRadius: BorderRadius.circular(8),
+                                  boxShadow: const [BoxShadow(color: Color(0x0A000000), blurRadius: 4)],
+                                ),
+                                child: ListView.builder(
+                                  shrinkWrap: true,
+                                  itemCount: searchResults.length,
+                                  itemBuilder: (context, i) {
+                                    final r = searchResults[i];
+                                    return ListTile(
+                                      dense: true,
+                                      leading: const Icon(Icons.place_outlined, size: 18, color: _kPrimaryGreen),
+                                      title: Text(
+                                        r['display_name']?.toString() ?? '',
+                                        style: const TextStyle(fontSize: 12),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      onTap: () => selectSearchResult(r),
+                                    );
+                                  },
+                                ),
+                              ),
+                            const SizedBox(height: 12),
+
+                            // Stylized Map Canvas Container
+                            _InteractiveBranchMap(
+                              lat: double.tryParse(latController.text) ?? 24.7136,
+                              lng: double.tryParse(lngController.text) ?? 46.6753,
+                              onLocationSelected: (newLat, newLng) {
+                                setDialogState(() {
+                                  latController.text = newLat.toStringAsFixed(6);
+                                  lngController.text = newLng.toStringAsFixed(6);
+                                });
+                              },
+                            ),
+
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 8,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Text('Latitude: ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kTextMuted)),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(color: _kBorderColor),
+                                      ),
+                                      child: Text(
+                                        latController.text.isEmpty ? '0.000000' : latController.text,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: _kPrimaryGreen,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Text('Longitude: ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kTextMuted)),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(color: _kBorderColor),
+                                      ),
+                                      child: Text(
+                                        lngController.text.isEmpty ? '0.000000' : lngController.text,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: _kPrimaryGreen,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Primary checkbox
+                      InkWell(
+                        onTap: () => setDialogState(() => isPrimary = !isPrimary),
+                        borderRadius: BorderRadius.circular(6),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            children: [
+                              Checkbox(
+                                value: isPrimary,
+                                activeColor: _kPrimaryGreen,
+                                onChanged: (val) => setDialogState(() => isPrimary = val ?? false),
+                              ),
+                              const Text(
+                                'Set as Primary Branch',
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: _kTextMain),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: () async {
-                final payload = {
-                  'branchNameEn': nameEnController.text.trim(),
-                  'branchNameAr': nameArController.text.trim(),
-                  'cityId': 'c1',
-                  'addressLine1': addressController.text.trim(),
-                  'phone': phoneController.text.trim(),
-                  'isPrimary': isPrimary,
-                  'isActive': true,
-                };
-                try {
-                  if (isEdit) {
-                    await ref
-                        .read(clinicServiceProvider)
-                        .updateClinicBranch(branch.branchId, payload);
-                  } else {
-                    await ref
-                        .read(clinicServiceProvider)
-                        .createClinicBranch(_selectedClinic!.clinicId, payload);
+            actions: [
+              OutlinedButton(
+                onPressed: () {
+                  debounce?.cancel();
+                  Navigator.pop(ctx);
+                },
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  side: const BorderSide(color: _kBorderColor),
+                ),
+                child: const Text('Cancel', style: TextStyle(color: _kTextMain, fontWeight: FontWeight.w600)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _kPrimaryGreen,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  elevation: 0,
+                ),
+                onPressed: () async {
+                  final lat = double.tryParse(latController.text.trim());
+                  final lng = double.tryParse(lngController.text.trim());
+                  final emailText = emailController.text.trim();
+                  final emailValid = emailText.isEmpty ||
+                      RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(emailText);
+
+                  if (nameEnController.text.trim().isEmpty ||
+                      nameArController.text.trim().isEmpty ||
+                      cityId == null ||
+                      localityId == null ||
+                      address1Controller.text.trim().isEmpty ||
+                      lat == null ||
+                      lat < -90 ||
+                      lat > 90 ||
+                      lng == null ||
+                      lng < -180 ||
+                      lng > 180 ||
+                      !emailValid) {
+                    _showError('Please fill all required branch fields with valid values.');
+                    return;
                   }
-                  if (mounted) Navigator.pop(ctx);
-                  if (mounted) {
-                    _showSuccess(isEdit
-                        ? 'Branch updated successfully.'
-                        : 'Branch created successfully.');
+                  final payload = {
+                    'branchNameEn': nameEnController.text.trim(),
+                    'branchNameAr': nameArController.text.trim(),
+                    'cityId': cityId,
+                    'localityId': localityId,
+                    'addressLine1': address1Controller.text.trim(),
+                    'addressLine2': address2Controller.text.trim(),
+                    'latitude': lat,
+                    'longitude': lng,
+                    'phone': phoneController.text.trim(),
+                    'email': emailText,
+                    'isPrimary': isPrimary,
+                    'isActive': true,
+                  };
+                  try {
+                    if (isEdit) {
+                      await ref
+                          .read(clinicServiceProvider)
+                          .updateClinicBranch(branch.branchId, payload);
+                    } else {
+                      await ref.read(clinicServiceProvider).createClinicBranch(
+                          _selectedClinic!.clinicId, payload);
+                    }
+                    debounce?.cancel();
+                    if (mounted) Navigator.pop(ctx);
+                    if (mounted) {
+                      _showSuccess(isEdit
+                          ? 'Branch updated successfully.'
+                          : 'Branch created successfully.');
+                    }
+                    _selectClinic(_selectedClinic!);
+                  } catch (e) {
+                    if (mounted) _showError('Failed to save branch: $e');
                   }
-                  _selectClinic(_selectedClinic!);
-                } catch (e) {
-                  if (mounted) _showError('Failed to save branch: $e');
-                }
-              },
-              child: Text(isEdit ? 'Save Changes' : 'Add Branch'),
-            ),
-          ],
-        ),
+                },
+                child: Text(isEdit ? 'Save Changes' : 'Save Branch', style: const TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
-  // dayOfWeek convention matches Angular's branchHoursFormList: 1=Monday..7=Sunday.
+  static Widget _buildField({
+    required String label,
+    required TextEditingController controller,
+    String? hintText,
+    TextInputType? keyboardType,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kTextMain),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: controller,
+          keyboardType: keyboardType,
+          decoration: InputDecoration(
+            hintText: hintText,
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          ),
+        ),
+      ],
+    );
+  }
+
+  static Widget _buildDropdownField<T>({
+    required String label,
+    required T? value,
+    required List<DropdownMenuItem<T>> items,
+    required ValueChanged<T?>? onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kTextMain),
+        ),
+        const SizedBox(height: 6),
+        DropdownButtonFormField<T>(
+          initialValue: value,
+          isDense: true,
+          decoration: const InputDecoration(
+            contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          ),
+          items: items,
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
+
   static const _dayNames = {
     1: 'Monday',
     2: 'Tuesday',
@@ -480,7 +1162,25 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
           }
           return AlertDialog(
             shape: _dialogShape(),
-            title: Text('Operating Hours - ${branch.branchNameEn}'),
+            titlePadding: const EdgeInsets.fromLTRB(24, 20, 16, 8),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+            actionsPadding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
+            title: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Operating Hours - ${branch.branchNameEn}',
+                  style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: _kTextMain),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: _kTextMuted, size: 20),
+                  onPressed: () => Navigator.pop(ctx),
+                ),
+              ],
+            ),
             content: SizedBox(
               width: _dialogWidth(context, preferred: 560),
               height: loading ? 120 : _dialogMaxHeight(context, preferred: 480),
@@ -504,12 +1204,17 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
                               Row(
                                 children: [
                                   SizedBox(
-                                      width: 100,
-                                      child: Text(_dayNames[h.dayOfWeek] ?? '',
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.bold))),
+                                    width: 100,
+                                    child: Text(
+                                      _dayNames[h.dayOfWeek] ?? '',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13),
+                                    ),
+                                  ),
                                   Checkbox(
                                     value: h.isClosed,
+                                    activeColor: _kPrimaryGreen,
                                     onChanged: (val) => setDialogState(() {
                                       hoursForm[index] =
                                           ClinicOperatingHourModel(
@@ -523,7 +1228,8 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
                                       );
                                     }),
                                   ),
-                                  const Text('Closed'),
+                                  const Text('Closed',
+                                      style: TextStyle(fontSize: 12)),
                                 ],
                               ),
                               if (!h.isClosed)
@@ -533,7 +1239,8 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
                                       child: TextField(
                                         controller: openCtrl,
                                         decoration: const InputDecoration(
-                                            labelText: 'Open (HH:mm)'),
+                                            labelText: 'Open (HH:mm)',
+                                            isDense: true),
                                         onChanged: (val) => hoursForm[index] =
                                             ClinicOperatingHourModel(
                                           branchId: h.branchId,
@@ -551,7 +1258,8 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
                                       child: TextField(
                                         controller: closeCtrl,
                                         decoration: const InputDecoration(
-                                            labelText: 'Close (HH:mm)'),
+                                            labelText: 'Close (HH:mm)',
+                                            isDense: true),
                                         onChanged: (val) => hoursForm[index] =
                                             ClinicOperatingHourModel(
                                           branchId: h.branchId,
@@ -573,10 +1281,16 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
                     ),
             ),
             actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Close')),
+              OutlinedButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
               ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _kPrimaryGreen,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                ),
                 onPressed: saving
                     ? null
                     : () async {
@@ -627,47 +1341,43 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           shape: _dialogShape(),
-          title: const Text('Link Medical Specialty'),
+          title: const Text('Link Medical Specialty',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
           content: SizedBox(
-            width: _dialogWidth(context),
+            width: _dialogWidth(context, preferred: 440),
             child: DropdownButtonFormField<String>(
-              value: selectedSpecialtyId,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Choose Specialty'),
+              initialValue: selectedSpecialtyId,
+              decoration: const InputDecoration(labelText: 'Select Specialty *'),
               items: _globalSpecialties
                   .map((s) => DropdownMenuItem(
-                      value: s.specialtyId,
-                      child: Text(s.nameEn,
-                          maxLines: 1, overflow: TextOverflow.ellipsis)))
+                      value: s.specialtyId, child: Text(s.nameEn)))
                   .toList(),
-              onChanged: (val) =>
-                  setDialogState(() => selectedSpecialtyId = val),
+              onChanged: (val) => setDialogState(() => selectedSpecialtyId = val),
             ),
           ),
           actions: [
-            TextButton(
+            OutlinedButton(
                 onPressed: () => Navigator.pop(ctx),
                 child: const Text('Cancel')),
             ElevatedButton(
-              onPressed: selectedSpecialtyId == null
-                  ? null
-                  : () async {
-                      try {
-                        await ref
-                            .read(clinicServiceProvider)
-                            .addClinicSpecialty(_selectedClinic!.clinicId,
-                                selectedSpecialtyId!);
-                        if (mounted) Navigator.pop(ctx);
-                        if (mounted) {
-                          _showSuccess('Specialty linked to clinic.');
-                        }
-                        _selectClinic(_selectedClinic!);
-                      } catch (e) {
-                        if (mounted) {
-                          _showError('Failed to link specialty: $e');
-                        }
-                      }
-                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _kPrimaryGreen,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () async {
+                if (selectedSpecialtyId == null) return;
+                try {
+                  await ref
+                      .read(clinicServiceProvider)
+                      .addClinicSpecialty(
+                          _selectedClinic!.clinicId, selectedSpecialtyId!);
+                  if (mounted) Navigator.pop(ctx);
+                  if (mounted) _showSuccess('Specialty linked successfully.');
+                  _selectClinic(_selectedClinic!);
+                } catch (e) {
+                  if (mounted) _showError('Failed to link specialty: $e');
+                }
+              },
               child: const Text('Link Specialty'),
             ),
           ],
@@ -676,188 +1386,20 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
     );
   }
 
-  void _openInsuranceDialog() {
-    if (_selectedClinic == null) return;
-    String? selectedProviderId = _globalInsurances.isNotEmpty
-        ? _globalInsurances.first.providerId
-        : null;
-    final networkClassController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          shape: _dialogShape(),
-          title: const Text('Associate Insurance Provider'),
-          content: SizedBox(
-            width: _dialogWidth(context),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<String>(
-                  value: selectedProviderId,
-                  isExpanded: true,
-                  decoration:
-                      const InputDecoration(labelText: 'Insurance Provider'),
-                  items: _globalInsurances
-                      .map((ins) => DropdownMenuItem(
-                          value: ins.providerId,
-                          child: Text(ins.nameEn,
-                              maxLines: 1, overflow: TextOverflow.ellipsis)))
-                      .toList(),
-                  onChanged: (val) =>
-                      setDialogState(() => selectedProviderId = val),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: networkClassController,
-                  decoration: const InputDecoration(
-                      labelText: 'Network Class',
-                      hintText: 'E.g. VIP, Class A, Gold'),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: selectedProviderId == null
-                  ? null
-                  : () async {
-                      final payload = {
-                        'providerId': selectedProviderId,
-                        'networkClass': networkClassController.text.trim(),
-                        'isActive': true,
-                      };
-                      try {
-                        await ref
-                            .read(clinicServiceProvider)
-                            .addClinicInsurance(_selectedClinic!.clinicId,
-                                selectedProviderId!, payload);
-                        if (mounted) Navigator.pop(ctx);
-                        if (mounted) {
-                          _showSuccess('Insurance provider associated.');
-                        }
-                        _selectClinic(_selectedClinic!);
-                      } catch (e) {
-                        if (mounted) {
-                          _showError('Failed to link insurance: $e');
-                        }
-                      }
-                    },
-              child: const Text('Associate Provider'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _openLanguageDialog() {
-    if (_selectedClinic == null) return;
-    String? selectedLanguageId =
-        _globalLanguages.isNotEmpty ? _globalLanguages.first.languageId : null;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          shape: _dialogShape(),
-          title: const Text('Link Supported Language'),
-          content: SizedBox(
-            width: _dialogWidth(context),
-            child: DropdownButtonFormField<String>(
-              value: selectedLanguageId,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Choose Language'),
-              items: _globalLanguages
-                  .map((l) => DropdownMenuItem(
-                      value: l.languageId,
-                      child: Text(l.nameEn,
-                          maxLines: 1, overflow: TextOverflow.ellipsis)))
-                  .toList(),
-              onChanged: (val) =>
-                  setDialogState(() => selectedLanguageId = val),
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: selectedLanguageId == null
-                  ? null
-                  : () async {
-                      try {
-                        await ref.read(clinicServiceProvider).addClinicLanguage(
-                            _selectedClinic!.clinicId, selectedLanguageId!);
-                        if (mounted) Navigator.pop(ctx);
-                        if (mounted) {
-                          _showSuccess('Language linked to clinic.');
-                        }
-                        _selectClinic(_selectedClinic!);
-                      } catch (e) {
-                        if (mounted) {
-                          _showError('Failed to link language: $e');
-                        }
-                      }
-                    },
-              child: const Text('Link Language'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _deleteClinic(String clinicId) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: _dialogShape(),
-        title: const Text('Delete Clinic'),
-        content:
-            const Text('Are you sure you want to delete this clinic profile?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            style:
-                ElevatedButton.styleFrom(backgroundColor: AppTheme.dangerRed),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              try {
-                await ref.read(clinicServiceProvider).deleteClinic(clinicId);
-                if (mounted) _showSuccess('Clinic removed.');
-                _loadClinics();
-              } catch (e) {
-                if (mounted) _showError('Failed to delete clinic: $e');
-              }
-            },
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _deleteSpecialty(String specialtyId) async {
-    if (_selectedClinic == null) return;
+  void _deleteSpecialty(String specialtyId) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: _dialogShape(),
-        title: const Text('Unlink Specialty'),
-        content: const Text('Are you sure you want to unlink this specialty?'),
+        title: const Text('Unlink Specialty?'),
+        content: const Text('Are you sure you want to remove this specialty from this clinic?'),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+          OutlinedButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Unlink')),
+            style: ElevatedButton.styleFrom(backgroundColor: _kDangerRed, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Unlink'),
+          ),
         ],
       ),
     );
@@ -866,29 +1408,98 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
       await ref
           .read(clinicServiceProvider)
           .deleteClinicSpecialty(_selectedClinic!.clinicId, specialtyId);
-      if (mounted) _showSuccess('Specialty unlinked.');
+      _showSuccess('Specialty unlinked successfully.');
       _selectClinic(_selectedClinic!);
     } catch (e) {
-      if (mounted) _showError('Failed to unlink specialty: $e');
+      _showError('Failed to unlink specialty: $e');
     }
   }
 
-  Future<void> _deleteInsurance(String providerId) async {
+  void _openInsuranceDialog() {
     if (_selectedClinic == null) return;
+    String? selectedProviderId = _globalInsurances.isNotEmpty
+        ? _globalInsurances.first.providerId
+        : null;
+    final networkClassController = TextEditingController(text: 'General');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: _dialogShape(),
+          title: const Text('Link Insurance Network',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+          content: SizedBox(
+            width: _dialogWidth(context, preferred: 440),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: selectedProviderId,
+                  decoration: const InputDecoration(labelText: 'Insurance Provider *'),
+                  items: _globalInsurances
+                      .map((p) => DropdownMenuItem(
+                          value: p.providerId, child: Text(p.nameEn)))
+                      .toList(),
+                  onChanged: (val) => setDialogState(() => selectedProviderId = val),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: networkClassController,
+                  decoration: const InputDecoration(
+                    labelText: 'Network Class',
+                    hintText: 'e.g. VIP, Gold, General',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            OutlinedButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _kPrimaryGreen,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () async {
+                if (selectedProviderId == null) return;
+                try {
+                  await ref
+                      .read(clinicServiceProvider)
+                      .addClinicInsurance(
+                          _selectedClinic!.clinicId, selectedProviderId!, {
+                    'networkClass': networkClassController.text.trim(),
+                    'isActive': true,
+                  });
+                  if (mounted) Navigator.pop(ctx);
+                  if (mounted) _showSuccess('Insurance linked successfully.');
+                  _selectClinic(_selectedClinic!);
+                } catch (e) {
+                  if (mounted) _showError('Failed to link insurance: $e');
+                }
+              },
+              child: const Text('Link Provider'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _deleteInsurance(String providerId) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: _dialogShape(),
-        title: const Text('Unlink Insurance'),
-        content: const Text(
-            'Are you sure you want to unlink this insurance provider?'),
+        title: const Text('Unlink Insurance?'),
+        content: const Text('Are you sure you want to remove this insurance provider?'),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+          OutlinedButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Unlink')),
+            style: ElevatedButton.styleFrom(backgroundColor: _kDangerRed, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Unlink'),
+          ),
         ],
       ),
     );
@@ -897,28 +1508,81 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
       await ref
           .read(clinicServiceProvider)
           .deleteClinicInsurance(_selectedClinic!.clinicId, providerId);
-      if (mounted) _showSuccess('Insurance unlinked.');
+      _showSuccess('Insurance unlinked successfully.');
       _selectClinic(_selectedClinic!);
     } catch (e) {
-      if (mounted) _showError('Failed to unlink insurance: $e');
+      _showError('Failed to unlink insurance: $e');
     }
   }
 
-  Future<void> _deleteLanguage(String languageId) async {
+  void _openLanguageDialog() {
     if (_selectedClinic == null) return;
+    String? selectedLanguageId = _globalLanguages.isNotEmpty
+        ? _globalLanguages.first.languageId
+        : null;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: _dialogShape(),
+          title: const Text('Link Supported Language',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+          content: SizedBox(
+            width: _dialogWidth(context, preferred: 440),
+            child: DropdownButtonFormField<String>(
+              initialValue: selectedLanguageId,
+              decoration: const InputDecoration(labelText: 'Select Language *'),
+              items: _globalLanguages
+                  .map((l) => DropdownMenuItem(
+                      value: l.languageId, child: Text(l.nameEn)))
+                  .toList(),
+              onChanged: (val) => setDialogState(() => selectedLanguageId = val),
+            ),
+          ),
+          actions: [
+            OutlinedButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _kPrimaryGreen,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () async {
+                if (selectedLanguageId == null) return;
+                try {
+                  await ref
+                      .read(clinicServiceProvider)
+                      .addClinicLanguage(
+                          _selectedClinic!.clinicId, selectedLanguageId!);
+                  if (mounted) Navigator.pop(ctx);
+                  if (mounted) _showSuccess('Language linked successfully.');
+                  _selectClinic(_selectedClinic!);
+                } catch (e) {
+                  if (mounted) _showError('Failed to link language: $e');
+                }
+              },
+              child: const Text('Link Language'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _deleteLanguage(String languageId) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: _dialogShape(),
-        title: const Text('Unlink Language'),
-        content: const Text('Are you sure you want to unlink this language?'),
+        title: const Text('Unlink Language?'),
+        content: const Text('Are you sure you want to remove this language?'),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+          OutlinedButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Unlink')),
+            style: ElevatedButton.styleFrom(backgroundColor: _kDangerRed, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Unlink'),
+          ),
         ],
       ),
     );
@@ -927,306 +1591,470 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
       await ref
           .read(clinicServiceProvider)
           .deleteClinicLanguage(_selectedClinic!.clinicId, languageId);
-      if (mounted) _showSuccess('Language unlinked.');
+      _showSuccess('Language unlinked successfully.');
       _selectClinic(_selectedClinic!);
     } catch (e) {
-      if (mounted) _showError('Failed to unlink language: $e');
+      _showError('Failed to unlink language: $e');
     }
   }
 
-  Widget _buildSidebarCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('My Clinics',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                        color: AppTheme.primaryTeal)),
-                Chip(
-                  label: Text('${_filteredClinics.length} Listed',
-                      style: const TextStyle(
-                          fontSize: 11, color: AppTheme.primaryDarkTeal)),
-                  backgroundColor: AppTheme.primaryLightTeal,
-                  visualDensity: VisualDensity.compact,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  side: BorderSide.none,
-                ),
-              ],
-            ),
-            const Divider(height: 20),
-            TextField(
-              decoration: const InputDecoration(
-                hintText: '🔍 Search clinics by name or license...',
-                isDense: true,
-              ),
-              onChanged: (v) => setState(() => _searchTerm = v),
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _filteredClinics.isEmpty
-                      ? RefreshIndicator(
-                          onRefresh: _loadClinics,
-                          child: ListView(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            children: [
-                              _emptyStateCard(
-                                icon: '🏥',
-                                text: 'No matching clinics found.',
-                                subtext:
-                                    'Try adjusting your search terms or click "+ Add New Clinic".',
-                              ),
-                            ],
-                          ),
-                        )
-                      : RefreshIndicator(
-                          onRefresh: _loadClinics,
-                          child: ListView.separated(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            itemCount: _filteredClinics.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 12),
-                            itemBuilder: (context, index) {
-                              final clinic = _filteredClinics[index];
-                              final selected =
-                                  _selectedClinic?.clinicId == clinic.clinicId;
-                              // NOTE: BoxDecoration cannot combine a
-                              // borderRadius with a Border whose sides have
-                              // different colors/widths (Flutter throws "A
-                              // borderRadius can only be given on borders
-                              // with uniform colors" and the item silently
-                              // fails to paint). So the outer border stays
-                              // uniform, and the teal "selected" indicator
-                              // is drawn as a separate strip inside a
-                              // ClipRRect instead of being the container's
-                              // left BorderSide. IntrinsicHeight gives the
-                              // stretch Row a bounded height (ListView items
-                              // are otherwise unbounded), which the
-                              // indicator strip needs.
-                              final iconBox = Container(
-                                width: 48,
-                                height: 48,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: AppTheme.backgroundApp,
-                                  borderRadius: BorderRadius.circular(6),
-                                  border:
-                                      Border.all(color: AppTheme.borderGray),
-                                ),
-                                child: const Text('🏥',
-                                    style: TextStyle(fontSize: 20)),
-                              );
-                              final nameColumn = Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(clinic.nameEn,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 13,
-                                            color: AppTheme.primaryTeal)),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                        'MOH: ${clinic.mohLicenseNumber.isEmpty ? 'N/A' : clinic.mohLicenseNumber}',
-                                        style: const TextStyle(
-                                            fontSize: 11,
-                                            color: AppTheme.textMuted)),
-                                  ],
-                                ),
-                              );
-                              final manageButton = OutlinedButton(
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 14, vertical: 10),
-                                  minimumSize: const Size(0, 40),
-                                  tapTargetSize: MaterialTapTargetSize.padded,
-                                  textStyle: const TextStyle(fontSize: 11),
-                                ),
-                                onPressed: () => _selectClinic(clinic),
-                                child: const Text('Manage'),
-                              );
+  void _deleteClinic(String clinicId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: _dialogShape(),
+        title: const Text('Delete Clinic Facility?'),
+        content: const Text('Are you sure you want to delete this clinic facility record? This cannot be undone.'),
+        actions: [
+          OutlinedButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: _kDangerRed, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(clinicServiceProvider).deleteClinic(clinicId);
+      _showSuccess('Clinic deleted successfully.');
+      _loadClinics();
+    } catch (e) {
+      _showError('Failed to delete clinic: $e');
+    }
+  }
 
-                              return ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: InkWell(
-                                  onTap: () => _selectClinic(clinic),
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: selected
-                                          ? AppTheme.primaryLightTeal
-                                          : AppTheme.surfaceWhite,
-                                      border: Border.all(
-                                          color: AppTheme.borderGray),
+  void _deleteBranch(String branchId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: _dialogShape(),
+        title: const Text('Delete Branch Location?'),
+        content: const Text('Are you sure you want to delete this clinic branch location?'),
+        actions: [
+          OutlinedButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: _kDangerRed, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(clinicServiceProvider).deleteClinicBranch(branchId);
+      _showSuccess('Branch deleted successfully.');
+      _selectClinic(_selectedClinic!);
+    } catch (e) {
+      _showError('Failed to delete branch: $e');
+    }
+  }
+
+  // ── UI Components ────────────────────────────────────────────────────────
+
+  Widget _buildSidebarCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _kBorderColor),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x04000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'My Clinics',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: _kTextMain,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _kPrimaryLight,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '${_filteredClinics.length} Listed',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: _kPrimaryGreen,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            decoration: const InputDecoration(
+              hintText: 'Search by name or license...',
+              isDense: true,
+              prefixIcon: Icon(Icons.search, size: 18, color: _kTextMuted),
+            ),
+            onChanged: (v) => setState(() => _searchTerm = v),
+          ),
+          const SizedBox(height: 14),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _filteredClinics.isEmpty
+                    ? RefreshIndicator(
+                        onRefresh: _loadClinics,
+                        child: ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: const [
+                            Padding(
+                              padding: EdgeInsets.symmetric(vertical: 40),
+                              child: Center(
+                                child: Text('No clinics found.',
+                                    style: TextStyle(color: _kTextMuted, fontSize: 13)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: _loadClinics,
+                        child: ListView.separated(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          itemCount: _filteredClinics.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 10),
+                          itemBuilder: (context, index) {
+                            final clinic = _filteredClinics[index];
+                            final selected =
+                                _selectedClinic?.clinicId == clinic.clinicId;
+
+                            return InkWell(
+                              onTap: () => _selectClinic(clinic),
+                              borderRadius: BorderRadius.circular(10),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: selected ? _kPrimaryLight.withValues(alpha: 0.3) : Colors.white,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: selected ? _kPrimaryGreen : _kBorderColor,
+                                    width: selected ? 1.5 : 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 42,
+                                      height: 42,
+                                      decoration: BoxDecoration(
+                                        color: _kOffWhite,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: _kBorderColor),
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: const Text('🏥', style: TextStyle(fontSize: 20)),
                                     ),
-                                    child: IntrinsicHeight(
-                                      child: Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.stretch,
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Container(
-                                            width: selected ? 5 : 1,
-                                            color: selected
-                                                ? AppTheme.primaryTeal
-                                                : Colors.transparent,
+                                          Text(
+                                            clinic.nameEn,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.bold,
+                                              color: _kPrimaryGreen,
+                                            ),
                                           ),
-                                          Expanded(
-                                            child: Padding(
-                                              padding: const EdgeInsets.all(16),
-                                              child: Row(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  iconBox,
-                                                  const SizedBox(width: 12),
-                                                  nameColumn,
-                                                  const SizedBox(width: 8),
-                                                  manageButton,
-                                                ],
-                                              ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'MOH: ${clinic.mohLicenseNumber.isEmpty ? 'N/A' : clinic.mohLicenseNumber}',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: _kTextMuted,
                                             ),
                                           ),
                                         ],
                                       ),
                                     ),
-                                  ),
+                                    const SizedBox(width: 8),
+                                    OutlinedButton(
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                        minimumSize: Size.zero,
+                                        side: const BorderSide(color: _kBorderColor),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                      ),
+                                      onPressed: () => _selectClinic(clinic),
+                                      child: const Text(
+                                        'Manage',
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _kTextMain),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              );
-                            },
-                          ),
+                              ),
+                            );
+                          },
                         ),
-            ),
-          ],
-        ),
+                      ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _emptyStateCard(
-      {required String icon, required String text, String? subtext}) {
+  Widget _buildClinicHeaderCard(ClinicModel clinic, bool isMobile) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: AppTheme.backgroundApp,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.borderGray, width: 1.5),
-      ),
-      child: Column(
-        children: [
-          Text(icon, style: const TextStyle(fontSize: 32)),
-          const SizedBox(height: 8),
-          Text(text,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, color: AppTheme.textMuted)),
-          if (subtext != null) ...[
-            const SizedBox(height: 4),
-            Text(subtext,
-                textAlign: TextAlign.center,
-                style:
-                    const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
-          ],
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _kBorderColor),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x04000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
         ],
       ),
+      child: isMobile
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildClinicAvatarBox(),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildClinicHeaderInfo(clinic)),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: _kAmber),
+                          foregroundColor: _kAmber,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        icon: const Icon(Icons.edit_outlined, size: 16),
+                        label: const Text('Edit Profile', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        onPressed: () => _openClinicDialog(clinic),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: _kDangerRed, size: 20),
+                      tooltip: 'Delete Clinic Facility',
+                      onPressed: () => _deleteClinic(clinic.clinicId),
+                    ),
+                  ],
+                ),
+              ],
+            )
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildClinicAvatarBox(),
+                const SizedBox(width: 16),
+                Expanded(child: _buildClinicHeaderInfo(clinic)),
+                const SizedBox(width: 16),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: _kAmber),
+                    foregroundColor: _kAmber,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  label: const Text('Edit Profile', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  onPressed: () => _openClinicDialog(clinic),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: _kDangerRed, size: 20),
+                  tooltip: 'Delete Clinic Facility',
+                  onPressed: () => _deleteClinic(clinic.clinicId),
+                ),
+              ],
+            ),
     );
   }
 
-  Widget _subTabButton(String label, int index) {
-    final active = _activeSubTab == index;
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ElevatedButton(
-        style: ElevatedButton.styleFrom(
-          backgroundColor:
-              active ? AppTheme.primaryTeal : AppTheme.surfaceWhite,
-          foregroundColor: active ? Colors.white : AppTheme.primaryTeal,
-          elevation: 0,
-          side: BorderSide(
-              color: active ? AppTheme.primaryTeal : AppTheme.borderGray),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          minimumSize: const Size(0, 44),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          textStyle: const TextStyle(fontSize: 13),
-        ),
-        onPressed: () => setState(() => _activeSubTab = index),
-        child: Text(label),
+  Widget _buildClinicAvatarBox() {
+    return Container(
+      width: 58,
+      height: 58,
+      decoration: BoxDecoration(
+        color: _kOffWhite,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _kBorderColor),
       ),
-    );
-  }
-
-  Widget _sectionHeader(String title, String actionLabel, VoidCallback onTap,
-      {bool isMobile = false}) {
-    if (isMobile) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
+        alignment: Alignment.center,
         children: [
-          Text(title,
-              style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
-                  color: AppTheme.primaryTeal)),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                minimumSize: const Size(0, 44),
-                textStyle: const TextStyle(fontSize: 12),
+          const Text('🏥', style: TextStyle(fontSize: 26)),
+          Positioned(
+            bottom: 2,
+            left: 2,
+            right: 2,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 1),
+              decoration: BoxDecoration(
+                color: _kDangerRed,
+                borderRadius: BorderRadius.circular(4),
               ),
-              onPressed: onTap,
-              child: Text(actionLabel),
+              alignment: Alignment.center,
+              child: const Text(
+                'ACTIVE',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 7,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
+              ),
             ),
           ),
         ],
-      );
-    }
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      ),
+    );
+  }
+
+  Widget _buildClinicHeaderInfo(ClinicModel clinic) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Text(title,
-              style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
-                  color: AppTheme.primaryTeal)),
-        ),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            textStyle: const TextStyle(fontSize: 12),
+        Text(
+          '${clinic.nameEn} (${clinic.nameAr})',
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: _kTextMain,
           ),
-          onPressed: onTap,
-          child: Text(actionLabel),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 2),
+        Text(
+          clinic.descriptionEn?.isNotEmpty == true ? clinic.descriptionEn! : 'No overview description provided',
+          style: const TextStyle(fontSize: 12, color: _kTextMuted),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 12,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: _kPrimaryLight,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                'MOH: ${clinic.mohLicenseNumber.isEmpty ? 'N/A' : clinic.mohLicenseNumber}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: _kPrimaryGreen,
+                ),
+              ),
+            ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.phone, size: 13, color: _kDangerRed),
+                const SizedBox(width: 4),
+                Text(
+                  clinic.phonePrimary.isEmpty ? 'N/A' : clinic.phonePrimary,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kTextMain),
+                ),
+              ],
+            ),
+            if (clinic.email != null && clinic.email!.isNotEmpty)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.email_outlined, size: 13, color: _kTextMuted),
+                  const SizedBox(width: 4),
+                  Text(
+                    clinic.email!,
+                    style: const TextStyle(fontSize: 12, color: _kTextMuted),
+                  ),
+                ],
+              ),
+          ],
         ),
       ],
     );
   }
 
-  Widget _badge(String text,
-      {Color? bg, Color? fg, EdgeInsetsGeometry? padding}) {
+  Widget _buildTabsBar() {
+    final tabs = [
+      ('🏢 Branches (${_branches.length})', 0),
+      ('🩺 Specialties (${_specialties.length})', 1),
+      ('🛡️ Insurance (${_insurances.length})', 2),
+      ('🗣️ Languages (${_languages.length})', 3),
+    ];
+
     return Container(
-      padding:
-          padding ?? const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg ?? AppTheme.primaryLightTeal,
-        borderRadius: BorderRadius.circular(6),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: _kBorderColor)),
       ),
-      child: Text(text,
-          style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: fg ?? AppTheme.primaryDarkTeal)),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: tabs.map((t) {
+            final active = _activeSubTab == t.$2;
+            return InkWell(
+              onTap: () => setState(() => _activeSubTab = t.$2),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: active ? _kPrimaryGreen : Colors.transparent,
+                      width: 2.5,
+                    ),
+                  ),
+                ),
+                child: Text(
+                  t.$1,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: active ? FontWeight.bold : FontWeight.w500,
+                    color: active ? _kPrimaryGreen : _kTextMuted,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
     );
   }
 
@@ -1234,94 +2062,328 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionHeader('Facility Branch Locations', '+ Add Branch',
-            () => _openBranchDialog(null),
-            isMobile: isMobile),
-        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Expanded(
+              child: Text(
+                'Facility Branch Locations',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: _kPrimaryGreen,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _kPrimaryGreen,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Add Branch', style: TextStyle(fontSize: 12)),
+              onPressed: () => _openBranchDialog(null),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
         Expanded(
           child: _branches.isEmpty
-              ? _emptyStateCard(
-                  icon: '🏢',
-                  text: 'No branch locations added for this clinic yet.')
-              : RefreshIndicator(
-                  onRefresh: () => _selectClinic(_selectedClinic!),
-                  child: ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    itemCount: _branches.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (context, idx) {
-                      final b = _branches[idx];
-                      return Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: AppTheme.borderGray),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text('📍 ${b.branchNameEn}',
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13,
-                                          color: AppTheme.primaryTeal)),
-                                ),
-                                _badge(b.isPrimary ? 'Primary' : 'Branch',
-                                    bg: b.isPrimary
-                                        ? AppTheme.successGreen
-                                            .withOpacity(0.15)
-                                        : AppTheme.backgroundApp,
-                                    fg: b.isPrimary
-                                        ? AppTheme.successGreen
-                                        : AppTheme.textMuted),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Text(b.addressLine1,
-                                style: const TextStyle(
-                                    fontSize: 12, color: AppTheme.textMain)),
-                            const SizedBox(height: 2),
-                            Text(b.phone?.isNotEmpty == true ? b.phone! : 'N/A',
-                                style: const TextStyle(
-                                    fontSize: 12, color: AppTheme.textMuted)),
-                            const SizedBox(height: 10),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton(
-                                    style: OutlinedButton.styleFrom(
-                                      minimumSize: const Size(0, 44),
-                                    ),
-                                    onPressed: () => _openHoursDialog(b),
-                                    child: const Text('⏰ Hours'),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: OutlinedButton(
-                                    style: OutlinedButton.styleFrom(
-                                        minimumSize: const Size(0, 44),
-                                        foregroundColor: AppTheme.dangerRed,
-                                        side: const BorderSide(
-                                            color: AppTheme.dangerRed)),
-                                    onPressed: () => _openBranchDialog(b),
-                                    child: const Text('Edit'),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+              ? Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(32),
+                  alignment: Alignment.center,
+                  child: const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text('🏢', style: TextStyle(fontSize: 32)),
+                      SizedBox(height: 8),
+                      Text('No branch locations added yet.',
+                          style: TextStyle(color: _kTextMuted, fontSize: 13)),
+                    ],
                   ),
-                ),
+                )
+              : isMobile
+                  ? ListView.separated(
+                      itemCount: _branches.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, i) => _buildMobileBranchCard(_branches[i]),
+                    )
+                  : LayoutBuilder(
+                      builder: (context, constraints) {
+                        return SingleChildScrollView(
+                          scrollDirection: Axis.vertical,
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                minWidth: math.max(constraints.maxWidth, 720),
+                              ),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: _kBorderColor),
+                                ),
+                                clipBehavior: Clip.antiAlias,
+                                child: Table(
+                                  columnWidths: const {
+                                    0: FlexColumnWidth(1.4),
+                                    1: FlexColumnWidth(2.0),
+                                    2: FlexColumnWidth(1.2),
+                                    3: FlexColumnWidth(0.9),
+                                    4: IntrinsicColumnWidth(),
+                                  },
+                                  defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                                  children: [
+                                    TableRow(
+                                      decoration: const BoxDecoration(color: _kOffWhite),
+                                      children: [
+                                        _tableHeaderCell('BRANCH NAME'),
+                                        _tableHeaderCell('ADDRESS'),
+                                        _tableHeaderCell('CONTACT PHONE'),
+                                        _tableHeaderCell('TYPE'),
+                                        _tableHeaderCell('ACTIONS'),
+                                      ],
+                                    ),
+                                    ..._branches.map((b) => _buildBranchTableRow(b)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
         ),
       ],
+    );
+  }
+
+  Widget _tableHeaderCell(String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          color: _kTextMuted,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+
+  TableRow _buildBranchTableRow(ClinicBranchModel b) {
+    return TableRow(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: _kBorderColor)),
+      ),
+      children: [
+        // Name with pink dot
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(
+                  color: _kDotPink,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  b.branchNameEn,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _kTextMain),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Address
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Text(
+            b.addressLine1,
+            style: const TextStyle(fontSize: 12, color: _kTextMain),
+          ),
+        ),
+        // Phone
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Text(
+            b.phone?.isNotEmpty == true ? b.phone! : 'N/A',
+            style: const TextStyle(fontSize: 12, color: _kTextMuted),
+          ),
+        ),
+        // Type
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: b.isPrimary ? _kPrimaryLight : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              b.isPrimary ? 'Primary' : 'Branch',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: b.isPrimary ? _kPrimaryGreen : _kTextMuted,
+              ),
+            ),
+          ),
+        ),
+        // Actions
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: _kAmber),
+                  foregroundColor: _kAmber,
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                ),
+                icon: const Icon(Icons.edit_outlined, size: 13),
+                label: const Text('Edit', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                onPressed: () => _openBranchDialog(b),
+              ),
+              const SizedBox(width: 6),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: _kAmber),
+                  foregroundColor: _kAmber,
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                ),
+                icon: const Icon(Icons.access_time, size: 13),
+                label: const Text('Hours', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                onPressed: () => _openHoursDialog(b),
+              ),
+              const SizedBox(width: 6),
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: _kDangerRed),
+                  foregroundColor: _kDangerRed,
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                ),
+                child: const Text('Delete', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                onPressed: () => _deleteBranch(b.branchId),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMobileBranchCard(ClinicBranchModel b) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _kBorderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(color: _kDotPink, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  b.branchNameEn,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _kTextMain),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: b.isPrimary ? _kPrimaryLight : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  b.isPrimary ? 'Primary' : 'Branch',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: b.isPrimary ? _kPrimaryGreen : _kTextMuted,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(b.addressLine1, style: const TextStyle(fontSize: 12, color: _kTextMain)),
+          const SizedBox(height: 2),
+          Text('Phone: ${b.phone?.isNotEmpty == true ? b.phone! : "N/A"}',
+              style: const TextStyle(fontSize: 11, color: _kTextMuted)),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: _kAmber),
+                    foregroundColor: _kAmber,
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                  ),
+                  icon: const Icon(Icons.edit_outlined, size: 12),
+                  label: const Text('Edit', style: TextStyle(fontSize: 11)),
+                  onPressed: () => _openBranchDialog(b),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: _kAmber),
+                    foregroundColor: _kAmber,
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                  ),
+                  icon: const Icon(Icons.access_time, size: 12),
+                  label: const Text('Hours', style: TextStyle(fontSize: 11)),
+                  onPressed: () => _openHoursDialog(b),
+                ),
+              ),
+              const SizedBox(width: 6),
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: _kDangerRed),
+                  foregroundColor: _kDangerRed,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                ),
+                child: const Text('Delete', style: TextStyle(fontSize: 11)),
+                onPressed: () => _deleteBranch(b.branchId),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -1329,60 +2391,86 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionHeader('Offered Medical Specialties', '+ Link Specialty',
-            _openSpecialtyDialog,
-            isMobile: isMobile),
-        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Expanded(
+              child: Text(
+                'Offered Medical Specialties',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: _kPrimaryGreen,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _kPrimaryGreen,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Link Specialty', style: TextStyle(fontSize: 12)),
+              onPressed: _openSpecialtyDialog,
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
         Expanded(
           child: _specialties.isEmpty
-              ? _emptyStateCard(
-                  icon: '🩺', text: 'No specialties linked to this clinic.')
-              : RefreshIndicator(
-                  onRefresh: () => _selectClinic(_selectedClinic!),
-                  child: GridView.builder(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    gridDelegate:
-                        const SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 260,
-                      mainAxisExtent: 56,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                    ),
-                    itemCount: _specialties.length,
-                    itemBuilder: (context, idx) {
-                      final s = _specialties[idx];
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: AppTheme.backgroundApp,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Row(
-                          children: [
-                            const Text('🩺', style: TextStyle(fontSize: 18)),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(_getSpecialtyName(s.specialtyId),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppTheme.textMain)),
-                            ),
-                            IconButton(
-                              visualDensity: VisualDensity.compact,
-                              icon: const Icon(Icons.close,
-                                  size: 18, color: AppTheme.dangerRed),
-                              tooltip: 'Unlink',
-                              onPressed: () => _deleteSpecialty(s.specialtyId),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+              ? Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(32),
+                  alignment: Alignment.center,
+                  child: const Text('No specialties linked to this clinic.',
+                      style: TextStyle(color: _kTextMuted, fontSize: 13)),
+                )
+              : GridView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: isMobile ? 400 : 280,
+                    mainAxisExtent: 52,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
                   ),
+                  itemCount: _specialties.length,
+                  itemBuilder: (context, idx) {
+                    final s = _specialties[idx];
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: _kOffWhite,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: _kBorderColor),
+                      ),
+                      child: Row(
+                        children: [
+                          const Text('🩺', style: TextStyle(fontSize: 16)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _getSpecialtyName(s.specialtyId),
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kTextMain),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          IconButton(
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            icon: const Icon(Icons.close, size: 16, color: _kDangerRed),
+                            tooltip: 'Unlink',
+                            onPressed: () => _deleteSpecialty(s.specialtyId),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
         ),
       ],
@@ -1393,91 +2481,115 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionHeader('Accepted Insurance Networks', '+ Link Provider',
-            _openInsuranceDialog,
-            isMobile: isMobile),
-        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Expanded(
+              child: Text(
+                'Accepted Insurance Networks',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: _kPrimaryGreen,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _kPrimaryGreen,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Link Provider', style: TextStyle(fontSize: 12)),
+              onPressed: _openInsuranceDialog,
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
         Expanded(
           child: _insurances.isEmpty
-              ? _emptyStateCard(
-                  icon: '🛡️',
-                  text: 'No insurance providers linked to this clinic.')
-              : RefreshIndicator(
-                  onRefresh: () => _selectClinic(_selectedClinic!),
-                  child: ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    itemCount: _insurances.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (context, idx) {
-                      final ins = _insurances[idx];
-                      return Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: AppTheme.borderGray),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
+              ? Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(32),
+                  alignment: Alignment.center,
+                  child: const Text('No insurance providers linked to this clinic.',
+                      style: TextStyle(color: _kTextMuted, fontSize: 13)),
+                )
+              : ListView.separated(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  itemCount: _insurances.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, idx) {
+                    final ins = _insurances[idx];
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _kOffWhite,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: _kBorderColor),
+                      ),
+                      child: Row(
+                        children: [
+                          const Text('🛡️', style: TextStyle(fontSize: 18)),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                          '🛡️ ${_getInsuranceName(ins.providerId)}',
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 13,
-                                              color: AppTheme.primaryTeal)),
-                                      const SizedBox(height: 6),
-                                      Wrap(
-                                        spacing: 8,
-                                        children: [
-                                          _badge(ins.networkClass.isEmpty
-                                              ? 'General'
-                                              : ins.networkClass),
-                                          _badge(
-                                              ins.isActive
-                                                  ? 'Active'
-                                                  : 'Suspended',
-                                              bg: ins.isActive
-                                                  ? AppTheme.successGreen
-                                                      .withOpacity(0.15)
-                                                  : AppTheme.dangerRed
-                                                      .withOpacity(0.12),
-                                              fg: ins.isActive
-                                                  ? AppTheme.successGreen
-                                                  : AppTheme.dangerRed),
-                                        ],
+                                Text(
+                                  _getInsuranceName(ins.providerId),
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _kTextMain),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: _kBorderColor),
                                       ),
-                                    ],
-                                  ),
+                                      child: Text(
+                                        ins.networkClass.isEmpty ? 'General' : ins.networkClass,
+                                        style: const TextStyle(fontSize: 10, color: _kTextMuted),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: ins.isActive ? _kPrimaryLight : _kDangerLight,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        ins.isActive ? 'Active' : 'Suspended',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: ins.isActive ? _kPrimaryGreen : _kDangerRed,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 10),
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton(
-                                style: OutlinedButton.styleFrom(
-                                    minimumSize: const Size(0, 44),
-                                    foregroundColor: AppTheme.dangerRed,
-                                    side: const BorderSide(
-                                        color: AppTheme.dangerRed)),
-                                onPressed: () =>
-                                    _deleteInsurance(ins.providerId),
-                                child: const Text('Unlink'),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, color: _kDangerRed, size: 18),
+                            tooltip: 'Unlink',
+                            onPressed: () => _deleteInsurance(ins.providerId),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
         ),
       ],
@@ -1488,60 +2600,86 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionHeader(
-            'Supported Languages', '+ Link Language', _openLanguageDialog,
-            isMobile: isMobile),
-        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Expanded(
+              child: Text(
+                'Supported Languages',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: _kPrimaryGreen,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _kPrimaryGreen,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Link Language', style: TextStyle(fontSize: 12)),
+              onPressed: _openLanguageDialog,
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
         Expanded(
           child: _languages.isEmpty
-              ? _emptyStateCard(
-                  icon: '🗣️', text: 'No languages linked to this clinic.')
-              : RefreshIndicator(
-                  onRefresh: () => _selectClinic(_selectedClinic!),
-                  child: GridView.builder(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    gridDelegate:
-                        const SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 220,
-                      mainAxisExtent: 56,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                    ),
-                    itemCount: _languages.length,
-                    itemBuilder: (context, idx) {
-                      final lang = _languages[idx];
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: AppTheme.backgroundApp,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Row(
-                          children: [
-                            const Text('🗣️', style: TextStyle(fontSize: 18)),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(_getLanguageName(lang.languageId),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppTheme.textMain)),
-                            ),
-                            IconButton(
-                              visualDensity: VisualDensity.compact,
-                              icon: const Icon(Icons.close,
-                                  size: 18, color: AppTheme.dangerRed),
-                              tooltip: 'Unlink',
-                              onPressed: () => _deleteLanguage(lang.languageId),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+              ? Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(32),
+                  alignment: Alignment.center,
+                  child: const Text('No languages linked to this clinic.',
+                      style: TextStyle(color: _kTextMuted, fontSize: 13)),
+                )
+              : GridView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: isMobile ? 400 : 220,
+                    mainAxisExtent: 50,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
                   ),
+                  itemCount: _languages.length,
+                  itemBuilder: (context, idx) {
+                    final lang = _languages[idx];
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: _kOffWhite,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: _kBorderColor),
+                      ),
+                      child: Row(
+                        children: [
+                          const Text('🗣️', style: TextStyle(fontSize: 16)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _getLanguageName(lang.languageId),
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kTextMain),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          IconButton(
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            icon: const Icon(Icons.close, size: 16, color: _kDangerRed),
+                            tooltip: 'Unlink',
+                            onPressed: () => _deleteLanguage(lang.languageId),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
         ),
       ],
@@ -1550,179 +2688,63 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
 
   Widget _buildDetailPanel({required bool isMobile}) {
     if (_selectedClinic == null) {
-      return const Center(
-        child: Text('Select a clinic from the list to manage its details.',
-            style: TextStyle(color: AppTheme.textMuted)),
+      return Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _kBorderColor),
+        ),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.all(32),
+        child: const Text(
+          'Select a clinic facility from the list to manage its locations and details.',
+          style: TextStyle(color: _kTextMuted, fontSize: 14),
+        ),
       );
     }
     final clinic = _selectedClinic!;
 
-    final logoBox = Container(
-      width: 64,
-      height: 64,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceWhite,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.borderGray),
-      ),
-      child: const Text('🏥', style: TextStyle(fontSize: 28)),
-    );
-
-    final infoColumn = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Wrap(
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: 8,
-          runSpacing: 2,
-          children: [
-            Text(clinic.nameEn,
-                style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 17,
-                    color: AppTheme.primaryTeal)),
-            Text('(${clinic.nameAr})',
-                style:
-                    const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Text(clinic.descriptionEn ?? 'No overview description provided.',
-            style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 10,
-          runSpacing: 6,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            _badge('MOH License: ${clinic.mohLicenseNumber}'),
-            if (clinic.vatNumber != null && clinic.vatNumber!.isNotEmpty)
-              _badge('VAT: ${clinic.vatNumber}'),
-            Text('📞 ${clinic.phonePrimary}',
-                style: const TextStyle(fontSize: 12)),
-            if (clinic.email != null && clinic.email!.isNotEmpty)
-              Text('✉️ ${clinic.email}', style: const TextStyle(fontSize: 12)),
-          ],
-        ),
-      ],
-    );
-
-    final editButton = OutlinedButton(
-      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
-      onPressed: () => _openClinicDialog(clinic),
-      child: const Text('✏️ Edit Profile'),
-    );
-    final deleteButton = OutlinedButton(
-      style: OutlinedButton.styleFrom(
-          minimumSize: const Size(0, 44),
-          foregroundColor: AppTheme.dangerRed,
-          side: const BorderSide(color: AppTheme.dangerRed)),
-      onPressed: () => _deleteClinic(clinic.clinicId),
-      child: const Text('Delete'),
-    );
-
-    final headerCard = Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceWhite,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.borderGray),
-        boxShadow: const [BoxShadow(color: Color(0x0A000000), blurRadius: 4)],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // teal top accent
-          Container(height: 4, color: AppTheme.primaryTeal),
-          const SizedBox(height: 16),
-          if (isMobile) ...[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                logoBox,
-                const SizedBox(width: 12),
-                Expanded(child: infoColumn),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(child: editButton),
-                const SizedBox(width: 8),
-                Expanded(child: deleteButton),
-              ],
-            ),
-          ] else ...[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                logoBox,
-                const SizedBox(width: 16),
-                Expanded(child: infoColumn),
-                const SizedBox(width: 12),
-                editButton,
-                const SizedBox(width: 8),
-                deleteButton,
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-
-    final tabsCard = Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceWhite,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.borderGray),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _subTabButton('🏢 Facility Branches (${_branches.length})', 0),
-                _subTabButton('🎓 Specialties (${_specialties.length})', 1),
-                _subTabButton(
-                    '🛡️ Insurance Networks (${_insurances.length})', 2),
-                _subTabButton('🗣️ Languages (${_languages.length})', 3),
-              ],
-            ),
-          ),
-          const Divider(height: 24),
-          Expanded(
-            child: _isDetailLoading
-                ? const Center(child: CircularProgressIndicator())
-                : switch (_activeSubTab) {
-                    0 => _buildBranchesTab(isMobile),
-                    1 => _buildSpecialtiesTab(isMobile),
-                    2 => _buildInsurancesTab(isMobile),
-                    _ => _buildLanguagesTab(isMobile),
-                  },
-          ),
-        ],
-      ),
-    );
-
     if (isMobile) {
-      // No bounded height from the parent (it's inside a scroll view), so
-      // the tab-content area gets its own fixed height for internal
-      // scrolling instead of relying on Expanded.
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
         children: [
-          headerCard,
+          _buildClinicHeaderCard(clinic, true),
           const SizedBox(height: 16),
-          SizedBox(height: 520, child: tabsCard),
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _kBorderColor),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x04000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildTabsBar(),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SizedBox(
+                    height: 480,
+                    child: _isDetailLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : switch (_activeSubTab) {
+                            0 => _buildBranchesTab(true),
+                            1 => _buildSpecialtiesTab(true),
+                            2 => _buildInsurancesTab(true),
+                            _ => _buildLanguagesTab(true),
+                          },
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       );
     }
@@ -1730,9 +2752,44 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        headerCard,
+        _buildClinicHeaderCard(clinic, false),
         const SizedBox(height: 16),
-        Expanded(child: tabsCard),
+        Expanded(
+          child: Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _kBorderColor),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x04000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildTabsBar(),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: _isDetailLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : switch (_activeSubTab) {
+                            0 => _buildBranchesTab(false),
+                            1 => _buildSpecialtiesTab(false),
+                            2 => _buildInsurancesTab(false),
+                            _ => _buildLanguagesTab(false),
+                          },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -1740,105 +2797,324 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final isMobile = constraints.maxWidth < 900;
-          return Padding(
-            padding: EdgeInsets.all(isMobile ? 16 : 24),
-            child: isMobile
-                ? SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Header Banner (compact single row for mobile:
-                        // title + icon-only add button, subtitle dropped
-                        // to save vertical space above the fold)
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            const Expanded(
-                              child: Text('🏥 Clinics & Facilities',
-                                  style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppTheme.textMain)),
-                            ),
-                            IconButton.filled(
-                              key: const Key('add_clinic_btn'),
-                              style: IconButton.styleFrom(
-                                minimumSize: const Size(44, 44),
-                              ),
-                              icon: const Icon(Icons.add, size: 22),
-                              tooltip: 'Add New Clinic',
-                              onPressed: () => _openClinicDialog(null),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Sidebar stacked above detail panel on mobile
-                        SizedBox(
-                          height: 380,
-                          width: double.infinity,
-                          child: _buildSidebarCard(),
-                        ),
-                        const SizedBox(height: 16),
-                        _buildDetailPanel(isMobile: true),
-                      ],
-                    ),
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+      backgroundColor: _kOffWhite,
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isMobile = constraints.maxWidth < 920;
+            return Padding(
+              padding: EdgeInsets.all(isMobile ? 14 : 22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Top Header Banner
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // Header Banner
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
                               children: [
-                                Text('🏥 Clinic & Facility Management',
+                                const Text('🏥', style: TextStyle(fontSize: 20)),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    'Clinic Facility Roster',
                                     style: TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.textMain)),
-                                SizedBox(height: 4),
-                                Text(
-                                  'Configure clinic locations, operating hours, medical specialties, and insurance networks',
-                                  style: TextStyle(
-                                      fontSize: 13, color: AppTheme.textMuted),
+                                      fontSize: isMobile ? 18 : 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: _kPrimaryGreen,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                               ],
                             ),
-                          ),
-                          ElevatedButton.icon(
-                            key: const Key('add_clinic_btn'),
-                            icon: const Icon(Icons.add, size: 18),
-                            label: const Text('Add New Clinic'),
-                            onPressed: () => _openClinicDialog(null),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-
-                      // Sidebar + Detail, side by side (mirrors angular clinic-admin-layout)
-                      Expanded(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(width: 340, child: _buildSidebarCard()),
-                            const SizedBox(width: 16),
-                            Expanded(child: _buildDetailPanel(isMobile: false)),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Configure clinic locations, operating hours, medical specialties, and insurance networks',
+                              style: TextStyle(fontSize: 12, color: _kTextMuted),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ],
                         ),
                       ),
+                      const SizedBox(width: 12),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _kPrimaryGreen,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isMobile ? 12 : 16,
+                            vertical: 10,
+                          ),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        icon: const Icon(Icons.add, size: 18),
+                        label: Text(
+                          isMobile ? 'Add' : 'Add Clinic',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: () => _openClinicDialog(null),
+                      ),
                     ],
                   ),
-          );
-        },
+                  const SizedBox(height: 18),
+
+                  // Main Content: Split layout on Desktop, Scrollable stack on Mobile
+                  Expanded(
+                    child: isMobile
+                        ? SingleChildScrollView(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SizedBox(
+                                  height: 320,
+                                  width: double.infinity,
+                                  child: _buildSidebarCard(),
+                                ),
+                                const SizedBox(height: 16),
+                                _buildDetailPanel(isMobile: true),
+                              ],
+                            ),
+                          )
+                        : Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              SizedBox(width: 320, child: _buildSidebarCard()),
+                              const SizedBox(width: 18),
+                              Expanded(
+                                child: _buildDetailPanel(isMobile: false),
+                              ),
+                            ],
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
+}
+
+// ── Interactive Map Component matching screenshots 2 & 3 ───────────────────
+
+class _InteractiveBranchMap extends StatefulWidget {
+  final double lat;
+  final double lng;
+  final Function(double, double) onLocationSelected;
+
+  const _InteractiveBranchMap({
+    required this.lat,
+    required this.lng,
+    required this.onLocationSelected,
+  });
+
+  @override
+  State<_InteractiveBranchMap> createState() => _InteractiveBranchMapState();
+}
+
+class _InteractiveBranchMapState extends State<_InteractiveBranchMap> {
+  int _zoomLevel = 12;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 220,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: const Color(0xFFD6E4F0),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _kBorderColor),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          // Background stylized map tiles
+          Positioned.fill(
+            child: GestureDetector(
+              onTapDown: (details) {
+                final RenderBox box = context.findRenderObject() as RenderBox;
+                final localPos = details.localPosition;
+                final normalizedX = (localPos.dx / box.size.width) - 0.5;
+                final normalizedY = (localPos.dy / box.size.height) - 0.5;
+
+                // Adjust lat/lng offset based on tap
+                final newLat = (widget.lat - (normalizedY * (10.0 / _zoomLevel))).clamp(-90.0, 90.0);
+                final newLng = (widget.lng + (normalizedX * (15.0 / _zoomLevel))).clamp(-180.0, 180.0);
+                widget.onLocationSelected(newLat, newLng);
+              },
+              child: CustomPaint(
+                painter: _MapCanvasPainter(),
+              ),
+            ),
+          ),
+
+          // Center Location Pin with pulsing aura
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2563EB),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF2563EB).withValues(alpha: 0.35),
+                        blurRadius: 10,
+                        spreadRadius: 3,
+                      ),
+                      const BoxShadow(color: Color(0x33000000), blurRadius: 6, offset: Offset(0, 3)),
+                    ],
+                  ),
+                  child: const Icon(Icons.location_on, size: 24, color: Colors.white),
+                ),
+                Container(
+                  width: 5,
+                  height: 5,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF1E3A8A),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Zoom Controls on top left
+          Positioned(
+            top: 10,
+            left: 10,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _kBorderColor),
+                boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 4, offset: Offset(0, 2))],
+              ),
+              child: Column(
+                children: [
+                  InkWell(
+                    onTap: () => setState(() => _zoomLevel = math.min(18, _zoomLevel + 1)),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      child: Icon(Icons.add, size: 16, color: _kTextMain),
+                    ),
+                  ),
+                  const Divider(height: 1, color: _kBorderColor),
+                  InkWell(
+                    onTap: () => setState(() => _zoomLevel = math.max(2, _zoomLevel - 1)),
+                    borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      child: Icon(Icons.remove, size: 16, color: _kTextMain),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Attribution on bottom right
+          Positioned(
+            bottom: 6,
+            right: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: _kBorderColor.withValues(alpha: 0.6)),
+              ),
+              child: const Text(
+                '═ Leaflet | © OpenStreetMap contributors © CARTO',
+                style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w500, color: _kTextMuted),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MapCanvasPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Ocean/Water background
+    final waterPaint = Paint()..color = const Color(0xFFD3E4F4);
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), waterPaint);
+
+    // Landmass contour
+    final landPaint = Paint()..color = const Color(0xFFF3F1EC);
+    final path = Path();
+    path.moveTo(0, size.height * 0.35);
+    path.quadraticBezierTo(size.width * 0.22, size.height * 0.12, size.width * 0.48, size.height * 0.28);
+    path.quadraticBezierTo(size.width * 0.72, size.height * 0.42, size.width, size.height * 0.22);
+    path.lineTo(size.width, size.height * 0.88);
+    path.quadraticBezierTo(size.width * 0.65, size.height * 0.98, size.width * 0.32, size.height * 0.78);
+    path.lineTo(0, size.height * 0.82);
+    path.close();
+    canvas.drawPath(path, landPaint);
+
+    // Urban/District areas
+    final urbanPaint = Paint()..color = const Color(0xFFE8E5DC);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(center: Offset(size.width * 0.5, size.height * 0.52), width: size.width * 0.45, height: size.height * 0.42),
+        const Radius.circular(16),
+      ),
+      urbanPaint,
+    );
+
+    // Highway roads
+    final highwayPaint = Paint()
+      ..color = const Color(0xFFFED7AA)
+      ..strokeWidth = 3.0
+      ..style = PaintingStyle.stroke;
+    final hPath1 = Path();
+    hPath1.moveTo(0, size.height * 0.5);
+    hPath1.cubicTo(size.width * 0.3, size.height * 0.45, size.width * 0.6, size.height * 0.55, size.width, size.height * 0.48);
+    canvas.drawPath(hPath1, highwayPaint);
+
+    final hPath2 = Path();
+    hPath2.moveTo(size.width * 0.5, 0);
+    hPath2.cubicTo(size.width * 0.48, size.height * 0.35, size.width * 0.52, size.height * 0.65, size.width * 0.48, size.height);
+    canvas.drawPath(hPath2, highwayPaint);
+
+    // Street grid lines
+    final streetPaint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 1.6;
+    for (double x = 30; x < size.width; x += 36) {
+      canvas.drawLine(Offset(x, size.height * 0.25), Offset(x, size.height * 0.8), streetPaint);
+    }
+    for (double y = size.height * 0.3; y < size.height * 0.8; y += 30) {
+      canvas.drawLine(Offset(size.width * 0.15, y), Offset(size.width * 0.85, y), streetPaint);
+    }
+
+    // Grid coordinates
+    final coordPaint = Paint()
+      ..color = const Color(0xFF94A3B8).withValues(alpha: 0.25)
+      ..strokeWidth = 0.8;
+    for (double x = 0; x < size.width; x += 60) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), coordPaint);
+    }
+    for (double y = 0; y < size.height; y += 60) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), coordPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

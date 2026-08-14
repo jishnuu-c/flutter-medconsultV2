@@ -394,28 +394,6 @@ class _PatientEmrScreenState extends ConsumerState<PatientEmrScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Padding(
-                padding: EdgeInsets.fromLTRB(isMobile ? 16 : 24,
-                    isMobile ? 16 : 24, isMobile ? 16 : 24, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'My Medical Records (EMR)',
-                      style: TextStyle(
-                          fontSize: isMobile ? 20 : 24,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textMain),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Access your clinical prescriptions, vital signs history, and lab reports.',
-                      style: TextStyle(fontSize: 14, color: AppTheme.textMuted),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
               Container(
                 decoration: const BoxDecoration(
                   color: Colors.white,

@@ -38,6 +38,7 @@ class _PatientHealthProfileScreenState
 
   List<dynamic> _allergies = [];
   List<dynamic> _chronicConditions = [];
+  int _activeSectionIndex = 0; // 0 = Known Allergies, 1 = Chronic Conditions
   bool _isLoading = true;
   bool _isSavingMetrics = false;
 
@@ -264,7 +265,10 @@ class _PatientHealthProfileScreenState
                     'severity': severity,
                     'confirmed': true,
                   });
-                  if (mounted) Navigator.pop(ctx);
+                  if (mounted) {
+                    Navigator.pop(ctx);
+                    setState(() => _activeSectionIndex = 0);
+                  }
                   _loadAllergies();
                 } catch (_) {
                   if (mounted) {
@@ -421,7 +425,10 @@ class _PatientHealthProfileScreenState
                     'status': status,
                     'notes': notesController.text.trim(),
                   });
-                  if (mounted) Navigator.pop(ctx);
+                  if (mounted) {
+                    Navigator.pop(ctx);
+                    setState(() => _activeSectionIndex = 1);
+                  }
                   _loadChronicConditions();
                 } catch (_) {
                   if (mounted) {
@@ -596,24 +603,9 @@ class _PatientHealthProfileScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Health Metrics & History',
-                  style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.textMain),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Keep your allergies, chronic conditions, and body metrics updated for your care team.',
-                  style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
-                ),
-                const SizedBox(height: 20),
                 _buildMetricsCard(),
                 const SizedBox(height: 20),
-                _buildAllergiesSection(),
-                const SizedBox(height: 20),
-                _buildConditionsSection(),
+                _buildSecondarySection(),
               ],
             ),
           ),
@@ -771,44 +763,275 @@ class _PatientHealthProfileScreenState
     );
   }
 
-  Widget _buildAllergiesSection() {
+  Widget _buildSecondarySection() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: _borderColor),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _groupCardHeader(
-            '⚠️ Known Allergies',
-            action: OutlinedButton.icon(
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('Add'),
-              onPressed: _openAddAllergyDialog,
+          // Segmented Tab Switcher Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: _offWhite,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _borderColor),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _segmentTab(
+                      label: 'Known Allergies',
+                      count: _allergies.length,
+                      icon: Icons.warning_amber_rounded,
+                      iconColor: const Color(0xFFD97706),
+                      isActive: _activeSectionIndex == 0,
+                      onTap: () => setState(() => _activeSectionIndex = 0),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: _segmentTab(
+                      label: 'Chronic Conditions',
+                      count: _chronicConditions.length,
+                      icon: Icons.assignment_outlined,
+                      iconColor: const Color(0xFF0284C7),
+                      isActive: _activeSectionIndex == 1,
+                      onTap: () => setState(() => _activeSectionIndex = 1),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          if (_allergies.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: Center(
-                  child: Text('No allergies listed on record.',
-                      style: TextStyle(color: AppTheme.textMuted))),
-            )
-          else
-            Column(
-              children: [
-                for (int i = 0; i < _allergies.length; i++) ...[
-                  if (i > 0) const SizedBox(height: 10),
-                  _allergyCard(_allergies[i]),
-                ],
-              ],
-            ),
+          const Divider(height: 1, color: _borderColor),
+          // Active Section Content
+          Padding(
+            padding: const EdgeInsets.all(18),
+            child: _activeSectionIndex == 0
+                ? _buildAllergiesContent()
+                : _buildConditionsContent(),
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _segmentTab({
+    required String label,
+    required int count,
+    required IconData icon,
+    required Color iconColor,
+    required bool isActive,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(9),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+          decoration: BoxDecoration(
+            color: isActive ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+            boxShadow: isActive
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: isActive ? iconColor : AppTheme.textMuted,
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+                    color: isActive
+                        ? AppTheme.primaryDarkTeal
+                        : AppTheme.textMuted,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: isActive
+                      ? AppTheme.primaryLightTeal
+                      : Colors.black.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: isActive
+                        ? AppTheme.primaryDarkTeal
+                        : AppTheme.textMuted,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader({
+    required String title,
+    required String subtitle,
+    required String buttonLabel,
+    required VoidCallback onAdd,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isSmall = constraints.maxWidth < 420;
+        final textBlock = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textMain,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+            ),
+          ],
+        );
+        final button = ElevatedButton.icon(
+          icon: const Icon(Icons.add, size: 16),
+          label: Text(buttonLabel),
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          ),
+          onPressed: onAdd,
+        );
+
+        if (isSmall) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              textBlock,
+              const SizedBox(height: 12),
+              SizedBox(width: double.infinity, child: button),
+            ],
+          );
+        }
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(child: textBlock),
+            const SizedBox(width: 12),
+            button,
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildAllergiesContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader(
+          title: 'Known Allergies',
+          subtitle: 'List any medication, food, or environmental allergies',
+          buttonLabel: 'Add Allergy',
+          onAdd: _openAddAllergyDialog,
+        ),
+        const SizedBox(height: 16),
+        if (_allergies.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 16),
+            decoration: BoxDecoration(
+              color: _offWhite,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _borderColor),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFDCFCE7),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check_circle_outline_rounded,
+                    size: 32,
+                    color: Color(0xFF15803D),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'No Known Allergies Recorded',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textMain,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Click "Add Allergy" above if you have any drug or food allergies.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                ),
+              ],
+            ),
+          )
+        else
+          Column(
+            children: [
+              for (int i = 0; i < _allergies.length; i++) ...[
+                if (i > 0) const SizedBox(height: 10),
+                _allergyCard(_allergies[i]),
+              ],
+            ],
+          ),
+      ],
     );
   }
 
@@ -879,44 +1102,68 @@ class _PatientHealthProfileScreenState
     );
   }
 
-  Widget _buildConditionsSection() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _borderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _groupCardHeader(
-            '📋 Chronic Conditions',
-            action: OutlinedButton.icon(
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('Add'),
-              onPressed: _openAddConditionDialog,
+  Widget _buildConditionsContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader(
+          title: 'Chronic Conditions',
+          subtitle: 'Track long-term diagnosed health conditions',
+          buttonLabel: 'Add Condition',
+          onAdd: _openAddConditionDialog,
+        ),
+        const SizedBox(height: 16),
+        if (_chronicConditions.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 16),
+            decoration: BoxDecoration(
+              color: _offWhite,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _borderColor),
             ),
-          ),
-          if (_chronicConditions.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: Center(
-                  child: Text('No chronic conditions listed.',
-                      style: TextStyle(color: AppTheme.textMuted))),
-            )
-          else
-            Column(
+            child: Column(
               children: [
-                for (int i = 0; i < _chronicConditions.length; i++) ...[
-                  if (i > 0) const SizedBox(height: 10),
-                  _conditionCard(_chronicConditions[i]),
-                ],
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE0F2FE),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.assignment_turned_in_outlined,
+                    size: 32,
+                    color: Color(0xFF0369A1),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'No Chronic Conditions Recorded',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textMain,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Click "Add Condition" above to register diagnosed health conditions.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                ),
               ],
             ),
-        ],
-      ),
+          )
+        else
+          Column(
+            children: [
+              for (int i = 0; i < _chronicConditions.length; i++) ...[
+                if (i > 0) const SizedBox(height: 10),
+                _conditionCard(_chronicConditions[i]),
+              ],
+            ],
+          ),
+      ],
     );
   }
 
