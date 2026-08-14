@@ -6,6 +6,8 @@ import 'package:file_picker/file_picker.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../doctor_dashboard/data/clinical_record_service.dart';
 import '../data/patient_service.dart';
+import '../../clinic_admin/data/doctor_service.dart';
+import '../../clinic_admin/data/doctor_models.dart';
 
 class PatientEmrScreen extends ConsumerStatefulWidget {
   const PatientEmrScreen({super.key});
@@ -27,12 +29,46 @@ class _PatientEmrScreenState extends ConsumerState<PatientEmrScreen>
   List<dynamic> _vitals = [];
   List<dynamic> _labResults = [];
   String? _downloadingFileId;
+  Map<String, DoctorModel> _doctorsMap = {};
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _loadDoctors();
     _loadEMRData();
+  }
+
+  // Mirrors emr.component.ts loadDoctors(): fetch all doctors up front so
+  // prescription cards can show "Prescribed By: Dr. X".
+  Future<void> _loadDoctors() async {
+    try {
+      final docs = await ref.read(doctorServiceProvider).getAllDoctors();
+      final map = <String, DoctorModel>{};
+      for (final d in docs) {
+        map[d.doctorId] = d;
+      }
+      if (mounted) setState(() => _doctorsMap = map);
+    } catch (e) {
+      debugPrint('EMR: loadDoctors failed: $e');
+    }
+  }
+
+  // Mirrors emr.component.ts getDoctorDisplayName. No Arabic locale in this
+  // app (unlike the Angular LanguageService), so the prefix is always 'Dr.'.
+  String _getDoctorDisplayName(DoctorModel? d) {
+    if (d == null) return '';
+    final name = d.fullName.trim();
+    final nameLower = name.toLowerCase();
+    if (nameLower.startsWith('dr') ||
+        nameLower.startsWith('doctor') ||
+        nameLower.startsWith('prof') ||
+        nameLower.startsWith('consultant') ||
+        nameLower.startsWith('specialist') ||
+        name.startsWith('د.')) {
+      return name;
+    }
+    return 'Dr. $name';
   }
 
   @override
@@ -43,9 +79,28 @@ class _PatientEmrScreenState extends ConsumerState<PatientEmrScreen>
 
   Future<void> _loadEMRData() async {
     setState(() => _isLoading = true);
+    // Mirrors emr.component.ts checkProfileAndLoad(): getMyProfile() is
+    // wrapped in its own catch (Angular's catchError(() => of(null))), so
+    // ANY failure — not just a 404 — falls through to needProfileInit,
+    // same as when the profile call succeeds but returns no patientId.
+    dynamic profile;
     try {
-      final profile = await ref.read(patientServiceProvider).getMyProfile();
-      _patientId = profile['patientId'];
+      profile = await ref.read(patientServiceProvider).getMyProfile();
+    } catch (e) {
+      profile = null;
+    }
+    final patientId = profile?['patientId'];
+    if (patientId == null) {
+      if (mounted) {
+        setState(() {
+          _needProfileInit = true;
+          _isLoading = false;
+        });
+      }
+      return;
+    }
+    _patientId = patientId;
+    try {
       final crService = ref.read(clinicalRecordServiceProvider);
       final results = await Future.wait([
         crService.searchPrescriptions(patientId: _patientId),
@@ -64,10 +119,7 @@ class _PatientEmrScreenState extends ConsumerState<PatientEmrScreen>
       });
       _loadPrescriptionDetails();
     } catch (e) {
-      final status = _statusCodeOf(e);
-      if (status == 404) {
-        setState(() => _needProfileInit = true);
-      } else if (mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Failed to load medical records.')),
         );
@@ -137,14 +189,6 @@ class _PatientEmrScreenState extends ConsumerState<PatientEmrScreen>
                   Text('Adherence record already exists or failed to save.')),
         );
       }
-    }
-  }
-
-  int? _statusCodeOf(dynamic e) {
-    try {
-      return e.response?.statusCode;
-    } catch (_) {
-      return null;
     }
   }
 
@@ -451,6 +495,15 @@ class _PatientEmrScreenState extends ConsumerState<PatientEmrScreen>
                               'Issued: ${_fmtDate(rx['issuedDate'])} | Valid Until: ${_fmtDate(rx['validUntil'])}',
                               style: const TextStyle(
                                   fontSize: 12, color: AppTheme.textMuted)),
+                          if (_doctorsMap[rx['doctorId']?.toString()] !=
+                              null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              'Prescribed By: ${_getDoctorDisplayName(_doctorsMap[rx['doctorId']?.toString()])}',
+                              style: const TextStyle(
+                                  fontSize: 12, color: AppTheme.textMuted),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -503,7 +556,10 @@ class _PatientEmrScreenState extends ConsumerState<PatientEmrScreen>
                           crossAxisCount: columns,
                           mainAxisSpacing: 10,
                           crossAxisSpacing: 10,
-                          mainAxisExtent: 190,
+                          // Taller than before to fit the adherence tracker
+                          // header, today-status/action row, and 7-day dot
+                          // history strip added below the medication details.
+                          mainAxisExtent: 270,
                         ),
                         itemCount: items.length,
                         itemBuilder: (context, i) =>
@@ -519,10 +575,54 @@ class _PatientEmrScreenState extends ConsumerState<PatientEmrScreen>
     );
   }
 
+  // Mirrors emr.component.ts getAdherenceLogForToday.
+  dynamic _adherenceLogForToday(String? itemId) {
+    if (itemId == null) return null;
+    final logs = _adherenceLogs[itemId];
+    if (logs == null || logs.isEmpty) return null;
+    final todayStr = DateTime.now().toIso8601String().split('T').first;
+    for (final log in logs) {
+      if (log['logDate'] == todayStr) return log;
+    }
+    return null;
+  }
+
+  // Mirrors emr.component.ts getLast7DaysLogs: builds the last 7 days
+  // (oldest first, today last) with each day's taken/skipped/none status.
+  List<Map<String, dynamic>> _last7DaysLogs(String? itemId) {
+    final logs = itemId != null ? (_adherenceLogs[itemId] ?? []) : [];
+    final todayStr = DateTime.now().toIso8601String().split('T').first;
+    final result = <Map<String, dynamic>>[];
+    for (int i = 6; i >= 0; i--) {
+      final d = DateTime.now().subtract(Duration(days: i));
+      final dateStr = d.toIso8601String().split('T').first;
+      final log = logs.firstWhere(
+        (l) => l['logDate'] == dateStr,
+        orElse: () => null,
+      );
+      String status = 'none';
+      if (log != null) {
+        status = log['taken'] == true ? 'taken' : 'skipped';
+      }
+      result.add({
+        'date': d,
+        'status': status,
+        'label': _weekdayNarrow(d),
+        'isToday': dateStr == todayStr,
+      });
+    }
+    return result;
+  }
+
+  String _weekdayNarrow(DateTime d) {
+    const labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    return labels[d.weekday - 1];
+  }
+
   Widget _buildMedicationCard(dynamic item) {
     final itemId = item['itemId']?.toString();
-    final logs = itemId != null ? _adherenceLogs[itemId] : null;
-    final hasLogs = logs != null && logs.isNotEmpty;
+    final todayLog = _adherenceLogForToday(itemId);
+    final last7 = _last7DaysLogs(itemId);
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -545,46 +645,114 @@ class _PatientEmrScreenState extends ConsumerState<PatientEmrScreen>
               style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
           const Spacer(),
           const Divider(height: 12),
-          Wrap(
-            spacing: 6,
-            runSpacing: 4,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.successGreen,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              const Text('Adherence Tracker',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              if (todayLog != null)
+                Text(
+                  todayLog['taken'] == true ? 'Taken Today' : 'Skipped Today',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: todayLog['taken'] == true
+                        ? AppTheme.successGreen
+                        : AppTheme.dangerRed,
+                  ),
                 ),
-                onPressed:
-                    itemId == null ? null : () => _logAdherence(itemId, true),
-                child:
-                    const Text('✓ Took Today', style: TextStyle(fontSize: 12)),
-              ),
-              OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.dangerRed,
-                  side: const BorderSide(color: AppTheme.dangerRed),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                onPressed: itemId == null
-                    ? null
-                    : () => _logAdherence(itemId, false,
-                        skippedReason: 'Patient skipped'),
-                child: const Text('Skipped', style: TextStyle(fontSize: 12)),
-              ),
             ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            hasLogs
-                ? 'Latest: ${logs.first['taken'] == true ? 'Taken' : 'Skipped'} on ${_fmtDate(logs.first['logDate'])}'
-                : 'Latest: None recorded',
-            style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+          const SizedBox(height: 6),
+          // Daily logger actions — only shown while today isn't logged yet,
+          // matching emr.component.html's *ngIf="!getAdherenceLogForToday(...)".
+          if (todayLog == null)
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.successGreen,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed:
+                      itemId == null ? null : () => _logAdherence(itemId, true),
+                  child: const Text('✓ Mark Taken',
+                      style: TextStyle(fontSize: 12)),
+                ),
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.dangerRed,
+                    side: const BorderSide(color: AppTheme.dangerRed),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: itemId == null
+                      ? null
+                      : () => _logAdherence(itemId, false,
+                          skippedReason: 'Patient skipped'),
+                  child: const Text('✕ Mark Skipped',
+                      style: TextStyle(fontSize: 12)),
+                ),
+              ],
+            ),
+          const SizedBox(height: 8),
+          // 7-day dot history strip, oldest to today.
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: last7.map((day) {
+              final status = day['status'] as String;
+              Color dotColor;
+              Widget? icon;
+              if (status == 'taken') {
+                dotColor = AppTheme.successGreen;
+                icon = const Icon(Icons.check, size: 10, color: Colors.white);
+              } else if (status == 'skipped') {
+                dotColor = AppTheme.dangerRed;
+                icon = const Icon(Icons.close, size: 10, color: Colors.white);
+              } else {
+                dotColor = AppTheme.borderGray;
+                icon = null;
+              }
+              final isToday = day['isToday'] == true;
+              return Tooltip(
+                message: _fmtDate((day['date'] as DateTime).toIso8601String()),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(day['label'] as String,
+                        style: TextStyle(
+                            fontSize: 9,
+                            fontWeight:
+                                isToday ? FontWeight.bold : FontWeight.normal,
+                            color: isToday
+                                ? AppTheme.primaryTeal
+                                : AppTheme.textMuted)),
+                    const SizedBox(height: 2),
+                    Container(
+                      width: 16,
+                      height: 16,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: dotColor,
+                        border: isToday
+                            ? Border.all(
+                                color: AppTheme.primaryTeal, width: 1.5)
+                            : null,
+                      ),
+                      child: icon,
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
           ),
         ],
       ),
