@@ -3,7 +3,9 @@ import 'dart:math' as math;
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/references_service.dart';
 import '../../../core/widgets/app_layout.dart';
@@ -31,14 +33,16 @@ const Color _kTextMuted = Color(0xFF64748B);
 RoundedRectangleBorder _dialogShape() =>
     RoundedRectangleBorder(borderRadius: BorderRadius.circular(14));
 
-double _dialogMaxHeight(BuildContext context, {double preferred = 640}) {
-  final screenHeight = MediaQuery.of(context).size.height;
-  return math.min(preferred, screenHeight * 0.90);
+double _dialogMaxHeight(BuildContext context, {double preferred = 860}) {
+  final mediaQuery = MediaQuery.of(context);
+  final availableHeight = mediaQuery.size.height - mediaQuery.viewInsets.bottom;
+  return math.min(preferred, availableHeight * 0.94);
 }
 
-double _dialogWidth(BuildContext context, {double preferred = 640}) {
+double _dialogWidth(BuildContext context, {double preferred = 800}) {
   final screenWidth = MediaQuery.of(context).size.width;
-  return math.min(preferred, screenWidth - 24);
+  if (screenWidth < 600) return screenWidth - 16;
+  return math.min(preferred, screenWidth - 32);
 }
 
 class ClinicsScreen extends ConsumerStatefulWidget {
@@ -459,10 +463,25 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
     if (q.isEmpty) return [];
     final dio = Dio();
     final encoded = Uri.encodeComponent(q);
+
     Future<List<dynamic>> run(String url) async {
-      final res = await dio.get(url,
-          options: Options(headers: {'Accept-Language': 'en'}));
-      return (res.data is List) ? res.data as List : [];
+      try {
+        final res = await dio.get(
+          url,
+          options: Options(
+            headers: {
+              'User-Agent': 'MedConsult/2.0 (medical.qa@medconsult.com)',
+              'Accept-Language': 'en',
+            },
+            sendTimeout: const Duration(seconds: 6),
+            receiveTimeout: const Duration(seconds: 6),
+          ),
+        );
+        return (res.data is List) ? res.data as List : [];
+      } catch (e) {
+        debugPrint('[Clinics] Nominatim search query error ($url): $e');
+        return [];
+      }
     }
 
     try {
@@ -472,7 +491,7 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
       return await run(
           'https://nominatim.openstreetmap.org/search?format=json&q=$encoded&limit=10&addressdetails=1');
     } catch (e) {
-      debugPrint('[Clinics] location search failed: $e');
+      debugPrint('[Clinics] location search exception: $e');
       return [];
     }
   }
@@ -502,6 +521,8 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
 
           return AlertDialog(
             shape: _dialogShape(),
+            insetPadding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
             titlePadding: const EdgeInsets.fromLTRB(20, 18, 16, 12),
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
@@ -526,7 +547,7 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
               ],
             ),
             content: SizedBox(
-              width: _dialogWidth(ctx, preferred: 580),
+              width: _dialogWidth(ctx, preferred: 700),
               child: ConstrainedBox(
                 constraints: BoxConstraints(maxHeight: _dialogMaxHeight(ctx)),
                 child: SingleChildScrollView(
@@ -877,6 +898,45 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
             }
           }
 
+          void selectSearchResult(dynamic r) {
+            final lat = double.tryParse(r['lat']?.toString() ?? '');
+            final lon = double.tryParse(r['lon']?.toString() ?? '');
+            if (lat != null && lon != null) {
+              setDialogState(() {
+                latController.text = lat.toStringAsFixed(6);
+                lngController.text = lon.toStringAsFixed(6);
+                searchResults = [];
+                searchError = null;
+                searchController.text = r['display_name']?.toString() ?? '';
+              });
+              FocusScope.of(ctx).unfocus();
+            }
+          }
+
+          void executeSearch(String value) {
+            debounce?.cancel();
+            if (value.trim().isEmpty) return;
+            setDialogState(() {
+              isSearching = true;
+              searchError = null;
+            });
+            FocusScope.of(ctx).unfocus();
+
+            _searchBranchLocation(value).then((results) {
+              if (!ctx.mounted) return;
+              setDialogState(() {
+                isSearching = false;
+                searchResults = results;
+                if (results.isNotEmpty) {
+                  selectSearchResult(results.first);
+                } else {
+                  searchError =
+                      'No locations found matching your query. Try searching by city or landmark name.';
+                }
+              });
+            });
+          }
+
           void onSearchChanged(String value) {
             debounce?.cancel();
             if (value.trim().length < 2) {
@@ -887,7 +947,7 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
               });
               return;
             }
-            debounce = Timer(const Duration(milliseconds: 350), () async {
+            debounce = Timer(const Duration(milliseconds: 400), () async {
               setDialogState(() => isSearching = true);
               final results = await _searchBranchLocation(value);
               if (!ctx.mounted) return;
@@ -901,581 +961,594 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
             });
           }
 
-          void selectSearchResult(dynamic r) {
-            final lat = double.tryParse(r['lat']?.toString() ?? '');
-            final lon = double.tryParse(r['lon']?.toString() ?? '');
-            setDialogState(() {
-              if (lat != null) latController.text = lat.toStringAsFixed(6);
-              if (lon != null) lngController.text = lon.toStringAsFixed(6);
-              searchResults = [];
-              searchController.text = r['display_name']?.toString() ?? '';
-            });
-          }
-
           void useCurrentLocation() {
             setDialogState(() {
               latController.text = '24.713600';
               lngController.text = '46.675300';
               searchController.text = 'Riyadh, Saudi Arabia';
+              searchResults = [];
+              searchError = null;
             });
+            FocusScope.of(ctx).unfocus();
             if (mounted) _showSuccess('Location set to current position.');
           }
 
           final isCompact = MediaQuery.of(context).size.width < 600;
 
-          return AlertDialog(
-            shape: _dialogShape(),
-            backgroundColor: Colors.white,
-            surfaceTintColor: Colors.transparent,
-            titlePadding: const EdgeInsets.fromLTRB(20, 18, 16, 12),
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-            actionsPadding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
-            title: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    isEdit
-                        ? 'Edit Branch Location'
-                        : 'Add Branch Location',
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                      color: _kTextMain,
+          return GestureDetector(
+            onTap: () => FocusScope.of(context).unfocus(),
+            behavior: HitTestBehavior.opaque,
+            child: AlertDialog(
+              shape: _dialogShape(),
+              backgroundColor: Colors.white,
+              surfaceTintColor: Colors.transparent,
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 12,
+              ),
+              titlePadding: const EdgeInsets.fromLTRB(20, 18, 16, 8),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+              actionsPadding: const EdgeInsets.fromLTRB(20, 6, 20, 14),
+              title: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      isEdit
+                          ? 'Edit Branch Location'
+                          : 'Add Branch Location',
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: _kTextMain,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close, color: _kTextMuted, size: 20),
-                  onPressed: () {
-                    debounce?.cancel();
-                    Navigator.pop(ctx);
-                  },
-                ),
-              ],
-            ),
-            content: SizedBox(
-              width: _dialogWidth(context, preferred: 720),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                    maxHeight: _dialogMaxHeight(context, preferred: 820)),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Branch Names
-                      if (isCompact) ...[
-                        _buildDialogField(
-                          label: 'Branch Name (EN) *',
-                          controller: nameEnController,
-                          hintText: 'Main Branch - Olaya',
-                        ),
-                        const SizedBox(height: 10),
-                        _buildDialogField(
-                          label: 'Branch Name (AR) *',
-                          controller: nameArController,
-                          hintText: 'الفرع الرئيسي - العليا',
-                        ),
-                      ] else ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildDialogField(
-                                label: 'Branch Name (EN) *',
-                                controller: nameEnController,
-                                hintText: 'Main Branch - Olaya',
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildDialogField(
-                                label: 'Branch Name (AR) *',
-                                controller: nameArController,
-                                hintText: 'الفرع الرئيسي - العليا',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                      const SizedBox(height: 10),
-
-                      // City & Locality
-                      if (isCompact) ...[
-                        _buildDropdownField<String>(
-                          label: 'City *',
-                          value: cityId,
-                          items: _globalCities
-                              .map((c) => DropdownMenuItem(
-                                  value: c.cityId, child: Text(c.nameEn)))
-                              .toList(),
-                          onChanged: onCityChanged,
-                        ),
-                        const SizedBox(height: 10),
-                        _buildDropdownField<String>(
-                          label: 'Locality / District *',
-                          value: localityId,
-                          items: localities
-                              .map((l) => DropdownMenuItem(
-                                  value: l.localityId, child: Text(l.nameEn)))
-                              .toList(),
-                          onChanged: cityId == null
-                              ? null
-                              : (v) => setDialogState(() => localityId = v),
-                        ),
-                      ] else ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildDropdownField<String>(
-                                label: 'City *',
-                                value: cityId,
-                                items: _globalCities
-                                    .map((c) => DropdownMenuItem(
-                                        value: c.cityId, child: Text(c.nameEn)))
-                                    .toList(),
-                                onChanged: onCityChanged,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildDropdownField<String>(
-                                label: 'Locality / District *',
-                                value: localityId,
-                                items: localities
-                                    .map((l) => DropdownMenuItem(
-                                        value: l.localityId,
-                                        child: Text(l.nameEn)))
-                                    .toList(),
-                                onChanged: cityId == null
-                                    ? null
-                                    : (v) =>
-                                        setDialogState(() => localityId = v),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                      const SizedBox(height: 10),
-
-                      _buildDialogField(
-                        label: 'Address Line 1 *',
-                        controller: address1Controller,
-                        hintText: 'King Fahd Road, Building 10',
-                      ),
-                      const SizedBox(height: 10),
-
-                      _buildDialogField(
-                        label: 'Address Line 2',
-                        controller: address2Controller,
-                        hintText: 'Floor 2, Suite 204',
-                      ),
-                      const SizedBox(height: 10),
-
-                      if (isCompact) ...[
-                        _buildDialogField(
-                          label: 'Branch Phone',
-                          controller: phoneController,
-                          keyboardType: TextInputType.phone,
-                          hintText: '+966 11 123 4567',
-                        ),
-                        const SizedBox(height: 10),
-                        _buildDialogField(
-                          label: 'Branch Email',
-                          controller: emailController,
-                          keyboardType: TextInputType.emailAddress,
-                          hintText: 'branch@clinic.com',
-                        ),
-                      ] else ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildDialogField(
-                                label: 'Branch Phone',
-                                controller: phoneController,
-                                keyboardType: TextInputType.phone,
-                                hintText: '+966 11 123 4567',
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildDialogField(
-                                label: 'Branch Email',
-                                controller: emailController,
-                                keyboardType: TextInputType.emailAddress,
-                                hintText: 'branch@clinic.com',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                      const SizedBox(height: 14),
-
-                      // Interactive Map Location Picker Section
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: _kOffWhite,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: _kBorderColor),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Wrap(
-                              alignment: WrapAlignment.spaceBetween,
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              spacing: 8,
-                              runSpacing: 6,
-                              children: [
-                                const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text('📍', style: TextStyle(fontSize: 14)),
-                                    SizedBox(width: 6),
-                                    Text(
-                                      'Branch Location on Map *',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: _kTextMain,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                OutlinedButton.icon(
-                                  onPressed: useCurrentLocation,
-                                  style: OutlinedButton.styleFrom(
-                                    backgroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8, vertical: 4),
-                                    minimumSize: Size.zero,
-                                    side:
-                                        const BorderSide(color: _kPrimaryTeal),
-                                    foregroundColor: _kPrimaryTeal,
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(6)),
-                                  ),
-                                  icon: const Icon(Icons.my_location, size: 12),
-                                  label: const Text(
-                                    'Use My Location',
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            const Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('💡', style: TextStyle(fontSize: 12)),
-                                SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    'Click anywhere on the map or drag the marker pin to pinpoint location.',
-                                    style: TextStyle(
-                                        fontSize: 11, color: _kTextMuted),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-
-                            // Map Search Bar
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: TextField(
-                                    controller: searchController,
-                                    decoration: InputDecoration(
-                                      hintText: 'Search location on map...',
-                                      isDense: true,
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                              horizontal: 10, vertical: 8),
-                                      prefixIcon: const Icon(Icons.search,
-                                          size: 16, color: _kTextMuted),
-                                      suffixIcon: isSearching
-                                          ? const Padding(
-                                              padding: EdgeInsets.all(8),
-                                              child: SizedBox(
-                                                  width: 14,
-                                                  height: 14,
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                          strokeWidth: 2)),
-                                            )
-                                          : null,
-                                    ),
-                                    onSubmitted: (v) => onSearchChanged(v),
-                                    onChanged: onSearchChanged,
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF64748B),
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 8),
-                                    minimumSize: Size.zero,
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(6)),
-                                  ),
-                                  onPressed: () =>
-                                      onSearchChanged(searchController.text),
-                                  child: const Text('Search',
-                                      style: TextStyle(fontSize: 11)),
-                                ),
-                              ],
-                            ),
-                            if (searchError != null)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 6),
-                                child: Text(searchError!,
-                                    style: const TextStyle(
-                                        fontSize: 11, color: _kDangerRed)),
-                              ),
-                            if (searchResults.isNotEmpty)
-                              Container(
-                                margin: const EdgeInsets.only(top: 6),
-                                constraints:
-                                    const BoxConstraints(maxHeight: 130),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  border: Border.all(color: _kBorderColor),
-                                  borderRadius: BorderRadius.circular(6),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                        color: Color(0x0A000000), blurRadius: 4)
-                                  ],
-                                ),
-                                child: ListView.builder(
-                                  shrinkWrap: true,
-                                  itemCount: searchResults.length,
-                                  itemBuilder: (context, i) {
-                                    final r = searchResults[i];
-                                    return ListTile(
-                                      dense: true,
-                                      leading: const Icon(Icons.place,
-                                          size: 16, color: _kPrimaryTeal),
-                                      title: Text(
-                                        r['display_name']?.toString() ?? '',
-                                        style: const TextStyle(fontSize: 11),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      onTap: () => selectSearchResult(r),
-                                    );
-                                  },
-                                ),
-                              ),
-                            const SizedBox(height: 8),
-
-                            // Map Canvas Container
-                            _InteractiveBranchMap(
-                              lat: double.tryParse(latController.text) ??
-                                  24.7136,
-                              lng: double.tryParse(lngController.text) ??
-                                  46.6753,
-                              onLocationSelected: (newLat, newLng) {
-                                setDialogState(() {
-                                  latController.text =
-                                      newLat.toStringAsFixed(6);
-                                  lngController.text =
-                                      newLng.toStringAsFixed(6);
-                                });
-                              },
-                            ),
-                            const SizedBox(height: 8),
-
-                            // Coordinates display bar
-                            Wrap(
-                              spacing: 12,
-                              runSpacing: 6,
-                              alignment: WrapAlignment.spaceBetween,
-                              children: [
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Text('Latitude: ',
-                                        style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                            color: _kTextMuted)),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(4),
-                                        border:
-                                            Border.all(color: _kBorderColor),
-                                      ),
-                                      child: Text(
-                                        latController.text.isEmpty
-                                            ? 'Not Selected'
-                                            : latController.text,
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                          color: _kPrimaryTeal,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Text('Longitude: ',
-                                        style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                            color: _kTextMuted)),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(4),
-                                        border:
-                                            Border.all(color: _kBorderColor),
-                                      ),
-                                      child: Text(
-                                        lngController.text.isEmpty
-                                            ? 'Not Selected'
-                                            : lngController.text,
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                          color: _kPrimaryTeal,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Set as Primary Branch Checkbox
-                      InkWell(
-                        onTap: () =>
-                            setDialogState(() => isPrimary = !isPrimary),
-                        borderRadius: BorderRadius.circular(6),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Row(
+                  IconButton(
+                    icon: const Icon(Icons.close, color: _kTextMuted, size: 20),
+                    onPressed: () {
+                      debounce?.cancel();
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: _dialogWidth(context, preferred: 840),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                      maxHeight: _dialogMaxHeight(context, preferred: 880)),
+                  child: SingleChildScrollView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Branch Names
+                        if (isCompact) ...[
+                          _buildDialogField(
+                            label: 'Branch Name (EN) *',
+                            controller: nameEnController,
+                            hintText: 'Main Branch - Olaya',
+                          ),
+                          const SizedBox(height: 10),
+                          _buildDialogField(
+                            label: 'Branch Name (AR) *',
+                            controller: nameArController,
+                            hintText: 'الفرع الرئيسي - العليا',
+                          ),
+                        ] else ...[
+                          Row(
                             children: [
-                              Checkbox(
-                                value: isPrimary,
-                                activeColor: _kPrimaryTeal,
-                                onChanged: (val) => setDialogState(
-                                    () => isPrimary = val ?? false),
+                              Expanded(
+                                child: _buildDialogField(
+                                  label: 'Branch Name (EN) *',
+                                  controller: nameEnController,
+                                  hintText: 'Main Branch - Olaya',
+                                ),
                               ),
-                              const Text(
-                                'Set as Primary Branch',
-                                style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w500,
-                                    color: _kTextMain),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _buildDialogField(
+                                  label: 'Branch Name (AR) *',
+                                  controller: nameArController,
+                                  hintText: 'الفرع الرئيسي - العليا',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: 10),
+
+                        // City & Locality
+                        if (isCompact) ...[
+                          _buildDropdownField<String>(
+                            label: 'City *',
+                            value: cityId,
+                            items: _globalCities
+                                .map((c) => DropdownMenuItem(
+                                    value: c.cityId, child: Text(c.nameEn)))
+                                .toList(),
+                            onChanged: onCityChanged,
+                          ),
+                          const SizedBox(height: 10),
+                          _buildDropdownField<String>(
+                            label: 'Locality / District *',
+                            value: localityId,
+                            items: localities
+                                .map((l) => DropdownMenuItem(
+                                    value: l.localityId, child: Text(l.nameEn)))
+                                .toList(),
+                            onChanged: cityId == null
+                                ? null
+                                : (v) => setDialogState(() => localityId = v),
+                          ),
+                        ] else ...[
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildDropdownField<String>(
+                                  label: 'City *',
+                                  value: cityId,
+                                  items: _globalCities
+                                      .map((c) => DropdownMenuItem(
+                                          value: c.cityId,
+                                          child: Text(c.nameEn)))
+                                      .toList(),
+                                  onChanged: onCityChanged,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _buildDropdownField<String>(
+                                  label: 'Locality / District *',
+                                  value: localityId,
+                                  items: localities
+                                      .map((l) => DropdownMenuItem(
+                                          value: l.localityId,
+                                          child: Text(l.nameEn)))
+                                      .toList(),
+                                  onChanged: cityId == null
+                                      ? null
+                                      : (v) => setDialogState(
+                                          () => localityId = v),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: 10),
+
+                        _buildDialogField(
+                          label: 'Address Line 1 *',
+                          controller: address1Controller,
+                          hintText: 'King Fahd Road, Building 10',
+                        ),
+                        const SizedBox(height: 10),
+
+                        _buildDialogField(
+                          label: 'Address Line 2',
+                          controller: address2Controller,
+                          hintText: 'Floor 2, Suite 204',
+                        ),
+                        const SizedBox(height: 10),
+
+                        if (isCompact) ...[
+                          _buildDialogField(
+                            label: 'Branch Phone',
+                            controller: phoneController,
+                            keyboardType: TextInputType.phone,
+                            hintText: '+966 11 123 4567',
+                          ),
+                          const SizedBox(height: 10),
+                          _buildDialogField(
+                            label: 'Branch Email',
+                            controller: emailController,
+                            keyboardType: TextInputType.emailAddress,
+                            hintText: 'branch@clinic.com',
+                          ),
+                        ] else ...[
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildDialogField(
+                                  label: 'Branch Phone',
+                                  controller: phoneController,
+                                  keyboardType: TextInputType.phone,
+                                  hintText: '+966 11 123 4567',
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _buildDialogField(
+                                  label: 'Branch Email',
+                                  controller: emailController,
+                                  keyboardType: TextInputType.emailAddress,
+                                  hintText: 'branch@clinic.com',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: 14),
+
+                        // Interactive Map Location Picker Section
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: _kOffWhite,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _kBorderColor),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Wrap(
+                                alignment: WrapAlignment.spaceBetween,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 8,
+                                runSpacing: 6,
+                                children: [
+                                  const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text('📍', style: TextStyle(fontSize: 14)),
+                                      SizedBox(width: 6),
+                                      Text(
+                                        'Branch Location on Map *',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: _kTextMain,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  OutlinedButton.icon(
+                                    onPressed: useCurrentLocation,
+                                    style: OutlinedButton.styleFrom(
+                                      backgroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 4),
+                                      minimumSize: Size.zero,
+                                      side: const BorderSide(
+                                          color: _kPrimaryTeal),
+                                      foregroundColor: _kPrimaryTeal,
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(6)),
+                                    ),
+                                    icon: const Icon(Icons.my_location,
+                                        size: 12),
+                                    label: const Text(
+                                      'Use My Location',
+                                      style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              const Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('💡', style: TextStyle(fontSize: 12)),
+                                  SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      'Type a city/place and tap Search, or tap anywhere on the map to position the pin.',
+                                      style: TextStyle(
+                                          fontSize: 11, color: _kTextMuted),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+
+                              // Map Search Bar
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: searchController,
+                                      textInputAction: TextInputAction.search,
+                                      decoration: InputDecoration(
+                                        hintText: 'Search city, town, or landmark...',
+                                        isDense: true,
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                                horizontal: 10, vertical: 8),
+                                        prefixIcon: const Icon(Icons.search,
+                                            size: 16, color: _kTextMuted),
+                                        suffixIcon: isSearching
+                                            ? const Padding(
+                                                padding: EdgeInsets.all(8),
+                                                child: SizedBox(
+                                                    width: 14,
+                                                    height: 14,
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                            strokeWidth: 2)),
+                                              )
+                                            : null,
+                                      ),
+                                      onSubmitted: (v) => executeSearch(v),
+                                      onChanged: onSearchChanged,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF64748B),
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 8),
+                                      minimumSize: Size.zero,
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(6)),
+                                    ),
+                                    onPressed: () => executeSearch(
+                                        searchController.text),
+                                    child: const Text('Search',
+                                        style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
+                              ),
+                              if (searchError != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 6),
+                                  child: Text(searchError!,
+                                      style: const TextStyle(
+                                          fontSize: 11, color: _kDangerRed)),
+                                ),
+                              if (searchResults.isNotEmpty)
+                                Container(
+                                  margin: const EdgeInsets.only(top: 6),
+                                  constraints:
+                                      const BoxConstraints(maxHeight: 140),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    border: Border.all(color: _kBorderColor),
+                                    borderRadius: BorderRadius.circular(6),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                          color: Color(0x0A000000),
+                                          blurRadius: 4)
+                                    ],
+                                  ),
+                                  child: ListView.builder(
+                                    shrinkWrap: true,
+                                    itemCount: searchResults.length,
+                                    itemBuilder: (context, i) {
+                                      final r = searchResults[i];
+                                      return ListTile(
+                                        dense: true,
+                                        leading: const Icon(Icons.place,
+                                            size: 16, color: _kPrimaryTeal),
+                                        title: Text(
+                                          r['display_name']?.toString() ?? '',
+                                          style: const TextStyle(fontSize: 11),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        onTap: () => selectSearchResult(r),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              const SizedBox(height: 8),
+
+                              // Real OpenStreetMap Leaflet Canvas Container
+                              _RealBranchMap(
+                                lat: double.tryParse(latController.text) ??
+                                    24.7136,
+                                lng: double.tryParse(lngController.text) ??
+                                    46.6753,
+                                onLocationSelected: (newLat, newLng) {
+                                  FocusScope.of(context).unfocus();
+                                  setDialogState(() {
+                                    latController.text =
+                                        newLat.toStringAsFixed(6);
+                                    lngController.text =
+                                        newLng.toStringAsFixed(6);
+                                  });
+                                },
+                              ),
+                              const SizedBox(height: 8),
+
+                              // Coordinates display bar
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 6,
+                                alignment: WrapAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Text('Latitude: ',
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                              color: _kTextMuted)),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius:
+                                              BorderRadius.circular(4),
+                                          border:
+                                              Border.all(color: _kBorderColor),
+                                        ),
+                                        child: Text(
+                                          latController.text.isEmpty
+                                              ? 'Not Selected'
+                                              : latController.text,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: _kPrimaryTeal,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Text('Longitude: ',
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                              color: _kTextMuted)),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius:
+                                              BorderRadius.circular(4),
+                                          border:
+                                              Border.all(color: _kBorderColor),
+                                        ),
+                                        child: Text(
+                                          lngController.text.isEmpty
+                                              ? 'Not Selected'
+                                              : lngController.text,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: _kPrimaryTeal,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
                             ],
                           ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 12),
+
+                        // Set as Primary Branch Checkbox
+                        InkWell(
+                          onTap: () =>
+                              setDialogState(() => isPrimary = !isPrimary),
+                          borderRadius: BorderRadius.circular(6),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: Row(
+                              children: [
+                                Checkbox(
+                                  value: isPrimary,
+                                  activeColor: _kPrimaryTeal,
+                                  onChanged: (val) => setDialogState(
+                                      () => isPrimary = val ?? false),
+                                ),
+                                const Text(
+                                  'Set as Primary Branch',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: _kTextMain),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-            actions: [
-              OutlinedButton(
-                onPressed: () {
-                  debounce?.cancel();
-                  Navigator.pop(ctx);
-                },
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _kPrimaryTeal,
-                  foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                ),
-                onPressed: () async {
-                  final lat = double.tryParse(latController.text.trim());
-                  final lng = double.tryParse(lngController.text.trim());
-                  final emailText = emailController.text.trim();
-                  final emailValid = emailText.isEmpty ||
-                      RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(emailText);
-
-                  if (nameEnController.text.trim().isEmpty ||
-                      nameArController.text.trim().isEmpty ||
-                      cityId == null ||
-                      localityId == null ||
-                      address1Controller.text.trim().isEmpty ||
-                      lat == null ||
-                      lat < -90 ||
-                      lat > 90 ||
-                      lng == null ||
-                      lng < -180 ||
-                      lng > 180 ||
-                      !emailValid) {
-                    _showError(
-                        'Please fill all required branch fields with valid values (*).');
-                    return;
-                  }
-                  final payload = {
-                    'branchNameEn': nameEnController.text.trim(),
-                    'branchNameAr': nameArController.text.trim(),
-                    'cityId': cityId,
-                    'localityId': localityId,
-                    'addressLine1': address1Controller.text.trim(),
-                    'addressLine2': address2Controller.text.trim(),
-                    'latitude': lat,
-                    'longitude': lng,
-                    'phone': phoneController.text.trim(),
-                    'email': emailText,
-                    'isPrimary': isPrimary,
-                    'isActive': true,
-                  };
-                  try {
-                    if (isEdit) {
-                      await ref
-                          .read(clinicServiceProvider)
-                          .updateClinicBranch(branch.branchId, payload);
-                    } else {
-                      await ref.read(clinicServiceProvider).createClinicBranch(
-                          _selectedClinic!.clinicId, payload);
-                    }
+              actions: [
+                OutlinedButton(
+                  onPressed: () {
                     debounce?.cancel();
-                    if (ctx.mounted) Navigator.pop(ctx);
-                    if (mounted) {
-                      _showSuccess(isEdit
-                          ? 'Branch updated successfully.'
-                          : 'Branch created successfully.');
+                    Navigator.pop(ctx);
+                  },
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _kPrimaryTeal,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 18, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () async {
+                    final lat = double.tryParse(latController.text.trim());
+                    final lng = double.tryParse(lngController.text.trim());
+                    final emailText = emailController.text.trim();
+                    final emailValid = emailText.isEmpty ||
+                        RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(emailText);
+
+                    if (nameEnController.text.trim().isEmpty ||
+                        nameArController.text.trim().isEmpty ||
+                        cityId == null ||
+                        localityId == null ||
+                        address1Controller.text.trim().isEmpty ||
+                        lat == null ||
+                        lat < -90 ||
+                        lat > 90 ||
+                        lng == null ||
+                        lng < -180 ||
+                        lng > 180 ||
+                        !emailValid) {
+                      _showError(
+                          'Please fill all required branch fields with valid values (*).');
+                      return;
                     }
-                    _selectClinic(_selectedClinic!);
-                  } catch (e) {
-                    if (mounted) _showError('Failed to save branch: $e');
-                  }
-                },
-                child: Text(isEdit ? 'Save Branch' : 'Add Branch'),
-              ),
-            ],
+                    final payload = {
+                      'branchNameEn': nameEnController.text.trim(),
+                      'branchNameAr': nameArController.text.trim(),
+                      'cityId': cityId,
+                      'localityId': localityId,
+                      'addressLine1': address1Controller.text.trim(),
+                      'addressLine2': address2Controller.text.trim(),
+                      'latitude': lat,
+                      'longitude': lng,
+                      'phone': phoneController.text.trim(),
+                      'email': emailText,
+                      'isPrimary': isPrimary,
+                      'isActive': true,
+                    };
+                    try {
+                      if (isEdit) {
+                        await ref
+                            .read(clinicServiceProvider)
+                            .updateClinicBranch(branch.branchId, payload);
+                      } else {
+                        await ref.read(clinicServiceProvider).createClinicBranch(
+                            _selectedClinic!.clinicId, payload);
+                      }
+                      debounce?.cancel();
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      if (mounted) {
+                        _showSuccess(isEdit
+                            ? 'Branch updated successfully.'
+                            : 'Branch created successfully.');
+                      }
+                      _selectClinic(_selectedClinic!);
+                    } catch (e) {
+                      if (mounted) _showError('Failed to save branch: $e');
+                    }
+                  },
+                  child: Text(isEdit ? 'Save Branch' : 'Add Branch'),
+                ),
+              ],
+            ),
           );
         },
       ),
@@ -1621,6 +1694,8 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
 
           return AlertDialog(
             shape: _dialogShape(),
+            insetPadding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
             titlePadding: const EdgeInsets.fromLTRB(20, 18, 16, 8),
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
@@ -1665,8 +1740,8 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
               ],
             ),
             content: SizedBox(
-              width: _dialogWidth(context, preferred: 740),
-              height: loading ? 140 : _dialogMaxHeight(context, preferred: 560),
+              width: _dialogWidth(context, preferred: 780),
+              height: loading ? 140 : _dialogMaxHeight(context, preferred: 600),
               child: loading
                   ? const Center(child: CircularProgressIndicator())
                   : SingleChildScrollView(
@@ -4217,101 +4292,162 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
   }
 }
 
-// ── Interactive Map Component ──────────────────────────────────────────────
+// ── Real Interactive Leaflet / OpenStreetMap Map Component ────────────────
 
-class _InteractiveBranchMap extends StatefulWidget {
+class _RealBranchMap extends StatefulWidget {
   final double lat;
   final double lng;
   final Function(double, double) onLocationSelected;
 
-  const _InteractiveBranchMap({
+  const _RealBranchMap({
     required this.lat,
     required this.lng,
     required this.onLocationSelected,
   });
 
   @override
-  State<_InteractiveBranchMap> createState() => _InteractiveBranchMapState();
+  State<_RealBranchMap> createState() => _RealBranchMapState();
 }
 
-class _InteractiveBranchMapState extends State<_InteractiveBranchMap> {
-  int _zoomLevel = 13;
+class _RealBranchMapState extends State<_RealBranchMap> {
+  final MapController _mapController = MapController();
+  late double _currentLat;
+  late double _currentLng;
+  double _zoom = 14.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentLat = widget.lat;
+    _currentLng = widget.lng;
+  }
+
+  @override
+  void didUpdateWidget(covariant _RealBranchMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.lat != widget.lat || oldWidget.lng != widget.lng) {
+      setState(() {
+        _currentLat = widget.lat;
+        _currentLng = widget.lng;
+      });
+      _mapController.move(
+          LatLng(widget.lat, widget.lng), math.max(_zoom, 14.0));
+    }
+  }
+
+  void _zoomIn() {
+    setState(() {
+      _zoom = math.min(18.0, _zoom + 1.0);
+      _mapController.move(LatLng(_currentLat, _currentLng), _zoom);
+    });
+  }
+
+  void _zoomOut() {
+    setState(() {
+      _zoom = math.max(3.0, _zoom - 1.0);
+      _mapController.move(LatLng(_currentLat, _currentLng), _zoom);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 220,
+      height: 260,
       width: double.infinity,
       decoration: BoxDecoration(
-        color: const Color(0xFFD6E4F0),
+        color: const Color(0xFFE2E8F0),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: _kBorderColor),
       ),
       clipBehavior: Clip.antiAlias,
       child: Stack(
         children: [
-          // Background stylized map tiles canvas
-          Positioned.fill(
-            child: GestureDetector(
-              onTapDown: (details) {
-                final RenderBox box =
-                    context.findRenderObject() as RenderBox;
-                final localPos = details.localPosition;
-                final normalizedX = (localPos.dx / box.size.width) - 0.5;
-                final normalizedY = (localPos.dy / box.size.height) - 0.5;
-
-                final newLat = (widget.lat -
-                        (normalizedY * (10.0 / _zoomLevel)))
-                    .clamp(-90.0, 90.0);
-                final newLng = (widget.lng +
-                        (normalizedX * (15.0 / _zoomLevel)))
-                    .clamp(-180.0, 180.0);
-                widget.onLocationSelected(newLat, newLng);
+          FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCenter: LatLng(_currentLat, _currentLng),
+              initialZoom: _zoom,
+              minZoom: 2.0,
+              maxZoom: 19.0,
+              onTap: (tapPosition, point) {
+                FocusScope.of(context).unfocus();
+                setState(() {
+                  _currentLat = point.latitude;
+                  _currentLng = point.longitude;
+                });
+                widget.onLocationSelected(point.latitude, point.longitude);
               },
-              child: CustomPaint(
-                painter: _MapCanvasPainter(),
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.medconsult.qa',
+                maxZoom: 19,
+                panBuffer: 1,
               ),
-            ),
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    point: LatLng(_currentLat, _currentLng),
+                    width: 44,
+                    height: 52,
+                    alignment: Alignment.topCenter,
+                    child: Stack(
+                      alignment: Alignment.topCenter,
+                      children: [
+                        // Pulse Ring
+                        Container(
+                          width: 38,
+                          height: 38,
+                          margin: const EdgeInsets.only(top: 2),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _kPrimaryTeal.withValues(alpha: 0.25),
+                          ),
+                        ),
+                        // Pin badge
+                        Container(
+                          width: 32,
+                          height: 32,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _kPrimaryTeal,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Color(0x40000000),
+                                blurRadius: 6,
+                                offset: Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          alignment: Alignment.center,
+                          child: const Icon(
+                            Icons.location_on,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                        // Pin Pointer Dot
+                        Positioned(
+                          bottom: 2,
+                          child: Container(
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _kPrimaryTealDark,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
 
-          // Center Location Pin
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: _kPrimaryTeal,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: _kPrimaryTeal.withValues(alpha: 0.35),
-                        blurRadius: 8,
-                        spreadRadius: 2,
-                      ),
-                      const BoxShadow(
-                          color: Color(0x33000000),
-                          blurRadius: 4,
-                          offset: Offset(0, 2)),
-                    ],
-                  ),
-                  child: const Icon(Icons.location_on,
-                      size: 22, color: Colors.white),
-                ),
-                Container(
-                  width: 4,
-                  height: 4,
-                  decoration: const BoxDecoration(
-                    color: _kPrimaryTealDark,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Zoom Controls
+          // Zoom Controls matching Leaflet
           Positioned(
             top: 10,
             left: 10,
@@ -4322,7 +4458,7 @@ class _InteractiveBranchMapState extends State<_InteractiveBranchMap> {
                 border: Border.all(color: _kBorderColor),
                 boxShadow: const [
                   BoxShadow(
-                      color: Color(0x14000000),
+                      color: Color(0x18000000),
                       blurRadius: 4,
                       offset: Offset(0, 2))
                 ],
@@ -4330,20 +4466,18 @@ class _InteractiveBranchMapState extends State<_InteractiveBranchMap> {
               child: Column(
                 children: [
                   InkWell(
-                    onTap: () => setState(
-                        () => _zoomLevel = math.min(18, _zoomLevel + 1)),
+                    onTap: _zoomIn,
                     child: const Padding(
                       padding: EdgeInsets.all(6),
-                      child: Icon(Icons.add, size: 14, color: _kTextMain),
+                      child: Icon(Icons.add, size: 16, color: _kTextMain),
                     ),
                   ),
                   const Divider(height: 1, color: _kBorderColor),
                   InkWell(
-                    onTap: () => setState(
-                        () => _zoomLevel = math.max(2, _zoomLevel - 1)),
+                    onTap: _zoomOut,
                     child: const Padding(
                       padding: EdgeInsets.all(6),
-                      child: Icon(Icons.remove, size: 14, color: _kTextMain),
+                      child: Icon(Icons.remove, size: 16, color: _kTextMain),
                     ),
                   ),
                 ],
@@ -4353,11 +4487,11 @@ class _InteractiveBranchMapState extends State<_InteractiveBranchMap> {
 
           // Attribution
           Positioned(
-            bottom: 6,
-            right: 8,
+            bottom: 4,
+            right: 6,
             child: Container(
               padding:
-                  const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.85),
                 borderRadius: BorderRadius.circular(4),
@@ -4365,7 +4499,7 @@ class _InteractiveBranchMapState extends State<_InteractiveBranchMap> {
                     color: _kBorderColor.withValues(alpha: 0.6)),
               ),
               child: const Text(
-                '© OpenStreetMap contributors © CARTO',
+                '© OpenStreetMap contributors',
                 style: TextStyle(
                     fontSize: 8.5,
                     fontWeight: FontWeight.w500,
@@ -4377,68 +4511,4 @@ class _InteractiveBranchMapState extends State<_InteractiveBranchMap> {
       ),
     );
   }
-}
-
-class _MapCanvasPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    // Water background
-    final waterPaint = Paint()..color = const Color(0xFFD3E4F4);
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), waterPaint);
-
-    // Landmass contour
-    final landPaint = Paint()..color = const Color(0xFFF3F1EC);
-    final path = Path();
-    path.moveTo(0, size.height * 0.35);
-    path.quadraticBezierTo(size.width * 0.22, size.height * 0.12,
-        size.width * 0.48, size.height * 0.28);
-    path.quadraticBezierTo(size.width * 0.72, size.height * 0.42, size.width,
-        size.height * 0.22);
-    path.lineTo(size.width, size.height * 0.88);
-    path.quadraticBezierTo(size.width * 0.65, size.height * 0.98,
-        size.width * 0.32, size.height * 0.78);
-    path.lineTo(0, size.height * 0.82);
-    path.close();
-    canvas.drawPath(path, landPaint);
-
-    // Urban area
-    final urbanPaint = Paint()..color = const Color(0xFFE8E5DC);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(
-            center: Offset(size.width * 0.5, size.height * 0.52),
-            width: size.width * 0.45,
-            height: size.height * 0.42),
-        const Radius.circular(16),
-      ),
-      urbanPaint,
-    );
-
-    // Highway roads
-    final highwayPaint = Paint()
-      ..color = const Color(0xFFFED7AA)
-      ..strokeWidth = 3.0
-      ..style = PaintingStyle.stroke;
-    final hPath1 = Path();
-    hPath1.moveTo(0, size.height * 0.5);
-    hPath1.cubicTo(size.width * 0.3, size.height * 0.45, size.width * 0.6,
-        size.height * 0.55, size.width, size.height * 0.48);
-    canvas.drawPath(hPath1, highwayPaint);
-
-    // Street grid lines
-    final streetPaint = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 1.6;
-    for (double x = 30; x < size.width; x += 36) {
-      canvas.drawLine(Offset(x, size.height * 0.25),
-          Offset(x, size.height * 0.8), streetPaint);
-    }
-    for (double y = size.height * 0.3; y < size.height * 0.8; y += 30) {
-      canvas.drawLine(Offset(size.width * 0.15, y),
-          Offset(size.width * 0.85, y), streetPaint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
