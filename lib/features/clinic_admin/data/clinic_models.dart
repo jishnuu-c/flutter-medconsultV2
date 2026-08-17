@@ -45,26 +45,58 @@ class ClinicModel {
 
   factory ClinicModel.fromJson(Map<String, dynamic> json) {
     return ClinicModel(
-      clinicId: json['clinicId']?.toString() ?? '',
-      nameEn: json['nameEn'] ?? '',
-      nameAr: json['nameAr'] ?? '',
-      descriptionEn: json['descriptionEn'],
-      descriptionAr: json['descriptionAr'],
-      logoUrl: json['logoUrl'],
-      website: json['website'],
-      email: json['email'],
-      phonePrimary: json['phonePrimary'] ?? '',
-      phoneSecondary: json['phoneSecondary'],
-      mohLicenseNumber: json['mohLicenseNumber'] ?? '',
-      vatNumber: json['vatNumber'],
-      mohVerified: json['mohVerified'] ?? false,
-      mohVerifiedAt: json['mohVerifiedAt'],
-      naphiesFacilityId: json['naphiesFacilityId'],
-      isActive: json['isActive'] ?? true,
-      overallRating: (json['overallRating'] as num?)?.toDouble() ?? 5.0,
-      reviewCount: json['reviewCount'] ?? 0,
-      createdAt: json['createdAt'],
-      updatedAt: json['updatedAt'],
+      clinicId: json['clinicId']?.toString() ??
+          json['clinic_id']?.toString() ??
+          json['id']?.toString() ??
+          '',
+      nameEn: json['nameEn']?.toString() ?? json['name_en']?.toString() ?? '',
+      nameAr: json['nameAr']?.toString() ?? json['name_ar']?.toString() ?? '',
+      descriptionEn: json['descriptionEn']?.toString() ??
+          json['description_en']?.toString(),
+      descriptionAr: json['descriptionAr']?.toString() ??
+          json['description_ar']?.toString(),
+      logoUrl: json['logoUrl']?.toString() ?? json['logo_url']?.toString(),
+      website: json['website']?.toString(),
+      email: json['email']?.toString(),
+      phonePrimary: json['phonePrimary']?.toString() ??
+          json['phone_primary']?.toString() ??
+          json['phone']?.toString() ??
+          '',
+      phoneSecondary: json['phoneSecondary']?.toString() ??
+          json['phone_secondary']?.toString(),
+      mohLicenseNumber: json['mohLicenseNumber']?.toString() ??
+          json['moh_license_number']?.toString() ??
+          '',
+      vatNumber:
+          json['vatNumber']?.toString() ?? json['vat_number']?.toString(),
+      mohVerified: json['mohVerified'] == true ||
+          json['moh_verified'] == true ||
+          json['mohVerified'] == 1 ||
+          json['moh_verified'] == 1 ||
+          json['mohVerified'] == 'true',
+      mohVerifiedAt: json['mohVerifiedAt']?.toString() ??
+          json['moh_verified_at']?.toString(),
+      naphiesFacilityId: json['naphiesFacilityId']?.toString() ??
+          json['naphies_facility_id']?.toString(),
+      isActive: (json['isActive'] == null && json['is_active'] == null)
+          ? true
+          : (json['isActive'] == true ||
+              json['is_active'] == true ||
+              json['isActive'] == 1 ||
+              json['is_active'] == 1 ||
+              json['isActive'] == 'true'),
+      overallRating: double.tryParse(json['overallRating']?.toString() ??
+              json['overall_rating']?.toString() ??
+              '') ??
+          5.0,
+      reviewCount: int.tryParse(json['reviewCount']?.toString() ??
+              json['review_count']?.toString() ??
+              '') ??
+          0,
+      createdAt:
+          json['createdAt']?.toString() ?? json['created_at']?.toString(),
+      updatedAt:
+          json['updatedAt']?.toString() ?? json['updated_at']?.toString(),
     );
   }
 
@@ -120,21 +152,53 @@ class ClinicBranchModel {
 
   factory ClinicBranchModel.fromJson(Map<String, dynamic> json) {
     return ClinicBranchModel(
-      branchId: json['branchId']?.toString() ?? '',
-      clinicId: json['clinicId']?.toString() ?? '',
-      branchNameEn: json['branchNameEn'] ?? '',
-      branchNameAr: json['branchNameAr'] ?? '',
-      cityId: json['cityId']?.toString() ?? '',
-      localityId: json['localityId']?.toString(),
-      addressLine1: json['addressLine1'] ?? '',
-      addressLine2: json['addressLine2'],
-      latitude: (json['latitude'] as num?)?.toDouble(),
-      longitude: (json['longitude'] as num?)?.toDouble(),
-      phone: json['phone'],
-      email: json['email'],
-      isPrimary: json['isPrimary'] ?? false,
-      isActive: json['isActive'] ?? true,
-      createdAt: json['createdAt'],
+      branchId: json['branchId']?.toString() ??
+          json['branch_id']?.toString() ??
+          json['id']?.toString() ??
+          '',
+      clinicId: json['clinicId']?.toString() ??
+          json['clinic_id']?.toString() ??
+          '',
+      branchNameEn: json['branchNameEn']?.toString() ??
+          json['branch_name_en']?.toString() ??
+          json['nameEn']?.toString() ??
+          '',
+      branchNameAr: json['branchNameAr']?.toString() ??
+          json['branch_name_ar']?.toString() ??
+          json['nameAr']?.toString() ??
+          '',
+      cityId: json['cityId']?.toString() ??
+          json['city_id']?.toString() ??
+          '',
+      localityId: json['localityId']?.toString() ??
+          json['locality_id']?.toString(),
+      addressLine1: json['addressLine1']?.toString() ??
+          json['address_line1']?.toString() ??
+          json['address']?.toString() ??
+          '',
+      addressLine2: json['addressLine2']?.toString() ??
+          json['address_line2']?.toString(),
+      latitude: double.tryParse(json['latitude']?.toString() ??
+          json['lat']?.toString() ??
+          ''),
+      longitude: double.tryParse(json['longitude']?.toString() ??
+          json['lng']?.toString() ??
+          json['lon']?.toString() ??
+          ''),
+      phone: json['phone']?.toString() ?? json['phonePrimary']?.toString(),
+      email: json['email']?.toString(),
+      isPrimary: json['isPrimary'] == true ||
+          json['is_primary'] == true ||
+          json['isPrimary'] == 1 ||
+          json['is_primary'] == 1,
+      isActive: (json['isActive'] == null && json['is_active'] == null)
+          ? true
+          : (json['isActive'] == true ||
+              json['is_active'] == true ||
+              json['isActive'] == 1 ||
+              json['is_active'] == 1),
+      createdAt: json['createdAt']?.toString() ??
+          json['created_at']?.toString(),
     );
   }
 
@@ -179,15 +243,29 @@ class ClinicOperatingHourModel {
 
   factory ClinicOperatingHourModel.fromJson(Map<String, dynamic> json) {
     return ClinicOperatingHourModel(
-      hoursId: json['hoursId']?.toString(),
-      branchId: json['branchId']?.toString() ?? '',
-      dayOfWeek: json['dayOfWeek'] ?? 1,
-      isClosed: json['isClosed'] ?? false,
-      openTime: json['openTime'] ?? '09:00',
-      closeTime: json['closeTime'] ?? '17:00',
-      breakStart: json['breakStart'],
-      breakEnd: json['breakEnd'],
-      notes: json['notes'],
+      hoursId: json['hoursId']?.toString() ?? json['hours_id']?.toString(),
+      branchId: json['branchId']?.toString() ??
+          json['branch_id']?.toString() ??
+          '',
+      dayOfWeek: int.tryParse(json['dayOfWeek']?.toString() ??
+              json['day_of_week']?.toString() ??
+              '') ??
+          1,
+      isClosed: json['isClosed'] == true ||
+          json['is_closed'] == true ||
+          json['isClosed'] == 1 ||
+          json['is_closed'] == 1,
+      openTime: json['openTime']?.toString() ??
+          json['open_time']?.toString() ??
+          '09:00',
+      closeTime: json['closeTime']?.toString() ??
+          json['close_time']?.toString() ??
+          '17:00',
+      breakStart: json['breakStart']?.toString() ??
+          json['break_start']?.toString(),
+      breakEnd: json['breakEnd']?.toString() ??
+          json['break_end']?.toString(),
+      notes: json['notes']?.toString(),
     );
   }
 
@@ -219,9 +297,14 @@ class ClinicSpecialtyModel {
   factory ClinicSpecialtyModel.fromJson(Map<String, dynamic> json) {
     return ClinicSpecialtyModel(
       id: json['id']?.toString() ?? '',
-      clinicId: json['clinicId']?.toString() ?? '',
-      specialtyId: json['specialtyId']?.toString() ?? '',
-      createdAt: json['createdAt'],
+      clinicId: json['clinicId']?.toString() ??
+          json['clinic_id']?.toString() ??
+          '',
+      specialtyId: json['specialtyId']?.toString() ??
+          json['specialty_id']?.toString() ??
+          '',
+      createdAt: json['createdAt']?.toString() ??
+          json['created_at']?.toString(),
     );
   }
 }
@@ -240,8 +323,12 @@ class ClinicLanguageModel {
   factory ClinicLanguageModel.fromJson(Map<String, dynamic> json) {
     return ClinicLanguageModel(
       id: json['id']?.toString() ?? '',
-      clinicId: json['clinicId']?.toString() ?? '',
-      languageId: json['languageId']?.toString() ?? '',
+      clinicId: json['clinicId']?.toString() ??
+          json['clinic_id']?.toString() ??
+          '',
+      languageId: json['languageId']?.toString() ??
+          json['language_id']?.toString() ??
+          '',
     );
   }
 }
@@ -266,11 +353,23 @@ class ClinicInsuranceModel {
   factory ClinicInsuranceModel.fromJson(Map<String, dynamic> json) {
     return ClinicInsuranceModel(
       id: json['id']?.toString() ?? '',
-      clinicId: json['clinicId']?.toString() ?? '',
-      providerId: json['providerId']?.toString() ?? '',
-      networkClass: json['networkClass'] ?? '',
-      isActive: json['isActive'] ?? true,
-      createdAt: json['createdAt'],
+      clinicId: json['clinicId']?.toString() ??
+          json['clinic_id']?.toString() ??
+          '',
+      providerId: json['providerId']?.toString() ??
+          json['provider_id']?.toString() ??
+          '',
+      networkClass: json['networkClass']?.toString() ??
+          json['network_class']?.toString() ??
+          '',
+      isActive: (json['isActive'] == null && json['is_active'] == null)
+          ? true
+          : (json['isActive'] == true ||
+              json['is_active'] == true ||
+              json['isActive'] == 1 ||
+              json['is_active'] == 1),
+      createdAt: json['createdAt']?.toString() ??
+          json['created_at']?.toString(),
     );
   }
 

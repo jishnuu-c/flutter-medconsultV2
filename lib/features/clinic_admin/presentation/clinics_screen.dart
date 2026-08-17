@@ -98,7 +98,11 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
 
   @override
   void dispose() {
-    ref.read(hideAppLayoutBarsProvider.notifier).state = false;
+    if (ref.read(hideAppLayoutBarsProvider)) {
+      Future.microtask(() {
+        ref.read(hideAppLayoutBarsProvider.notifier).state = false;
+      });
+    }
     super.dispose();
   }
 
@@ -212,7 +216,6 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
       _isDetailLoading = true;
     });
 
-    ref.read(hideAppLayoutBarsProvider.notifier).state = true;
     final service = ref.read(clinicServiceProvider);
 
     try {
@@ -852,7 +855,8 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
         text: branch?.longitude?.toStringAsFixed(6) ?? '46.675300');
     final searchController = TextEditingController();
     bool isPrimary = branch?.isPrimary ?? false;
-    String? cityId = branch?.cityId.isNotEmpty == true ? branch!.cityId : null;
+    String? cityId =
+        (branch?.cityId ?? '').isNotEmpty ? branch!.cityId : null;
     String? localityId = branch?.localityId;
     List<LocalityModel> localities = [];
     bool localitiesHydrated = false;
@@ -4075,7 +4079,7 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
 
   // ── Main Details Panel ───────────────────────────────────────────────────
 
-  Widget _buildDetailPanel() {
+  Widget _buildDetailPanel({bool isMobile = false}) {
     if (_selectedClinic == null) {
       return Container(
         decoration: BoxDecoration(
@@ -4105,48 +4109,49 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Full screen navigation header
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Row(
-            children: [
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: _kBorderColor),
-                  backgroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  minimumSize: Size.zero,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6)),
-                ),
-                icon: const Icon(Icons.arrow_back, size: 14, color: _kTextMain),
-                label: const Text('Back to Clinics List',
-                    style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.bold,
-                        color: _kTextMain)),
-                onPressed: () {
-                  setState(() => _selectedClinic = null);
-                  ref.read(hideAppLayoutBarsProvider.notifier).state = false;
-                },
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Managing: ${clinic.nameEn}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: _kPrimaryTealDark,
+        // Navigation header for mobile
+        if (isMobile)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              children: [
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: _kBorderColor),
+                    backgroundColor: Colors.white,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    minimumSize: Size.zero,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6)),
                   ),
-                  textAlign: TextAlign.end,
-                  overflow: TextOverflow.ellipsis,
+                  icon: const Icon(Icons.arrow_back, size: 14, color: _kTextMain),
+                  label: const Text('Back to Clinics List',
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.bold,
+                          color: _kTextMain)),
+                  onPressed: () {
+                    setState(() => _selectedClinic = null);
+                    ref.read(hideAppLayoutBarsProvider.notifier).state = false;
+                  },
                 ),
-              ),
-            ],
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Managing: ${clinic.nameEn}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: _kPrimaryTealDark,
+                    ),
+                    textAlign: TextAlign.end,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
         _buildClinicHeaderCard(clinic),
         const SizedBox(height: 12),
         Expanded(
@@ -4190,100 +4195,121 @@ class _ClinicsScreenState extends ConsumerState<ClinicsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDetailView = _selectedClinic != null;
-
-    // Synchronize full screen mode with AppLayout
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && ref.read(hideAppLayoutBarsProvider) != isDetailView) {
-        ref.read(hideAppLayoutBarsProvider.notifier).state = isDetailView;
-      }
-    });
-
     return Scaffold(
       backgroundColor: _kOffWhite,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
             final isMobile = constraints.maxWidth < 920;
+            final isDetailViewOnMobile = isMobile && _selectedClinic != null;
+
+            // Synchronize full screen mode with AppLayout on mobile only
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted &&
+                  ref.read(hideAppLayoutBarsProvider) != isDetailViewOnMobile) {
+                ref.read(hideAppLayoutBarsProvider.notifier).state =
+                    isDetailViewOnMobile;
+              }
+            });
+
+            if (isDetailViewOnMobile) {
+              return Padding(
+                padding: const EdgeInsets.all(10),
+                child: _buildDetailPanel(isMobile: true),
+              );
+            }
 
             return Padding(
               padding: EdgeInsets.all(isMobile ? 10 : 16),
-              child: isDetailView
-                  ? _buildDetailPanel()
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Header Banner
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          crossAxisAlignment: CrossAxisAlignment.center,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header Banner
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Text('🏥',
-                                          style: TextStyle(fontSize: 18)),
-                                      const SizedBox(width: 6),
-                                      Flexible(
-                                        child: Text(
-                                          'Clinic Facility Roster',
-                                          style: TextStyle(
-                                            fontSize: isMobile ? 16 : 19,
-                                            fontWeight: FontWeight.bold,
-                                            color: _kPrimaryTealDark,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 2),
-                                  const Text(
-                                    'Configure clinic locations, operating hours, medical specialties, and insurance networks',
+                            Row(
+                              children: [
+                                const Text('🏥',
+                                    style: TextStyle(fontSize: 18)),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    'Clinic Facility Roster',
                                     style: TextStyle(
-                                        fontSize: 11, color: _kTextMuted),
+                                      fontSize: isMobile ? 16 : 19,
+                                      fontWeight: FontWeight.bold,
+                                      color: _kPrimaryTealDark,
+                                    ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _kPrimaryTeal,
-                                foregroundColor: Colors.white,
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: isMobile ? 10 : 14,
-                                  vertical: isMobile ? 7 : 9,
                                 ),
-                                minimumSize: Size.zero,
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(6)),
-                              ),
-                              icon: const Icon(Icons.add, size: 15),
-                              label: Text(
-                                isMobile ? 'Add' : 'Add Clinic',
-                                style: const TextStyle(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                              onPressed: () => _openClinicDialog(null),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            const Text(
+                              'Configure clinic locations, operating hours, medical specialties, and insurance networks',
+                              style: TextStyle(
+                                  fontSize: 11, color: _kTextMuted),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
-
-                        // Clinics Roster List
-                        Expanded(
-                          child: _buildSidebarCard(),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        key: const Key('add_clinic_btn'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _kPrimaryTeal,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isMobile ? 10 : 14,
+                            vertical: isMobile ? 7 : 9,
+                          ),
+                          minimumSize: Size.zero,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(6)),
                         ),
-                      ],
-                    ),
+                        icon: const Icon(Icons.add, size: 15),
+                        label: Text(
+                          isMobile ? 'Add' : 'Add Clinic',
+                          style: const TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: () => _openClinicDialog(null),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Content: 2-pane on desktop, single pane on mobile
+                  Expanded(
+                    child: isMobile
+                        ? _buildSidebarCard()
+                        : Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              SizedBox(
+                                width: 340,
+                                child: _buildSidebarCard(),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildDetailPanel(isMobile: false),
+                              ),
+                            ],
+                          ),
+                  ),
+                ],
+              ),
             );
           },
         ),

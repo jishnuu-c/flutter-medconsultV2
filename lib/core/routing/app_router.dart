@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/oauth_success_screen.dart';
 import '../../features/auth/presentation/register_screen.dart';
+import '../../features/clinic_admin/presentation/clinic_dashboard_screen.dart';
 import '../../features/clinic_admin/presentation/clinics_screen.dart';
 import '../../features/clinic_admin/presentation/doctors_screen.dart';
 import '../../features/doctor_dashboard/presentation/availability_screen.dart';
@@ -226,11 +227,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           // Clinic Admin Routes
           GoRoute(
             path: '/clinic-admin',
-            redirect: (context, state) => '/clinic-admin/clinics',
+            redirect: (context, state) => '/clinic-admin/dashboard',
           ),
           GoRoute(
             path: '/clinic-admin/dashboard',
-            builder: (context, state) => const ClinicsScreen(),
+            builder: (context, state) => const ClinicDashboardScreen(),
           ),
           GoRoute(
             path: '/clinic-admin/clinics',

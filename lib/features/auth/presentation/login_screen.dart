@@ -78,7 +78,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             context.go('/doctor/schedule');
             break;
           case UserRole.CLINIC_ADMIN:
-            context.go('/clinic-admin/clinics');
+            context.go('/clinic-admin/dashboard');
             break;
           case UserRole.SYSTEM_ADMIN:
             context.go('/system-admin');
@@ -88,7 +88,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         if (email.contains('doctor')) {
           context.go('/doctor/schedule');
         } else if (email.contains('clinic')) {
-          context.go('/clinic-admin/clinics');
+          context.go('/clinic-admin/dashboard');
         } else if (email.contains('admin') || email.contains('system')) {
           context.go('/system-admin');
         } else {

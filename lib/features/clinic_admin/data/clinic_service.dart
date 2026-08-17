@@ -11,14 +11,43 @@ class ClinicService {
   ClinicService({required this.dio});
 
   Future<List<ClinicModel>> getAllClinics() async {
-    final res = await dio.get('/api/medconsult/clinics/all');
-    final List list = res.data ?? [];
-    return list.map((e) => ClinicModel.fromJson(e)).toList();
+    try {
+      final res = await dio.get('/api/medconsult/clinics/all');
+      dynamic data = res.data;
+      if (data is Map) {
+        if (data.containsKey('content') && data['content'] is List) {
+          data = data['content'];
+        } else if (data.containsKey('data') && data['data'] is List) {
+          data = data['data'];
+        } else if (data.containsKey('clinics') && data['clinics'] is List) {
+          data = data['clinics'];
+        } else if (data.containsKey('items') && data['items'] is List) {
+          data = data['items'];
+        }
+      }
+      if (data is List) {
+        final list = <ClinicModel>[];
+        for (final item in data) {
+          if (item is Map) {
+            try {
+              list.add(ClinicModel.fromJson(Map<String, dynamic>.from(item)));
+            } catch (e) {
+              // Ignore single item parsing failure and continue
+            }
+          }
+        }
+        return list;
+      }
+      return [];
+    } catch (e) {
+      rethrow;
+    }
   }
 
   Future<ClinicDetailResponse> getClinicDetail(String id) async {
     final res = await dio.get('/api/medconsult/clinics/$id/detail');
-    return ClinicDetailResponse.fromJson(res.data);
+    final data = res.data is Map ? Map<String, dynamic>.from(res.data) : <String, dynamic>{};
+    return ClinicDetailResponse.fromJson(data);
   }
 
   // NOTE: the backend for these two endpoints expects multipart/form-data —
