@@ -37,10 +37,6 @@ void main() {
 
       // Check Title and Header Toolbar
       expect(find.text('Platform Reference Registries'), findsOneWidget);
-      expect(
-        find.textContaining('Manage system configurations, regional coverage'),
-        findsOneWidget,
-      );
       expect(find.text('+ Add Entry'), findsOneWidget);
 
       // Check Tabs
@@ -49,10 +45,6 @@ void main() {
       expect(find.text('🗣️ Spoken Languages'), findsOneWidget);
       expect(find.text('🛡️ Insurance Panels'), findsOneWidget);
       expect(find.text('👨‍⚕️ Doctors Roster'), findsOneWidget);
-
-      // Check Spec badge at bottom
-      expect(find.text('Stripe/Linear Admin Spec'), findsOneWidget);
-      expect(find.text('Showing active items on record'), findsOneWidget);
     });
 
     testWidgets('Verify responsive rendering on mobile viewport without overflow',

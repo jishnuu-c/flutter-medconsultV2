@@ -346,7 +346,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 480),
+            constraints: const BoxConstraints(maxWidth: 460),
             padding: const EdgeInsets.all(20),
             child: Form(
               key: formKey,
@@ -361,18 +361,18 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                         Text(
                           isEdit ? 'Edit City' : 'Add City',
                           style: const TextStyle(
-                            fontSize: 18,
+                            fontSize: 17,
                             fontWeight: FontWeight.bold,
                             color: AppTheme.textMain,
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.close, size: 20),
+                          icon: const Icon(Icons.close, size: 18),
                           onPressed: () => Navigator.pop(dialogCtx),
                         ),
                       ],
                     ),
-                    const Divider(height: 24),
+                    const Divider(height: 20),
                     TextFormField(
                       controller: nameEnController,
                       decoration: const InputDecoration(
@@ -381,7 +381,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                       validator: (v) =>
                           (v == null || v.trim().isEmpty) ? 'Required' : null,
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     TextFormField(
                       controller: nameArController,
                       decoration: const InputDecoration(
@@ -390,44 +390,52 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                       validator: (v) =>
                           (v == null || v.trim().isEmpty) ? 'Required' : null,
                     ),
-                    const SizedBox(height: 14),
-                    TextFormField(
-                      controller: countryCodeController,
-                      decoration: const InputDecoration(
-                        labelText: 'Country Code *',
-                        hintText: 'E.g. SA',
-                      ),
-                      validator: (v) =>
-                          (v == null || v.trim().isEmpty) ? 'Required' : null,
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: countryCodeController,
+                            decoration: const InputDecoration(
+                              labelText: 'Country Code *',
+                              hintText: 'SA',
+                            ),
+                            validator: (v) =>
+                                (v == null || v.trim().isEmpty) ? 'Required' : null,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: sortOrderController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Sort Order *',
+                              hintText: '1',
+                            ),
+                            validator: (v) =>
+                                (v == null || v.trim().isEmpty) ? 'Required' : null,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 14),
-                    TextFormField(
-                      controller: sortOrderController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Sort Order *',
-                        hintText: '1',
-                      ),
-                      validator: (v) =>
-                          (v == null || v.trim().isEmpty) ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Active Status',
-                          style: TextStyle(fontWeight: FontWeight.w600)),
+                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                       value: isActive,
                       onChanged: (val) => setDialogState(() => isActive = val),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        OutlinedButton(
+                        TextButton(
                           onPressed: () => Navigator.pop(dialogCtx),
                           child: const Text('Cancel'),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         ElevatedButton(
                           onPressed: () async {
                             if (!formKey.currentState!.validate()) return;
@@ -504,7 +512,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 480),
+            constraints: const BoxConstraints(maxWidth: 460),
             padding: const EdgeInsets.all(20),
             child: Form(
               key: formKey,
@@ -519,18 +527,18 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                         Text(
                           isEdit ? 'Edit Locality' : 'Add Locality',
                           style: const TextStyle(
-                            fontSize: 18,
+                            fontSize: 17,
                             fontWeight: FontWeight.bold,
                             color: AppTheme.textMain,
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.close, size: 20),
+                          icon: const Icon(Icons.close, size: 18),
                           onPressed: () => Navigator.pop(dialogCtx),
                         ),
                       ],
                     ),
-                    const Divider(height: 24),
+                    const Divider(height: 20),
                     TextFormField(
                       controller: nameEnController,
                       decoration: const InputDecoration(
@@ -539,7 +547,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                       validator: (v) =>
                           (v == null || v.trim().isEmpty) ? 'Required' : null,
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     TextFormField(
                       controller: nameArController,
                       decoration: const InputDecoration(
@@ -548,31 +556,31 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                       validator: (v) =>
                           (v == null || v.trim().isEmpty) ? 'Required' : null,
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     TextFormField(
                       controller: postalController,
                       decoration: const InputDecoration(
                         labelText: 'Postal Code',
-                        hintText: 'E.g. 12345',
+                        hintText: '12345',
                       ),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Active Status',
-                          style: TextStyle(fontWeight: FontWeight.w600)),
+                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                       value: isActive,
                       onChanged: (val) => setDialogState(() => isActive = val),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        OutlinedButton(
+                        TextButton(
                           onPressed: () => Navigator.pop(dialogCtx),
                           child: const Text('Cancel'),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         ElevatedButton(
                           onPressed: () async {
                             if (!formKey.currentState!.validate()) return;
@@ -651,7 +659,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 480),
+            constraints: const BoxConstraints(maxWidth: 460),
             padding: const EdgeInsets.all(20),
             child: Form(
               key: formKey,
@@ -666,18 +674,18 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                         Text(
                           isEdit ? 'Edit Specialty' : 'Add Specialty',
                           style: const TextStyle(
-                            fontSize: 18,
+                            fontSize: 17,
                             fontWeight: FontWeight.bold,
                             color: AppTheme.textMain,
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.close, size: 20),
+                          icon: const Icon(Icons.close, size: 18),
                           onPressed: () => Navigator.pop(dialogCtx),
                         ),
                       ],
                     ),
-                    const Divider(height: 24),
+                    const Divider(height: 20),
                     Row(
                       children: [
                         Expanded(
@@ -712,7 +720,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     TextFormField(
                       controller: nameEnController,
                       decoration: const InputDecoration(
@@ -721,7 +729,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                       validator: (v) =>
                           (v == null || v.trim().isEmpty) ? 'Required' : null,
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     TextFormField(
                       controller: nameArController,
                       decoration: const InputDecoration(
@@ -730,23 +738,23 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                       validator: (v) =>
                           (v == null || v.trim().isEmpty) ? 'Required' : null,
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Active Status',
-                          style: TextStyle(fontWeight: FontWeight.w600)),
+                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                       value: isActive,
                       onChanged: (val) => setDialogState(() => isActive = val),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        OutlinedButton(
+                        TextButton(
                           onPressed: () => Navigator.pop(dialogCtx),
                           child: const Text('Cancel'),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         ElevatedButton(
                           onPressed: () async {
                             if (!formKey.currentState!.validate()) return;
@@ -820,7 +828,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 480),
+            constraints: const BoxConstraints(maxWidth: 460),
             padding: const EdgeInsets.all(20),
             child: Form(
               key: formKey,
@@ -835,18 +843,18 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                         Text(
                           isEdit ? 'Edit SubSpecialty' : 'Add SubSpecialty',
                           style: const TextStyle(
-                            fontSize: 18,
+                            fontSize: 17,
                             fontWeight: FontWeight.bold,
                             color: AppTheme.textMain,
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.close, size: 20),
+                          icon: const Icon(Icons.close, size: 18),
                           onPressed: () => Navigator.pop(dialogCtx),
                         ),
                       ],
                     ),
-                    const Divider(height: 24),
+                    const Divider(height: 20),
                     TextFormField(
                       controller: nameEnController,
                       decoration: const InputDecoration(
@@ -855,7 +863,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                       validator: (v) =>
                           (v == null || v.trim().isEmpty) ? 'Required' : null,
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     TextFormField(
                       controller: nameArController,
                       decoration: const InputDecoration(
@@ -864,23 +872,23 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                       validator: (v) =>
                           (v == null || v.trim().isEmpty) ? 'Required' : null,
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Active Status',
-                          style: TextStyle(fontWeight: FontWeight.w600)),
+                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                       value: isActive,
                       onChanged: (val) => setDialogState(() => isActive = val),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        OutlinedButton(
+                        TextButton(
                           onPressed: () => Navigator.pop(dialogCtx),
                           child: const Text('Cancel'),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         ElevatedButton(
                           onPressed: () async {
                             if (!formKey.currentState!.validate()) return;
@@ -958,7 +966,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 480),
+            constraints: const BoxConstraints(maxWidth: 460),
             padding: const EdgeInsets.all(20),
             child: Form(
               key: formKey,
@@ -973,64 +981,64 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                         Text(
                           isEdit ? 'Edit Language' : 'Add Language',
                           style: const TextStyle(
-                            fontSize: 18,
+                            fontSize: 17,
                             fontWeight: FontWeight.bold,
                             color: AppTheme.textMain,
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.close, size: 20),
+                          icon: const Icon(Icons.close, size: 18),
                           onPressed: () => Navigator.pop(dialogCtx),
                         ),
                       ],
                     ),
-                    const Divider(height: 24),
+                    const Divider(height: 20),
                     TextFormField(
                       controller: nameEnController,
                       decoration: const InputDecoration(
                         labelText: 'Language Name (EN) *',
-                        hintText: 'E.g. English',
+                        hintText: 'English',
                       ),
                       validator: (v) =>
                           (v == null || v.trim().isEmpty) ? 'Required' : null,
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     TextFormField(
                       controller: nameArController,
                       decoration: const InputDecoration(
                         labelText: 'Language Name (AR) *',
-                        hintText: 'E.g. الإنجليزية',
+                        hintText: 'الإنجليزية',
                       ),
                       validator: (v) =>
                           (v == null || v.trim().isEmpty) ? 'Required' : null,
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     TextFormField(
                       controller: codeController,
                       decoration: const InputDecoration(
                         labelText: 'ISO Code *',
-                        hintText: 'E.g. en',
+                        hintText: 'en',
                       ),
                       validator: (v) =>
                           (v == null || v.trim().isEmpty) ? 'Required' : null,
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Active Status',
-                          style: TextStyle(fontWeight: FontWeight.w600)),
+                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                       value: isActive,
                       onChanged: (val) => setDialogState(() => isActive = val),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        OutlinedButton(
+                        TextButton(
                           onPressed: () => Navigator.pop(dialogCtx),
                           child: const Text('Cancel'),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         ElevatedButton(
                           onPressed: () async {
                             if (!formKey.currentState!.validate()) return;
@@ -1104,7 +1112,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 480),
+            constraints: const BoxConstraints(maxWidth: 460),
             padding: const EdgeInsets.all(20),
             child: Form(
               key: formKey,
@@ -1119,18 +1127,18 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                         Text(
                           isEdit ? 'Edit Insurance Panel' : 'Add Insurance Panel',
                           style: const TextStyle(
-                            fontSize: 18,
+                            fontSize: 17,
                             fontWeight: FontWeight.bold,
                             color: AppTheme.textMain,
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.close, size: 20),
+                          icon: const Icon(Icons.close, size: 18),
                           onPressed: () => Navigator.pop(dialogCtx),
                         ),
                       ],
                     ),
-                    const Divider(height: 24),
+                    const Divider(height: 20),
                     TextFormField(
                       controller: nameEnController,
                       decoration: const InputDecoration(
@@ -1139,7 +1147,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                       validator: (v) =>
                           (v == null || v.trim().isEmpty) ? 'Required' : null,
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     TextFormField(
                       controller: nameArController,
                       decoration: const InputDecoration(
@@ -1148,11 +1156,11 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                       validator: (v) =>
                           (v == null || v.trim().isEmpty) ? 'Required' : null,
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     const Text(
                       'Logo Upload',
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textSecondary,
                       ),
@@ -1172,7 +1180,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 12),
+                            horizontal: 14, vertical: 10),
                         decoration: BoxDecoration(
                           color: AppTheme.backgroundApp,
                           borderRadius: BorderRadius.circular(8),
@@ -1181,8 +1189,8 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                         child: Row(
                           children: [
                             const Icon(Icons.camera_alt_outlined,
-                                size: 20, color: AppTheme.primaryTeal),
-                            const SizedBox(width: 10),
+                                size: 18, color: AppTheme.primaryTeal),
+                            const SizedBox(width: 8),
                             Expanded(
                               child: Text(
                                 pickedFile != null
@@ -1192,7 +1200,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                                         ? 'Logo on file (Click to change)'
                                         : 'Click to select logo image...'),
                                 style: TextStyle(
-                                  fontSize: 13,
+                                  fontSize: 12,
                                   color: pickedFile != null
                                       ? AppTheme.textMain
                                       : AppTheme.textMuted,
@@ -1204,23 +1212,23 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                         ),
                       ),
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Active Status',
-                          style: TextStyle(fontWeight: FontWeight.w600)),
+                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                       value: isActive,
                       onChanged: (val) => setDialogState(() => isActive = val),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        OutlinedButton(
+                        TextButton(
                           onPressed: () => Navigator.pop(dialogCtx),
                           child: const Text('Cancel'),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         ElevatedButton(
                           onPressed: () async {
                             if (!formKey.currentState!.validate()) return;
@@ -1314,7 +1322,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 520),
+            constraints: const BoxConstraints(maxWidth: 480),
             padding: const EdgeInsets.all(20),
             child: Form(
               key: formKey,
@@ -1329,18 +1337,18 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                         Text(
                           isEdit ? 'Edit Doctor Record' : 'Register New Doctor',
                           style: const TextStyle(
-                            fontSize: 18,
+                            fontSize: 17,
                             fontWeight: FontWeight.bold,
                             color: AppTheme.textMain,
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.close, size: 20),
+                          icon: const Icon(Icons.close, size: 18),
                           onPressed: () => Navigator.pop(dialogCtx),
                         ),
                       ],
                     ),
-                    const Divider(height: 24),
+                    const Divider(height: 20),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1349,13 +1357,13 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                           child: DropdownButtonFormField<String>(
                             initialValue: title,
                             decoration: const InputDecoration(
-                              labelText: 'Professional Title *',
+                              labelText: 'Title *',
                             ),
                             items: _doctorTitleOptions
                                 .map((o) => DropdownMenuItem(
                                       value: o['value'],
                                       child: Text(o['label']!,
-                                          style: const TextStyle(fontSize: 13)),
+                                          style: const TextStyle(fontSize: 12)),
                                     ))
                                 .toList(),
                             onChanged: (val) {
@@ -1363,14 +1371,14 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                             },
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 10),
                         Expanded(
                           flex: 3,
                           child: TextFormField(
                             controller: fullNameController,
                             decoration: const InputDecoration(
-                              labelText: 'Doctor Full Name *',
-                              hintText: 'E.g. Sarah Connor',
+                              labelText: 'Doctor Name *',
+                              hintText: 'Sarah Connor',
                             ),
                             validator: (v) =>
                                 (v == null || v.trim().isEmpty) ? 'Required' : null,
@@ -1378,7 +1386,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1387,19 +1395,19 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                             controller: mohController,
                             decoration: const InputDecoration(
                               labelText: 'MOH Registration # *',
-                              hintText: 'E.g. MOH-92837',
+                              hintText: 'MOH-92837',
                             ),
                             validator: (v) =>
                                 (v == null || v.trim().isEmpty) ? 'Required' : null,
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: TextFormField(
                             controller: experienceController,
                             keyboardType: TextInputType.number,
                             decoration: const InputDecoration(
-                              labelText: 'Years of Experience *',
+                              labelText: 'Experience (Yrs) *',
                               hintText: '5',
                             ),
                             validator: (v) =>
@@ -1408,7 +1416,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1417,21 +1425,21 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                             controller: feeController,
                             keyboardType: TextInputType.number,
                             decoration: const InputDecoration(
-                              labelText: 'Consultation Fee (SAR) *',
+                              labelText: 'Fee (SAR) *',
                               hintText: '150',
                             ),
                             validator: (v) =>
                                 (v == null || v.trim().isEmpty) ? 'Required' : null,
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: Padding(
-                            padding: const EdgeInsets.only(top: 8),
+                            padding: const EdgeInsets.only(top: 6),
                             child: CheckboxListTile(
                               contentPadding: EdgeInsets.zero,
                               controlAffinity: ListTileControlAffinity.leading,
-                              title: const Text('Active Status',
+                              title: const Text('Active',
                                   style: TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w600)),
@@ -1443,24 +1451,24 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     TextFormField(
                       controller: bioController,
                       maxLines: 2,
                       decoration: const InputDecoration(
-                        labelText: 'Bio / Profile Summary',
-                        hintText: 'Brief professional background...',
+                        labelText: 'Bio / Summary',
+                        hintText: 'Specialist medical professional...',
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        OutlinedButton(
+                        TextButton(
                           onPressed: () => Navigator.pop(dialogCtx),
                           child: const Text('Cancel'),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         ElevatedButton(
                           onPressed: () async {
                             if (!formKey.currentState!.validate()) return;
@@ -1572,7 +1580,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: const Text('Confirm Status Change',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         content: Text(
             'Are you sure you want to $actionText Dr. ${_getDoctorDisplayName(doc)}?'),
         actions: [
@@ -1614,7 +1622,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: const Text('Confirm Deletion',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         content:
             const Text('Are you sure you want to delete this reference item?'),
         actions: [
@@ -1693,15 +1701,18 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
     final isMobile = screenWidth < 700;
 
     return Scaffold(
-      backgroundColor: AppTheme.backgroundApp,
+      backgroundColor: const Color(0xFFF8FAFC),
       body: SingleChildScrollView(
-        padding: EdgeInsets.all(isMobile ? 14 : 24),
+        padding: EdgeInsets.symmetric(
+          horizontal: isMobile ? 12 : 20,
+          vertical: isMobile ? 12 : 18,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 1. KPI Summary Cards Grid
+            // 1. Sleek Compact 2x2 or 4x1 KPI Cards Grid
             _buildKpiSummaryGrid(isMobile),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
 
             // 2. Main Platform Reference Registries Panel Card
             _buildRegistryPanelCard(isMobile),
@@ -1718,51 +1729,46 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
         label: 'REGISTERED PATIENTS',
         value: _registeredPatients.toString(),
         trend: _patientTrend,
+        icon: Icons.people_alt_rounded,
+        accentColor: const Color(0xFF0D9488),
+        iconBgColor: const Color(0xFFE6FFFA),
       ),
       _buildKpiCard(
         label: 'CLINIC FACILITIES',
         value: _clinicFacilities.toString(),
         trend: _clinicTrend,
+        icon: Icons.local_hospital_rounded,
+        accentColor: const Color(0xFF0284C7),
+        iconBgColor: const Color(0xFFE0F2FE),
       ),
       _buildKpiCard(
         label: 'VERIFIED DOCTORS',
         value: _verifiedDoctors.toString(),
         trend: _doctorTrend,
+        icon: Icons.medical_services_rounded,
+        accentColor: const Color(0xFF7C3AED),
+        iconBgColor: const Color(0xFFEDE9FE),
       ),
       _buildKpiCard(
         label: 'MONTHLY VOLUME (SAR)',
         value: _formatCurrencyShort(_monthlyVolumeSar),
         trend: _volumeTrend,
+        icon: Icons.account_balance_wallet_rounded,
+        accentColor: const Color(0xFFD97706),
+        iconBgColor: const Color(0xFFFEF3C7),
       ),
     ];
 
-    if (isMobile) {
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          final isNarrow = constraints.maxWidth < 400;
-          return GridView.count(
-            crossAxisCount: isNarrow ? 1 : 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: isNarrow ? 2.6 : 1.7,
-            children: kpiCards,
-          );
-        },
-      );
-    }
-
     return LayoutBuilder(
       builder: (context, constraints) {
-        final crossAxis = constraints.maxWidth > 900 ? 4 : 2;
+        final crossAxis = constraints.maxWidth > 850 ? 4 : 2;
         return GridView.count(
           crossAxisCount: crossAxis,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 16,
-          crossAxisSpacing: 16,
-          childAspectRatio: 2.1,
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+          childAspectRatio: crossAxis == 4 ? 2.4 : 1.75,
           children: kpiCards,
         );
       },
@@ -1773,18 +1779,21 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
     required String label,
     required String value,
     required String trend,
+    required IconData icon,
+    required Color accentColor,
+    required Color iconBgColor,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppTheme.borderGray),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: const [
           BoxShadow(
-            color: Color.fromRGBO(0, 0, 0, 0.02),
-            blurRadius: 6,
-            offset: Offset(0, 2),
+            color: Color(0x06000000),
+            blurRadius: 4,
+            offset: Offset(0, 1),
           ),
         ],
       ),
@@ -1792,51 +1801,67 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.textMuted,
-              letterSpacing: 0.5,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
             children: [
-              _isLoadingKpis
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(
-                      value,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.textMain,
-                      ),
-                    ),
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: iconBgColor,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                alignment: Alignment.center,
+                child: Icon(icon, size: 16, color: accentColor),
+              ),
               Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryLightTeal,
+                  color: const Color(0xFFDCFCE7),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
                   '↑ $trend',
                   style: const TextStyle(
-                    fontSize: 11,
+                    fontSize: 9,
                     fontWeight: FontWeight.w700,
-                    color: AppTheme.primaryDarkTeal,
+                    color: Color(0xFF15803D),
                   ),
                 ),
+              ),
+            ],
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _isLoadingKpis
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(
+                      value,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                        height: 1.1,
+                      ),
+                    ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF64748B),
+                  letterSpacing: 0.2,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
@@ -1851,56 +1876,57 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.borderGray),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: const [
           BoxShadow(
-            color: Color.fromRGBO(0, 0, 0, 0.03),
-            blurRadius: 10,
-            offset: Offset(0, 4),
+            color: Color(0x06000000),
+            blurRadius: 6,
+            offset: Offset(0, 2),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header Toolbar
+          // Sleek One-line Header Toolbar
           Padding(
-            padding: EdgeInsets.all(isMobile ? 16 : 20),
-            child: Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 12,
-              runSpacing: 12,
+            padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 12 : 16,
+              vertical: isMobile ? 10 : 14,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Platform Reference Registries',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.textMain,
-                      ),
+                const Expanded(
+                  child: Text(
+                    'Platform Reference Registries',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF0F172A),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Manage system configurations, regional coverage, specialties, and doctor roster registries',
-                      style: TextStyle(
-                        fontSize: isMobile ? 12 : 13,
-                        color: AppTheme.textMuted,
-                      ),
-                    ),
-                  ],
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
+                const SizedBox(width: 8),
                 ElevatedButton.icon(
                   key: const Key('add_reference_item_btn'),
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('+ Add Entry'),
+                  icon: const Icon(Icons.add, size: 14),
+                  label: const Text('+ Add Entry',
+                      style:
+                          TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                   style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryTeal,
+                    foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 10),
-                    elevation: 1,
+                        horizontal: 12, vertical: 7),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6),
+                    ),
                   ),
                   onPressed: _handleAddClick,
                 ),
@@ -1912,8 +1938,8 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
           Container(
             decoration: const BoxDecoration(
               border: Border(
-                top: BorderSide(color: AppTheme.borderGray),
-                bottom: BorderSide(color: AppTheme.borderGray),
+                top: BorderSide(color: Color(0xFFF1F5F9)),
+                bottom: BorderSide(color: Color(0xFFF1F5F9)),
               ),
             ),
             child: TabBar(
@@ -1921,13 +1947,13 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
               isScrollable: true,
               tabAlignment: TabAlignment.start,
               labelColor: AppTheme.primaryTeal,
-              unselectedLabelColor: AppTheme.textMuted,
+              unselectedLabelColor: const Color(0xFF64748B),
               indicatorColor: AppTheme.primaryTeal,
-              indicatorWeight: 2.5,
+              indicatorWeight: 2,
               labelStyle:
-                  const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
               unselectedLabelStyle:
-                  const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                  const TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
               tabs: const [
                 Tab(text: '🇸🇦 Cities & Regions'),
                 Tab(text: '🩺 Medical Specialties'),
@@ -1941,49 +1967,10 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
           // Tab Content Area
           _isLoading
               ? const Padding(
-                  padding: EdgeInsets.all(48),
+                  padding: EdgeInsets.all(32),
                   child: Center(child: CircularProgressIndicator()),
                 )
               : _buildCurrentTabContent(isMobile),
-
-          // Footer Toolbar / Spec Info
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(top: BorderSide(color: AppTheme.borderGray)),
-              borderRadius:
-                  BorderRadius.vertical(bottom: Radius.circular(12)),
-            ),
-            child: Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                const Text(
-                  'Showing active items on record',
-                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryLightTeal,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: const Text(
-                    'Stripe/Linear Admin Spec',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.primaryDarkTeal,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -2013,45 +2000,45 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Drilldown header
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            color: AppTheme.backgroundApp,
-            child: Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 12,
-              runSpacing: 8,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            color: const Color(0xFFF8FAFC),
+            child: Row(
               children: [
                 OutlinedButton.icon(
-                  icon: const Icon(Icons.arrow_back, size: 14),
-                  label: const Text('Back to Cities',
-                      style: TextStyle(fontSize: 12)),
+                  icon: const Icon(Icons.arrow_back, size: 13),
+                  label: const Text('Back', style: TextStyle(fontSize: 11)),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 6),
+                        horizontal: 8, vertical: 2),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   onPressed: () =>
                       setState(() => _selectedCityForLocalities = null),
                 ),
-                Text(
-                  '📍 Localities in ${city.nameEn} (${city.nameAr})',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textMain,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Localities in ${city.nameEn} (${city.nameAr})',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF0F172A),
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ),
           ),
-          const Divider(height: 1),
+          const Divider(height: 1, color: Color(0xFFE2E8F0)),
 
-          // Localities Grid
           if (_localities.isEmpty)
             _buildEmptyState('No localities found for this city.')
           else
             Padding(
-              padding: EdgeInsets.all(isMobile ? 14 : 20),
+              padding: EdgeInsets.all(isMobile ? 10 : 14),
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final crossCount = constraints.maxWidth > 800
@@ -2062,77 +2049,72 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                     physics: const NeverScrollableScrollPhysics(),
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: crossCount,
-                      crossAxisSpacing: 14,
-                      mainAxisSpacing: 14,
-                      mainAxisExtent: 140,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 10,
+                      mainAxisExtent: 80,
                     ),
                     itemCount: _localities.length,
                     itemBuilder: (context, idx) {
                       final loc = _localities[idx];
                       return Container(
-                        padding: const EdgeInsets.all(14),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppTheme.borderGray),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Row(
                                     children: [
-                                      Text(
-                                        loc.nameEn,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                          color: AppTheme.textMain,
+                                      Expanded(
+                                        child: Text(
+                                          loc.nameEn,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                            color: Color(0xFF0F172A),
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      Text(
-                                        loc.nameAr,
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: AppTheme.textMuted,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
+                                      const SizedBox(width: 4),
+                                      _buildStatusBadge(loc.isActive),
                                     ],
                                   ),
-                                ),
-                                _buildStatusBadge(loc.isActive),
-                              ],
-                            ),
-                            Text(
-                              'Postal Code: ${loc.postalCode?.isNotEmpty == true ? loc.postalCode : 'N/A'}',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: AppTheme.textSecondary,
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${loc.nameAr}${loc.postalCode?.isNotEmpty == true ? ' • Zip ${loc.postalCode}' : ''}',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
                               ),
                             ),
-                            const Divider(height: 8),
+                            const SizedBox(width: 8),
                             Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
                               children: [
                                 _buildIconButton(
                                   icon: Icons.edit_outlined,
-                                  tooltip: 'Edit Locality',
+                                  tooltip: 'Edit',
                                   onTap: () => _openLocalityDialog(loc),
                                 ),
-                                const SizedBox(width: 6),
+                                const SizedBox(width: 4),
                                 _buildIconButton(
                                   icon: Icons.delete_outline,
-                                  tooltip: 'Delete Locality',
+                                  tooltip: 'Delete',
                                   isDelete: true,
                                   onTap: () => _deleteItem(loc.localityId),
                                 ),
@@ -2150,13 +2132,12 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
       );
     }
 
-    // Default: Cities Grid
     if (_cities.isEmpty) {
-      return _buildEmptyState('No cities found in system database.');
+      return _buildEmptyState('No cities registered.');
     }
 
     return Padding(
-      padding: EdgeInsets.all(isMobile ? 14 : 20),
+      padding: EdgeInsets.all(isMobile ? 10 : 14),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final crossCount = constraints.maxWidth > 900
@@ -2167,19 +2148,20 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: crossCount,
-              crossAxisSpacing: 14,
-              mainAxisSpacing: 14,
-              mainAxisExtent: 170,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              mainAxisExtent: 96,
             ),
             itemCount: _cities.length,
             itemBuilder: (context, idx) {
               final city = _cities[idx];
               return Container(
-                padding: const EdgeInsets.all(14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.borderGray),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2190,98 +2172,109 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          child: Row(
                             children: [
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
+                                    horizontal: 5, vertical: 1),
                                 decoration: BoxDecoration(
                                   color: AppTheme.primaryLightTeal,
-                                  borderRadius: BorderRadius.circular(4),
+                                  borderRadius: BorderRadius.circular(3),
                                 ),
                                 child: Text(
                                   '#${city.sortOrder}',
                                   style: const TextStyle(
-                                    fontSize: 10,
+                                    fontSize: 9,
                                     fontWeight: FontWeight.bold,
                                     color: AppTheme.primaryDarkTeal,
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                city.nameEn,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                  color: AppTheme.textMain,
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  city.nameEn,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text(
-                                city.nameAr,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: AppTheme.textMuted,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
                           ),
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
+                              horizontal: 5, vertical: 1),
                           decoration: BoxDecoration(
-                            color: AppTheme.backgroundApp,
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(color: AppTheme.borderGray),
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(3),
                           ),
                           child: Text(
                             city.countryCode,
                             style: const TextStyle(
-                              fontSize: 11,
+                              fontSize: 9,
                               fontWeight: FontWeight.bold,
-                              color: AppTheme.textMuted,
+                              color: Color(0xFF64748B),
                             ),
                           ),
                         ),
                       ],
                     ),
-                    const Text(
-                      'Saudi Arabia Coverage',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.textMuted,
+                    Text(
+                      city.nameAr,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF64748B),
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    const Divider(height: 8),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        OutlinedButton(
-                          onPressed: () => _loadLocalities(city),
-                          style: OutlinedButton.styleFrom(
+                        InkWell(
+                          onTap: () => _loadLocalities(city),
+                          borderRadius: BorderRadius.circular(4),
+                          child: Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
-                            textStyle: const TextStyle(fontSize: 11),
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.location_on_outlined,
+                                    size: 11, color: AppTheme.primaryTeal),
+                                SizedBox(width: 3),
+                                Text(
+                                  'Localities',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.primaryTeal,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          child: const Text('📍 Manage Localities'),
                         ),
                         Row(
                           children: [
                             _buildIconButton(
                               icon: Icons.edit_outlined,
-                              tooltip: 'Edit City',
+                              tooltip: 'Edit',
                               onTap: () => _openCityDialog(city),
                             ),
                             const SizedBox(width: 4),
                             _buildIconButton(
                               icon: Icons.delete_outline,
-                              tooltip: 'Delete City',
+                              tooltip: 'Delete',
                               isDelete: true,
                               onTap: () => _deleteItem(city.cityId),
                             ),
@@ -2307,42 +2300,44 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            color: AppTheme.backgroundApp,
-            child: Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 12,
-              runSpacing: 8,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            color: const Color(0xFFF8FAFC),
+            child: Row(
               children: [
                 OutlinedButton.icon(
-                  icon: const Icon(Icons.arrow_back, size: 14),
-                  label: const Text('Back to Specialties',
-                      style: TextStyle(fontSize: 12)),
+                  icon: const Icon(Icons.arrow_back, size: 13),
+                  label: const Text('Back', style: TextStyle(fontSize: 11)),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 6),
+                        horizontal: 8, vertical: 2),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   onPressed: () =>
                       setState(() => _selectedSpecialtyForSub = null),
                 ),
-                Text(
-                  '🎓 SubSpecialties in ${spec.nameEn} (${spec.nameAr})',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textMain,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'SubSpecialties in ${spec.nameEn} (${spec.nameAr})',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF0F172A),
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ),
           ),
-          const Divider(height: 1),
+          const Divider(height: 1, color: Color(0xFFE2E8F0)),
 
           if (_subSpecialties.isEmpty)
             _buildEmptyState('No sub-specialties found.')
           else
             Padding(
-              padding: EdgeInsets.all(isMobile ? 14 : 20),
+              padding: EdgeInsets.all(isMobile ? 10 : 14),
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final crossCount = constraints.maxWidth > 800
@@ -2353,77 +2348,72 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                     physics: const NeverScrollableScrollPhysics(),
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: crossCount,
-                      crossAxisSpacing: 14,
-                      mainAxisSpacing: 14,
-                      mainAxisExtent: 140,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 10,
+                      mainAxisExtent: 75,
                     ),
                     itemCount: _subSpecialties.length,
                     itemBuilder: (context, idx) {
                       final sub = _subSpecialties[idx];
                       return Container(
-                        padding: const EdgeInsets.all(14),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppTheme.borderGray),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Row(
                                     children: [
-                                      Text(
-                                        sub.nameEn,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                          color: AppTheme.textMain,
+                                      Expanded(
+                                        child: Text(
+                                          sub.nameEn,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                            color: Color(0xFF0F172A),
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      Text(
-                                        sub.nameAr,
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: AppTheme.textMuted,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
+                                      const SizedBox(width: 4),
+                                      _buildStatusBadge(sub.isActive),
                                     ],
                                   ),
-                                ),
-                                _buildStatusBadge(sub.isActive),
-                              ],
-                            ),
-                            const Text(
-                              'Medical sub-specialty branch',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: AppTheme.textMuted,
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    sub.nameAr,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
                               ),
                             ),
-                            const Divider(height: 8),
+                            const SizedBox(width: 8),
                             Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
                               children: [
                                 _buildIconButton(
                                   icon: Icons.edit_outlined,
-                                  tooltip: 'Edit SubSpecialty',
+                                  tooltip: 'Edit',
                                   onTap: () => _openSubSpecialtyDialog(sub),
                                 ),
-                                const SizedBox(width: 6),
+                                const SizedBox(width: 4),
                                 _buildIconButton(
                                   icon: Icons.delete_outline,
-                                  tooltip: 'Delete SubSpecialty',
+                                  tooltip: 'Delete',
                                   isDelete: true,
                                   onTap: () => _deleteItem(sub.subSpecialtyId),
                                 ),
@@ -2441,13 +2431,12 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
       );
     }
 
-    // Default: Specialties Grid
     if (_specialties.isEmpty) {
       return _buildEmptyState('No specialties found.');
     }
 
     return Padding(
-      padding: EdgeInsets.all(isMobile ? 14 : 20),
+      padding: EdgeInsets.all(isMobile ? 10 : 14),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final crossCount = constraints.maxWidth > 900
@@ -2458,19 +2447,20 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: crossCount,
-              crossAxisSpacing: 14,
-              mainAxisSpacing: 14,
-              mainAxisExtent: 170,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              mainAxisExtent: 96,
             ),
             itemCount: _specialties.length,
             itemBuilder: (context, idx) {
               final s = _specialties[idx];
               return Container(
-                padding: const EdgeInsets.all(14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.borderGray),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2481,100 +2471,109 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          child: Row(
                             children: [
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
+                                    horizontal: 4, vertical: 1),
                                 decoration: BoxDecoration(
-                                  color: AppTheme.backgroundApp,
-                                  borderRadius: BorderRadius.circular(4),
-                                  border:
-                                      Border.all(color: AppTheme.borderGray),
+                                  color: const Color(0xFFEDE9FE),
+                                  borderRadius: BorderRadius.circular(3),
                                 ),
                                 child: Text(
                                   s.category,
                                   style: const TextStyle(
-                                    fontSize: 10,
+                                    fontSize: 8,
                                     fontWeight: FontWeight.bold,
-                                    color: AppTheme.textSecondary,
+                                    color: Color(0xFF7C3AED),
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                s.nameEn,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                  color: AppTheme.textMain,
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  s.nameEn,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text(
-                                s.nameAr,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: AppTheme.textMuted,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
                           ),
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
+                              horizontal: 5, vertical: 1),
                           decoration: BoxDecoration(
-                            color: AppTheme.backgroundApp,
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(color: AppTheme.borderGray),
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(3),
                           ),
                           child: Text(
                             s.code,
                             style: const TextStyle(
-                              fontSize: 11,
+                              fontSize: 9,
                               fontWeight: FontWeight.bold,
-                              color: AppTheme.textMuted,
+                              color: Color(0xFF64748B),
                             ),
                           ),
                         ),
                       ],
                     ),
-                    const Text(
-                      'Medical specialty registry',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.textMuted,
+                    Text(
+                      s.nameAr,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF64748B),
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    const Divider(height: 8),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        OutlinedButton(
-                          onPressed: () => _loadSubSpecialties(s),
-                          style: OutlinedButton.styleFrom(
+                        InkWell(
+                          onTap: () => _loadSubSpecialties(s),
+                          borderRadius: BorderRadius.circular(4),
+                          child: Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
-                            textStyle: const TextStyle(fontSize: 11),
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.account_tree_outlined,
+                                    size: 11, color: AppTheme.primaryTeal),
+                                SizedBox(width: 3),
+                                Text(
+                                  'Sub-Specialties',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.primaryTeal,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          child: const Text('🎓 Manage SubSpecialties'),
                         ),
                         Row(
                           children: [
                             _buildIconButton(
                               icon: Icons.edit_outlined,
-                              tooltip: 'Edit Specialty',
+                              tooltip: 'Edit',
                               onTap: () => _openSpecialtyDialog(s),
                             ),
                             const SizedBox(width: 4),
                             _buildIconButton(
                               icon: Icons.delete_outline,
-                              tooltip: 'Delete Specialty',
+                              tooltip: 'Delete',
                               isDelete: true,
                               onTap: () => _deleteItem(s.specialtyId),
                             ),
@@ -2599,7 +2598,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
     }
 
     return Padding(
-      padding: EdgeInsets.all(isMobile ? 14 : 20),
+      padding: EdgeInsets.all(isMobile ? 10 : 14),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final crossCount = constraints.maxWidth > 900
@@ -2610,20 +2609,20 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: crossCount,
-              crossAxisSpacing: 14,
-              mainAxisSpacing: 14,
-              mainAxisExtent: 72,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              mainAxisExtent: 60,
             ),
             itemCount: _languages.length,
             itemBuilder: (context, idx) {
               final lang = _languages[idx];
               return Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.borderGray),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2637,8 +2636,8 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                             lang.nameEn,
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                              color: AppTheme.textMain,
+                              fontSize: 13,
+                              color: Color(0xFF0F172A),
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -2646,8 +2645,8 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                           Text(
                             lang.nameAr,
                             style: const TextStyle(
-                              fontSize: 12,
-                              color: AppTheme.textMuted,
+                              fontSize: 11,
+                              color: Color(0xFF64748B),
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -2659,30 +2658,30 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                       children: [
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
+                              horizontal: 5, vertical: 1),
                           decoration: BoxDecoration(
-                            color: AppTheme.backgroundApp,
-                            borderRadius: BorderRadius.circular(4),
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(3),
                           ),
                           child: Text(
                             lang.code,
                             style: const TextStyle(
-                              fontSize: 11,
+                              fontSize: 10,
                               fontWeight: FontWeight.bold,
-                              color: AppTheme.textSecondary,
+                              color: Color(0xFF64748B),
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
                         _buildIconButton(
                           icon: Icons.edit_outlined,
-                          tooltip: 'Edit Language',
+                          tooltip: 'Edit',
                           onTap: () => _openLanguageDialog(lang),
                         ),
                         const SizedBox(width: 4),
                         _buildIconButton(
                           icon: Icons.delete_outline,
-                          tooltip: 'Delete Language',
+                          tooltip: 'Delete',
                           isDelete: true,
                           onTap: () => _deleteItem(lang.languageId),
                         ),
@@ -2705,7 +2704,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
     }
 
     return Padding(
-      padding: EdgeInsets.all(isMobile ? 14 : 20),
+      padding: EdgeInsets.all(isMobile ? 10 : 14),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final crossCount = constraints.maxWidth > 900
@@ -2716,9 +2715,9 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: crossCount,
-              crossAxisSpacing: 14,
-              mainAxisSpacing: 14,
-              mainAxisExtent: 140,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              mainAxisExtent: 80,
             ),
             itemCount: _insurances.length,
             itemBuilder: (context, idx) {
@@ -2726,93 +2725,89 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
               final logoUrl = _resolveMediaUrl(ins.logoUrl);
 
               return Container(
-                padding: const EdgeInsets.all(14),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.borderGray),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Row(
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: AppTheme.backgroundApp,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: AppTheme.borderGray),
-                          ),
-                          alignment: Alignment.center,
-                          child: logoUrl.isNotEmpty
-                              ? ClipRRect(
-                                  borderRadius: BorderRadius.circular(5),
-                                  child: Image.network(
-                                    logoUrl,
-                                    width: 48,
-                                    height: 48,
-                                    fit: BoxFit.contain,
-                                    errorBuilder: (_, __, ___) =>
-                                        const Text('🛡️',
-                                            style: TextStyle(fontSize: 22)),
-                                  ),
-                                )
-                              : const Text('🛡️',
-                                  style: TextStyle(fontSize: 22)),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      alignment: Alignment.center,
+                      child: logoUrl.isNotEmpty
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(5),
+                              child: Image.network(
+                                logoUrl,
+                                width: 36,
+                                height: 36,
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) => const Text('🛡️',
+                                    style: TextStyle(fontSize: 16)),
+                              ),
+                            )
+                          : const Text('🛡️', style: TextStyle(fontSize: 16)),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Row(
                             children: [
-                              Text(
-                                ins.nameEn,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                  color: AppTheme.textMain,
+                              Expanded(
+                                child: Text(
+                                  ins.nameEn,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                ins.nameAr,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: AppTheme.textMuted,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                              const SizedBox(width: 4),
+                              _buildStatusBadge(ins.isActive),
                             ],
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 2),
+                          Text(
+                            ins.nameAr,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF64748B),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
                     ),
-                    const Divider(height: 8),
+                    const SizedBox(width: 6),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _buildStatusBadge(ins.isActive),
-                        Row(
-                          children: [
-                            _buildIconButton(
-                              icon: Icons.edit_outlined,
-                              tooltip: 'Edit Insurance',
-                              onTap: () => _openInsuranceDialog(ins),
-                            ),
-                            const SizedBox(width: 4),
-                            _buildIconButton(
-                              icon: Icons.delete_outline,
-                              tooltip: 'Delete Insurance',
-                              isDelete: true,
-                              onTap: () => _deleteItem(ins.providerId),
-                            ),
-                          ],
+                        _buildIconButton(
+                          icon: Icons.edit_outlined,
+                          tooltip: 'Edit',
+                          onTap: () => _openInsuranceDialog(ins),
+                        ),
+                        const SizedBox(width: 4),
+                        _buildIconButton(
+                          icon: Icons.delete_outline,
+                          tooltip: 'Delete',
+                          isDelete: true,
+                          onTap: () => _deleteItem(ins.providerId),
                         ),
                       ],
                     ),
@@ -2833,7 +2828,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
     }
 
     return Padding(
-      padding: EdgeInsets.all(isMobile ? 14 : 20),
+      padding: EdgeInsets.all(isMobile ? 10 : 14),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final crossCount = constraints.maxWidth > 1000
@@ -2844,9 +2839,9 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: crossCount,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              mainAxisExtent: 280,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              mainAxisExtent: 145,
             ),
             itemCount: _doctors.length,
             itemBuilder: (context, idx) {
@@ -2859,385 +2854,216 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                   .toUpperCase();
 
               return Container(
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.borderGray),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color.fromRGBO(0, 0, 0, 0.03),
-                      blurRadius: 6,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Column(
-                    children: [
-                      // Top gradient accent bar
-                      Container(
-                        height: 3,
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              AppTheme.primaryTeal,
-                              AppTheme.primaryDarkTeal
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Stack(
+                          clipBehavior: Clip.none,
                           children: [
-                            // Doctor Head
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    Container(
-                                      width: 46,
-                                      height: 46,
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.primaryLightTeal,
-                                        borderRadius:
-                                            BorderRadius.circular(10),
-                                        border: Border.all(
-                                            color: AppTheme.primaryTeal,
-                                            width: 1.5),
-                                      ),
-                                      alignment: Alignment.center,
-                                      child: avatarUrl.isNotEmpty
-                                          ? ClipRRect(
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                              child: Image.network(
-                                                avatarUrl,
-                                                width: 46,
-                                                height: 46,
-                                                fit: BoxFit.cover,
-                                                errorBuilder: (_, __, ___) =>
-                                                    Text(
-                                                  initials,
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    color: AppTheme
-                                                        .primaryDarkTeal,
-                                                    fontSize: 14,
-                                                  ),
-                                                ),
-                                              ),
-                                            )
-                                          : Text(
-                                              initials,
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                color:
-                                                    AppTheme.primaryDarkTeal,
-                                                fontSize: 14,
-                                              ),
-                                            ),
-                                    ),
-                                    Positioned(
-                                      bottom: -2,
-                                      right: -2,
-                                      child: Container(
-                                        width: 12,
-                                        height: 12,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: doc.isActive
-                                              ? AppTheme.successGreen
-                                              : AppTheme.textMuted,
-                                          border: Border.all(
-                                              color: Colors.white, width: 2),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        displayName,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                          color: AppTheme.textMain,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 3),
-                                      Row(
-                                        children: [
-                                          Container(
-                                            padding:
-                                                const EdgeInsets.symmetric(
-                                                    horizontal: 5, vertical: 1),
-                                            decoration: BoxDecoration(
-                                              color: AppTheme.primaryLightTeal,
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
-                                            child: Text(
-                                              doc.title.value,
-                                              style: const TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.bold,
-                                                color:
-                                                    AppTheme.primaryDarkTeal,
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Container(
-                                            padding:
-                                                const EdgeInsets.symmetric(
-                                                    horizontal: 5, vertical: 1),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFDCFCE7),
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
-                                            child: const Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(Icons.check,
-                                                    size: 10,
-                                                    color: Color(0xFF15803D)),
-                                                SizedBox(width: 2),
-                                                Text(
-                                                  'MOH Verified',
-                                                  style: TextStyle(
-                                                    fontSize: 10,
-                                                    fontWeight:
-                                                        FontWeight.w600,
-                                                    color: Color(0xFF15803D),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 3),
-                                      Row(
-                                        children: [
-                                          const Text('★',
-                                              style: TextStyle(
-                                                  color: AppTheme.warningAmber,
-                                                  fontSize: 12)),
-                                          const SizedBox(width: 3),
-                                          Text(
-                                            '${doc.overallRating}',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 11,
-                                              color: AppTheme.textMain,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 2),
-                                          Text(
-                                            '(${doc.reviewCount} reviews)',
-                                            style: const TextStyle(
-                                              fontSize: 10,
-                                              color: AppTheme.textMuted,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-
-                            // Doctor details 2x2 grid
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 8),
+                              width: 36,
+                              height: 36,
                               decoration: BoxDecoration(
-                                color: AppTheme.backgroundApp,
-                                borderRadius: BorderRadius.circular(8),
+                                color: AppTheme.primaryLightTeal,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                    color: AppTheme.primaryTeal, width: 1),
                               ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        const Text(
-                                          'MOH ID',
-                                          style: TextStyle(
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppTheme.textMuted,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          doc.mohRegistrationNumber.isNotEmpty
-                                              ? doc.mohRegistrationNumber
-                                              : 'MOH-${doc.doctorId.length >= 5 ? doc.doctorId.substring(0, 5).toUpperCase() : '1002'}',
+                              alignment: Alignment.center,
+                              child: avatarUrl.isNotEmpty
+                                  ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(5),
+                                      child: Image.network(
+                                        avatarUrl,
+                                        width: 36,
+                                        height: 36,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => Text(
+                                          initials,
                                           style: const TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppTheme.textMain,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        const SizedBox(height: 6),
-                                        const Text(
-                                          'FEE',
-                                          style: TextStyle(
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppTheme.textMuted,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          'SAR ${doc.consultationFeeSar.toStringAsFixed(0)}',
-                                          style: const TextStyle(
-                                            fontSize: 12,
                                             fontWeight: FontWeight.bold,
                                             color: AppTheme.primaryDarkTeal,
+                                            fontSize: 12,
                                           ),
                                         ),
-                                      ],
+                                      ),
+                                    )
+                                  : Text(
+                                      initials,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.primaryDarkTeal,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                            ),
+                            Positioned(
+                              bottom: -2,
+                              right: -2,
+                              child: Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: doc.isActive
+                                      ? AppTheme.successGreen
+                                      : const Color(0xFF94A3B8),
+                                  border: Border.all(
+                                      color: Colors.white, width: 1),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      displayName,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                        color: Color(0xFF0F172A),
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        const Text(
-                                          'EXPERIENCE',
-                                          style: TextStyle(
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppTheme.textMuted,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          '${doc.experienceYears} Years',
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppTheme.textMain,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        const Text(
-                                          'STATUS',
-                                          style: TextStyle(
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppTheme.textMuted,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Container(
-                                          padding:
-                                              const EdgeInsets.symmetric(
-                                                  horizontal: 5, vertical: 1),
-                                          decoration: BoxDecoration(
-                                            color: AppTheme.primaryLightTeal,
-                                            borderRadius:
-                                                BorderRadius.circular(4),
-                                          ),
-                                          child: const Text(
-                                            'VERIFIED',
-                                            style: TextStyle(
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.bold,
-                                              color:
-                                                  AppTheme.primaryDarkTeal,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+                                  const SizedBox(width: 4),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 4, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.primaryLightTeal,
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                    child: Text(
+                                      doc.title.value,
+                                      style: const TextStyle(
+                                        fontSize: 8,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.primaryDarkTeal,
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
-                            ),
-                            const SizedBox(height: 10),
-
-                            // Footer Actions
-                            Row(
-                              mainAxisAlignment:
-                                  MainAxisAlignment.spaceBetween,
-                              children: [
-                                InkWell(
-                                  onTap: () => _toggleDoctorStatus(doc),
-                                  borderRadius: BorderRadius.circular(6),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: doc.isActive
-                                          ? const Color(0xFFFEF2F2)
-                                          : const Color(0xFFECFDF5),
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(
-                                        color: doc.isActive
-                                            ? const Color(0xFFFCA5A5)
-                                            : const Color(0xFF6EE7B7),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      doc.isActive
-                                          ? '🚫 Deactivate'
-                                          : '✅ Activate',
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Text(
+                                    doc.mohRegistrationNumber.isNotEmpty
+                                        ? doc.mohRegistrationNumber
+                                        : 'MOH Verified',
+                                    style: const TextStyle(
+                                        fontSize: 10,
+                                        color: Color(0xFF64748B)),
+                                  ),
+                                  const Text(' • ',
+                                      style:
+                                          TextStyle(color: Color(0xFF94A3B8))),
+                                  const Text('★ ',
                                       style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                        color: doc.isActive
-                                            ? const Color(0xFFDC2626)
-                                            : const Color(0xFF059669),
-                                      ),
+                                          color: Color(0xFFF59E0B),
+                                          fontSize: 10)),
+                                  Text(
+                                    '${doc.overallRating}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 10,
+                                      color: Color(0xFF0F172A),
                                     ),
                                   ),
-                                ),
-                                Row(
-                                  children: [
-                                    _buildIconButton(
-                                      icon: Icons.edit_outlined,
-                                      tooltip: 'Edit Doctor',
-                                      onTap: () => _openDoctorDialog(doc),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    _buildIconButton(
-                                      icon: Icons.delete_outline,
-                                      tooltip: 'Delete Doctor',
-                                      isDelete: true,
-                                      onTap: () => _deleteItem(doc.doctorId),
-                                    ),
-                                  ],
-                                ),
-                              ],
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Exp: ${doc.experienceYears} Yrs',
+                              style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF475569))),
+                          Text('SAR ${doc.consultationFeeSar.toStringAsFixed(0)}',
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.primaryDarkTeal)),
+                        ],
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        InkWell(
+                          onTap: () => _toggleDoctorStatus(doc),
+                          borderRadius: BorderRadius.circular(4),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: doc.isActive
+                                  ? const Color(0xFFFEF2F2)
+                                  : const Color(0xFFECFDF5),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              doc.isActive ? 'Deactivate' : 'Activate',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: doc.isActive
+                                    ? const Color(0xFFDC2626)
+                                    : const Color(0xFF059669),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            _buildIconButton(
+                              icon: Icons.edit_outlined,
+                              tooltip: 'Edit',
+                              onTap: () => _openDoctorDialog(doc),
+                            ),
+                            const SizedBox(width: 4),
+                            _buildIconButton(
+                              icon: Icons.delete_outline,
+                              tooltip: 'Delete',
+                              isDelete: true,
+                              onTap: () => _deleteItem(doc.doctorId),
                             ),
                           ],
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ],
                 ),
               );
             },
@@ -3250,31 +3076,38 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
   // ── Helper Widgets ───────────────────────────────────────────────────
   Widget _buildEmptyState(String message) {
     return Container(
-      padding: const EdgeInsets.all(40),
+      padding: const EdgeInsets.all(28),
       alignment: Alignment.center,
-      child: Text(
-        message,
-        style: const TextStyle(
-          fontSize: 13,
-          color: AppTheme.textMuted,
-        ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.inbox_outlined, size: 24, color: Color(0xFF94A3B8)),
+          const SizedBox(height: 6),
+          Text(
+            message,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF64748B),
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildStatusBadge(bool isActive) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
       decoration: BoxDecoration(
-        color: isActive ? AppTheme.primaryLightTeal : const Color(0xFFFEE2E2),
-        borderRadius: BorderRadius.circular(4),
+        color: isActive ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2),
+        borderRadius: BorderRadius.circular(3),
       ),
       child: Text(
         isActive ? 'ACTIVE' : 'INACTIVE',
         style: TextStyle(
-          fontSize: 10,
+          fontSize: 8,
           fontWeight: FontWeight.bold,
-          color: isActive ? AppTheme.primaryDarkTeal : AppTheme.dangerRed,
+          color: isActive ? const Color(0xFF15803D) : const Color(0xFFDC2626),
         ),
       ),
     );
@@ -3290,18 +3123,18 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
       onTap: onTap,
       borderRadius: BorderRadius.circular(4),
       child: Container(
-        width: 28,
-        height: 28,
+        width: 24,
+        height: 24,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: AppTheme.borderGray),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
         ),
         alignment: Alignment.center,
         child: Icon(
           icon,
-          size: 14,
-          color: isDelete ? AppTheme.dangerRed : AppTheme.textSecondary,
+          size: 12,
+          color: isDelete ? const Color(0xFFDC2626) : const Color(0xFF64748B),
         ),
       ),
     );
