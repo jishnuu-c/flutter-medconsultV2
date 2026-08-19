@@ -9,8 +9,18 @@ class PatientService {
 
   // Profile
   Future<dynamic> getMyProfile() async {
-    final res = await dio.get('/api/patients/me');
-    return res.data;
+    try {
+      final res = await dio.get('/api/patients/me');
+      if (res.data != null && res.data is Map) {
+        return res.data;
+      }
+      return null;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        return null;
+      }
+      rethrow;
+    }
   }
 
   Future<dynamic> createProfile(Map<String, dynamic> dto) async {

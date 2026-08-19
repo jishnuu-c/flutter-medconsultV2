@@ -41,26 +41,31 @@ class _PatientHomeScreenState extends ConsumerState<PatientHomeScreen> {
     setState(() => _isLoading = true);
     try {
       final profile = await ref.read(patientServiceProvider).getMyProfile();
-      setState(() {
-        _patientProfile = Map<String, dynamic>.from(profile);
-        _needProfileInit = false;
-      });
-      await Future.wait([_loadUpcomingAppointments(), _loadLatestVitals(profile['patientId'])]);
+      if (profile != null && profile is Map && profile['patientId'] != null) {
+        if (mounted) {
+          setState(() {
+            _patientProfile = Map<String, dynamic>.from(profile);
+            _needProfileInit = false;
+          });
+        }
+        await Future.wait([
+          _loadUpcomingAppointments(),
+          _loadLatestVitals(profile['patientId']),
+        ]);
+      } else {
+        if (mounted) {
+          setState(() {
+            _patientProfile = null;
+            _needProfileInit = true;
+          });
+        }
+      }
     } catch (e) {
-      _handleProfileError(e);
+      if (mounted) {
+        setState(() => _needProfileInit = true);
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  void _handleProfileError(dynamic err) {
-    final status = err is DioException ? err.response?.statusCode : null;
-    if (status == 404) {
-      if (mounted) setState(() => _needProfileInit = true);
-    } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to load patient profile.')),
-      );
     }
   }
 

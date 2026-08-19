@@ -112,38 +112,40 @@ class _PatientProfileScreenState extends ConsumerState<PatientProfileScreen> {
     try {
       final profile = await ref.read(patientServiceProvider).getMyProfile();
       if (mounted) {
-        setState(() {
-          _profileExists = true;
-          _isEditMode = false;
-          _autovalidate = false;
-          _dobTouched = false;
-          _nationalIdController.text = profile['nationalId'] ?? '';
-          _nationalityCode = profile['nationality'];
-          _emergencyContactNameController.text =
-              profile['emergencyContactName'] ?? '';
-          _emergencyContactPhoneController.text =
-              profile['emergencyContactPhone'] ?? '';
-          _notesController.text = profile['notes'] ?? '';
-          _bloodType = profile['bloodType'] ?? 'Unknown';
-          _maritalStatus = profile['maritalStatus'] ?? 'SINGLE';
-          _dateOfBirth = profile['dateOfBirth'] != null
-              ? DateTime.tryParse(profile['dateOfBirth'])
-              : null;
-        });
-      }
-    } catch (e) {
-      final status = e is DioException ? e.response?.statusCode : null;
-      if (status == 404) {
-        if (mounted) {
+        if (profile != null && profile is Map && profile['patientId'] != null) {
+          setState(() {
+            _profileExists = true;
+            _isEditMode = false;
+            _autovalidate = false;
+            _dobTouched = false;
+            _nationalIdController.text = profile['nationalId'] ?? '';
+            _nationalityCode = profile['nationality'];
+            _emergencyContactNameController.text =
+                profile['emergencyContactName'] ?? '';
+            _emergencyContactPhoneController.text =
+                profile['emergencyContactPhone'] ?? '';
+            _notesController.text = profile['notes'] ?? '';
+            _bloodType = profile['bloodType'] ?? 'Unknown';
+            _maritalStatus = profile['maritalStatus'] ?? 'SINGLE';
+            _dateOfBirth = profile['dateOfBirth'] != null
+                ? DateTime.tryParse(profile['dateOfBirth'])
+                : null;
+          });
+        } else {
           setState(() {
             _profileExists = false;
-            _isEditMode = true; // auto-edit for creation
+            _isEditMode = true;
+            _autovalidate = false;
+            _dobTouched = false;
           });
         }
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not load patient profile.')),
-        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _profileExists = false;
+          _isEditMode = true;
+        });
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -310,7 +312,9 @@ class _PatientProfileScreenState extends ConsumerState<PatientProfileScreen> {
           _profileExists = true;
           _isEditMode = false;
           _autovalidate = false;
-          if (res['nationality'] != null) _nationalityCode = res['nationality'];
+          if (res is Map && res['nationality'] != null) {
+            _nationalityCode = res['nationality'];
+          }
         });
       }
     } catch (e) {

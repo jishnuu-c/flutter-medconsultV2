@@ -148,14 +148,11 @@ class _PatientConsultationsScreenState
     setState(() => _isLoading = true);
     try {
       final profile = await ref.read(patientServiceProvider).getMyProfile();
-      _patientId = profile['patientId'];
-      await _loadConsultations();
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not load patient profile.')),
-        );
+      if (profile != null && profile is Map && profile['patientId'] != null) {
+        _patientId = profile['patientId'];
+        await _loadConsultations();
       }
+    } catch (_) {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

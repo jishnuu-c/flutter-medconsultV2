@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/auth_models.dart';
@@ -26,6 +25,7 @@ class AuthState {
 
   bool hasRole(List<UserRole> roles) {
     if (currentUser == null) return false;
+    if (currentUser!.role == UserRole.SYSTEM_ADMIN) return true;
     return roles.contains(currentUser!.role);
   }
 
