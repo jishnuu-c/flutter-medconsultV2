@@ -317,6 +317,7 @@ class DoctorLeaveModel {
   final String endDate;
   final bool isApproved;
   final String? notes;
+  final String? createdAt;
 
   DoctorLeaveModel({
     required this.leaveId,
@@ -326,19 +327,64 @@ class DoctorLeaveModel {
     required this.endDate,
     required this.isApproved,
     this.notes,
+    this.createdAt,
   });
 
   factory DoctorLeaveModel.fromJson(Map<String, dynamic> json) {
+    final rawType =
+        json['leaveType'] ?? json['leave_type'] ?? json['type'] ?? 'ANNUAL';
+    final rawStart = json['startDate'] ??
+        json['start_date'] ??
+        json['from'] ??
+        json['fromDate'] ??
+        '';
+    final rawEnd = json['endDate'] ??
+        json['end_date'] ??
+        json['to'] ??
+        json['toDate'] ??
+        '';
+    final rawNotes = json['notes'] ??
+        json['reason'] ??
+        json['note'] ??
+        json['description'] ??
+        '';
+    final rawApproved = json['isApproved'] ??
+        json['is_approved'] ??
+        json['approved'] ??
+        (json['status']?.toString().toUpperCase() == 'APPROVED');
+    final rawCreated = json['createdAt'] ??
+        json['created_at'] ??
+        json['createdDate'] ??
+        json['dateSubmitted'] ??
+        '';
+
     return DoctorLeaveModel(
-      leaveId: json['leaveId']?.toString() ?? '',
-      dcId: json['dcId']?.toString() ?? '',
-      leaveType: LeaveType.fromString(json['leaveType'] ?? 'ANNUAL'),
-      startDate: json['startDate'] ?? '',
-      endDate: json['endDate'] ?? '',
-      isApproved: json['isApproved'] ?? false,
-      notes: json['notes'],
+      leaveId: json['leaveId']?.toString() ??
+          json['id']?.toString() ??
+          json['_id']?.toString() ??
+          '',
+      dcId: json['dcId']?.toString() ??
+          json['doctorClinicId']?.toString() ??
+          json['dc_id']?.toString() ??
+          '',
+      leaveType: LeaveType.fromString(rawType.toString()),
+      startDate: rawStart.toString(),
+      endDate: rawEnd.toString(),
+      isApproved: rawApproved == true || rawApproved.toString() == 'true',
+      notes: rawNotes.toString().isNotEmpty ? rawNotes.toString() : null,
+      createdAt:
+          rawCreated.toString().isNotEmpty ? rawCreated.toString() : null,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'dcId': dcId,
+        'leaveType': leaveType.value,
+        'startDate': startDate,
+        'endDate': endDate,
+        'isApproved': isApproved,
+        if (notes != null) 'notes': notes,
+      };
 }
 
 class DoctorSpecialtyModel {

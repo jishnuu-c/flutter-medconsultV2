@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/doctor_models.dart';
 import '../data/doctor_service.dart';
@@ -172,24 +173,43 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
     return list;
   }
 
+  DoctorModel? _getDoctor(String doctorId) {
+    try {
+      return _doctors.firstWhere((d) => d.doctorId == doctorId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _getLogoUrl(String? url) {
+    if (url == null || url.trim().isEmpty) return '';
+    final trimmed = url.trim();
+    if (trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://') ||
+        trimmed.startsWith('data:') ||
+        trimmed.startsWith('blob:')) {
+      return trimmed;
+    }
+    final cleanPath = trimmed.startsWith('/') ? trimmed : '/$trimmed';
+    return '$kBaseUrl$cleanPath';
+  }
+
   String _getDoctorName(String doctorId) {
-    final doc = _doctors.firstWhere(
-      (d) => d.doctorId == doctorId,
-      orElse: () => DoctorModel(
-        doctorId: '',
-        userId: '',
-        email: '',
-        fullName: doctorId.isNotEmpty ? doctorId : 'Doctor',
-        mohRegistrationNumber: '',
-        mohVerified: true,
-        title: DoctorTitle.DR,
-        experienceYears: 0,
-        overallRating: 0,
-        reviewCount: 0,
-        consultationFeeSar: 0,
-        isActive: true,
-      ),
-    );
+    final doc = _getDoctor(doctorId) ??
+        DoctorModel(
+          doctorId: '',
+          userId: '',
+          email: '',
+          fullName: doctorId.isNotEmpty ? doctorId : 'Doctor',
+          mohRegistrationNumber: '',
+          mohVerified: true,
+          title: DoctorTitle.DR,
+          experienceYears: 0,
+          overallRating: 0,
+          reviewCount: 0,
+          consultationFeeSar: 0,
+          isActive: true,
+        );
     final name = doc.fullName;
     final nameLower = name.toLowerCase().trim();
     if (nameLower.startsWith('dr') ||
@@ -504,6 +524,9 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
       7: 'Sunday',
     };
 
+    final doc = _getDoctor(dc.doctorId);
+    final avatarUrl = doc?.avatarUrl != null ? _getLogoUrl(doc!.avatarUrl) : '';
+
     if (!mounted) return;
 
     showDialog(
@@ -516,34 +539,62 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           title: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryLightTeal,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'Branch: ${_getBranchName(dc.branchId)}',
-                        style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.primaryTeal),
-                      ),
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: AppTheme.primaryLightTeal,
+                      backgroundImage: avatarUrl.isNotEmpty
+                          ? NetworkImage(avatarUrl)
+                          : null,
+                      child: avatarUrl.isEmpty
+                          ? Text(
+                              doc != null && doc.fullName.isNotEmpty
+                                  ? doc.fullName[0]
+                                  : '👨‍⚕️',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.primaryTeal,
+                              ),
+                            )
+                          : null,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '📅 Consultation Schedule — ${_getDoctorName(dc.doctorId)}',
-                      style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.primaryTeal),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryLightTeal,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'Branch: ${_getBranchName(dc.branchId)}',
+                              style: const TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.primaryDarkTeal),
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '📅 Working Schedule — ${_getDoctorName(dc.doctorId)}',
+                            style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.primaryTeal),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -964,370 +1015,19 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
     );
   }
 
-  void _openLeaveModal(DoctorClinicModel dc) async {
-    List<DoctorLeaveModel> leaves = [];
-    try {
-      leaves = await ref.read(doctorServiceProvider).getDcLeave(dc.dcId);
-    } catch (_) {}
-
-    final pendingCount = leaves.where((l) => !l.isApproved).length;
-    final approvedCount = leaves.where((l) => l.isApproved).length;
-
-    if (!mounted) return;
+  void _openLeaveModal(DoctorClinicModel dc) {
+    final doc = _getDoctor(dc.doctorId);
+    final avatarUrl =
+        doc?.avatarUrl != null ? _getLogoUrl(doc!.avatarUrl) : '';
+    final branchName = _getBranchName(dc.branchId);
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryLightTeal,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      'Branch: ${_getBranchName(dc.branchId)}',
-                      style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.primaryTeal),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '🏖️ Leave Requests — ${_getDoctorName(dc.doctorId)}',
-                    style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.primaryTeal),
-                  ),
-                ],
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.close, size: 20),
-              onPressed: () => Navigator.pop(ctx),
-            ),
-          ],
-        ),
-        content: _dialogBody(
-          context,
-          maxWidth: 620,
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFF0F9FF), Color(0xFFE0F2FE)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFBAE6FD)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        children: [
-                          Text(
-                            '${leaves.length}',
-                            style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF0EA5E9)),
-                          ),
-                          const SizedBox(height: 2),
-                          const Text('TOTAL REQUESTS',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.textMuted)),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: Column(
-                        children: [
-                          Text(
-                            '$pendingCount',
-                            style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFFF59E0B)),
-                          ),
-                          const SizedBox(height: 2),
-                          const Text('PENDING',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.textMuted)),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: Column(
-                        children: [
-                          Text(
-                            '$approvedCount',
-                            style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF22C55E)),
-                          ),
-                          const SizedBox(height: 2),
-                          const Text('APPROVED',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.textMuted)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (leaves.isEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(32),
-                  decoration: BoxDecoration(
-                    color: AppTheme.backgroundApp,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppTheme.borderGray),
-                  ),
-                  child: Column(
-                    children: const [
-                      Text('🏖️', style: TextStyle(fontSize: 36)),
-                      SizedBox(height: 6),
-                      Text(
-                        'No leave requests found for this doctor.',
-                        style:
-                            TextStyle(fontSize: 13, color: AppTheme.textMuted),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        'Leave requests submitted by the doctor will appear here.',
-                        style:
-                            TextStyle(fontSize: 11, color: AppTheme.textMuted),
-                      ),
-                    ],
-                  ),
-                )
-              else
-                ...leaves.map((l) => Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: l.isApproved
-                            ? const Color(0xFFF0FDF4)
-                            : const Color(0xFFFFFDF7),
-                        border: Border(
-                          left: BorderSide(
-                            color: l.isApproved
-                                ? AppTheme.successGreen
-                                : const Color(0xFFF59E0B),
-                            width: 4,
-                          ),
-                          top: const BorderSide(color: AppTheme.borderGray),
-                          right: const BorderSide(color: AppTheme.borderGray),
-                          bottom: const BorderSide(color: AppTheme.borderGray),
-                        ),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 6,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFE0F2FE),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Text(
-                                        l.leaveType.value.replaceAll('_', ' '),
-                                        style: const TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
-                                            color: Color(0xFF0369A1)),
-                                      ),
-                                    ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        color: l.isApproved
-                                            ? const Color(0xFFDCFCE7)
-                                            : const Color(0xFFFEF9C3),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Text(
-                                        l.isApproved
-                                            ? '✅ Approved'
-                                            : '⏳ Pending',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          color: l.isApproved
-                                              ? const Color(0xFF166534)
-                                              : const Color(0xFF854D0E),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                  children: [
-                                    Text('📅 ${l.startDate}',
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 13)),
-                                    const Padding(
-                                      padding:
-                                          EdgeInsets.symmetric(horizontal: 6),
-                                      child: Text('→',
-                                          style: TextStyle(
-                                              color: AppTheme.textMuted)),
-                                    ),
-                                    Text(l.endDate,
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 13)),
-                                  ],
-                                ),
-                                if (l.notes != null && l.notes!.isNotEmpty) ...[
-                                  const SizedBox(height: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(4),
-                                      border: Border(
-                                          left: BorderSide(
-                                              color: AppTheme.borderGray,
-                                              width: 3)),
-                                    ),
-                                    child: Text('📝 ${l.notes}',
-                                        style: const TextStyle(
-                                            fontSize: 11,
-                                            color: AppTheme.textMuted)),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Column(
-                            children: [
-                              if (!l.isApproved)
-                                ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppTheme.successGreen,
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 8),
-                                    minimumSize: Size.zero,
-                                  ),
-                                  onPressed: () async {
-                                    try {
-                                      await ref
-                                          .read(doctorServiceProvider)
-                                          .updateLeave(
-                                              l.leaveId, {'isApproved': true});
-                                    } catch (_) {}
-                                    if (ctx.mounted) Navigator.pop(ctx);
-                                    _openLeaveModal(dc);
-                                  },
-                                  child: const Text('✅ Approve',
-                                      style: TextStyle(fontSize: 11)),
-                                ),
-                              if (l.isApproved)
-                                OutlinedButton(
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 8),
-                                    minimumSize: Size.zero,
-                                  ),
-                                  onPressed: () async {
-                                    try {
-                                      await ref
-                                          .read(doctorServiceProvider)
-                                          .updateLeave(
-                                              l.leaveId, {'isApproved': false});
-                                    } catch (_) {}
-                                    if (ctx.mounted) Navigator.pop(ctx);
-                                    _openLeaveModal(dc);
-                                  },
-                                  child: const Text('↩️ Revoke',
-                                      style: TextStyle(fontSize: 11)),
-                                ),
-                              if (!l.isApproved) const SizedBox(height: 6),
-                              if (!l.isApproved)
-                                OutlinedButton(
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: AppTheme.dangerRed,
-                                    side: const BorderSide(
-                                        color: AppTheme.dangerRed),
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 8),
-                                    minimumSize: Size.zero,
-                                  ),
-                                  onPressed: () async {
-                                    try {
-                                      await ref
-                                          .read(doctorServiceProvider)
-                                          .removeLeave(l.leaveId);
-                                    } catch (_) {}
-                                    if (ctx.mounted) Navigator.pop(ctx);
-                                    _openLeaveModal(dc);
-                                  },
-                                  child: const Text('❌ Reject',
-                                      style: TextStyle(fontSize: 11)),
-                                ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    )),
-            ],
-          ),
-        ),
-        actions: [
-          OutlinedButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close'),
-          ),
-        ],
+      builder: (ctx) => _DoctorLeaveDialog(
+        dc: dc,
+        doc: doc,
+        branchName: branchName,
+        avatarUrl: avatarUrl,
       ),
     );
   }
@@ -1364,13 +1064,7 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
     );
   }
 
-  void _openDoctorProfileModal(String doctorId) async {
-    DoctorDetailResponse? profile;
-    try {
-      profile =
-          await ref.read(doctorServiceProvider).getDoctorProfile(doctorId);
-    } catch (_) {}
-
+  void _openDoctorProfileModal(String doctorId) {
     final doc = _doctors.firstWhere(
       (d) => d.doctorId == doctorId,
       orElse: () => DoctorModel(
@@ -1389,338 +1083,28 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
       ),
     );
 
-    int activeSubTab = 0;
-    final specController = TextEditingController(text: 'General Practice');
-    final langController = TextEditingController(text: 'English');
-    final degreeController = TextEditingController(text: 'MBBS');
-    final instController = TextEditingController(text: 'King Saud University');
-
-    if (!mounted) return;
+    final matchingDc =
+        _placements.where((p) => p.doctorId == doctorId).toList();
+    final selectedDc = matchingDc.isNotEmpty ? matchingDc.first : null;
+    final branchName =
+        selectedDc != null ? _getBranchName(selectedDc.branchId) : 'All Branches';
+    final avatarUrl =
+        doc.avatarUrl != null ? _getLogoUrl(doc.avatarUrl) : '';
 
     showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setModalState) => AlertDialog(
-          insetPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          title: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      backgroundColor: AppTheme.primaryLightTeal,
-                      child: Text(doc.title.value,
-                          style: const TextStyle(
-                              color: AppTheme.primaryTeal,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 11)),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(doc.fullName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.primaryTeal)),
-                          Text(
-                              'MOH: ${doc.mohRegistrationNumber} | ${doc.experienceYears} Yrs Exp',
-                              style: const TextStyle(
-                                  fontSize: 11, color: AppTheme.textMuted)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close, size: 20),
-                onPressed: () => Navigator.pop(ctx),
-              ),
-            ],
-          ),
-          content: _dialogBody(
-            context,
-            maxWidth: 540,
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      ChoiceChip(
-                        label: const Text('Specialties',
-                            style: TextStyle(fontSize: 11)),
-                        selected: activeSubTab == 0,
-                        selectedColor: AppTheme.primaryLightTeal,
-                        onSelected: (v) =>
-                            setModalState(() => activeSubTab = 0),
-                      ),
-                      const SizedBox(width: 8),
-                      ChoiceChip(
-                        label: const Text('Languages',
-                            style: TextStyle(fontSize: 11)),
-                        selected: activeSubTab == 1,
-                        selectedColor: AppTheme.primaryLightTeal,
-                        onSelected: (v) =>
-                            setModalState(() => activeSubTab = 1),
-                      ),
-                      const SizedBox(width: 8),
-                      ChoiceChip(
-                        label: const Text('Qualifications',
-                            style: TextStyle(fontSize: 11)),
-                        selected: activeSubTab == 2,
-                        selectedColor: AppTheme.primaryLightTeal,
-                        onSelected: (v) =>
-                            setModalState(() => activeSubTab = 2),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                if (activeSubTab == 0) ...[
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: specController,
-                          decoration: const InputDecoration(
-                            hintText: 'Specialty Name',
-                            isDense: true,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: () async {
-                          final payload = {
-                            'doctorId': doctorId,
-                            'specialtyId': specController.text.trim(),
-                            'isPrimary': true,
-                          };
-                          try {
-                            await ref
-                                .read(doctorServiceProvider)
-                                .addSpecialty(payload);
-                          } catch (_) {}
-                          try {
-                            final updated = await ref
-                                .read(doctorServiceProvider)
-                                .getDoctorProfile(doctorId);
-                            setModalState(() => profile = updated);
-                          } catch (_) {}
-                        },
-                        child:
-                            const Text('Add', style: TextStyle(fontSize: 11)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  if (profile != null && profile!.specialties.isNotEmpty)
-                    ...profile!.specialties.map((s) => ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(s.specialtyId,
-                              style: const TextStyle(
-                                  fontSize: 13, fontWeight: FontWeight.w600)),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete,
-                                size: 18, color: AppTheme.dangerRed),
-                            onPressed: () async {
-                              try {
-                                await ref
-                                    .read(doctorServiceProvider)
-                                    .removeSpecialty(s.id);
-                                final updated = await ref
-                                    .read(doctorServiceProvider)
-                                    .getDoctorProfile(doctorId);
-                                setModalState(() => profile = updated);
-                              } catch (_) {}
-                            },
-                          ),
-                        ))
-                  else
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      child: Text('No specialties linked yet.',
-                          style: TextStyle(
-                              fontSize: 12, color: AppTheme.textMuted)),
-                    ),
-                ] else if (activeSubTab == 1) ...[
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: langController,
-                          decoration: const InputDecoration(
-                            hintText: 'Language Name',
-                            isDense: true,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: () async {
-                          final payload = {
-                            'doctorId': doctorId,
-                            'languageId': langController.text.trim(),
-                            'proficiency': 'FLUENT',
-                          };
-                          try {
-                            await ref
-                                .read(doctorServiceProvider)
-                                .addLanguage(payload);
-                          } catch (_) {}
-                          try {
-                            final updated = await ref
-                                .read(doctorServiceProvider)
-                                .getDoctorProfile(doctorId);
-                            setModalState(() => profile = updated);
-                          } catch (_) {}
-                        },
-                        child:
-                            const Text('Add', style: TextStyle(fontSize: 11)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  if (profile != null && profile!.languages.isNotEmpty)
-                    ...profile!.languages.map((l) => ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(l.languageId,
-                              style: const TextStyle(
-                                  fontSize: 13, fontWeight: FontWeight.w600)),
-                          subtitle: Text('Proficiency: ${l.proficiency.value}',
-                              style: const TextStyle(
-                                  fontSize: 11, color: AppTheme.textMuted)),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete,
-                                size: 18, color: AppTheme.dangerRed),
-                            onPressed: () async {
-                              try {
-                                await ref
-                                    .read(doctorServiceProvider)
-                                    .removeLanguage(l.id);
-                                final updated = await ref
-                                    .read(doctorServiceProvider)
-                                    .getDoctorProfile(doctorId);
-                                setModalState(() => profile = updated);
-                              } catch (_) {}
-                            },
-                          ),
-                        ))
-                  else
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      child: Text('No languages linked yet.',
-                          style: TextStyle(
-                              fontSize: 12, color: AppTheme.textMuted)),
-                    ),
-                ] else ...[
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: degreeController,
-                          decoration: const InputDecoration(
-                            hintText: 'Degree (e.g. MBBS)',
-                            isDense: true,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: TextField(
-                          controller: instController,
-                          decoration: const InputDecoration(
-                            hintText: 'Institution',
-                            isDense: true,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      ElevatedButton(
-                        onPressed: () async {
-                          final payload = {
-                            'doctorId': doctorId,
-                            'degree': degreeController.text.trim(),
-                            'institution': instController.text.trim(),
-                            'country': 'Saudi Arabia',
-                            'yearObtained': 2020,
-                            'sortOrder': 1,
-                          };
-                          try {
-                            await ref
-                                .read(doctorServiceProvider)
-                                .addQualification(payload);
-                          } catch (_) {}
-                          try {
-                            final updated = await ref
-                                .read(doctorServiceProvider)
-                                .getDoctorProfile(doctorId);
-                            setModalState(() => profile = updated);
-                          } catch (_) {}
-                        },
-                        child:
-                            const Text('Add', style: TextStyle(fontSize: 11)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  if (profile != null && profile!.qualifications.isNotEmpty)
-                    ...profile!.qualifications.map((q) => ListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          title: Text('${q.degree} — ${q.institution}',
-                              style: const TextStyle(
-                                  fontSize: 13, fontWeight: FontWeight.w600)),
-                          subtitle: Text('${q.country} (${q.yearObtained})',
-                              style: const TextStyle(
-                                  fontSize: 11, color: AppTheme.textMuted)),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete,
-                                size: 18, color: AppTheme.dangerRed),
-                            onPressed: () async {
-                              try {
-                                await ref
-                                    .read(doctorServiceProvider)
-                                    .removeQualification(q.qualId);
-                                final updated = await ref
-                                    .read(doctorServiceProvider)
-                                    .getDoctorProfile(doctorId);
-                                setModalState(() => profile = updated);
-                              } catch (_) {}
-                            },
-                          ),
-                        ))
-                  else
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      child: Text('No qualifications linked yet.',
-                          style: TextStyle(
-                              fontSize: 12, color: AppTheme.textMuted)),
-                    ),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            OutlinedButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Close'),
-            ),
-          ],
-        ),
+      builder: (ctx) => _DoctorProfileDialog(
+        doctorId: doctorId,
+        doc: doc,
+        dc: selectedDc,
+        branchName: branchName,
+        avatarUrl: avatarUrl,
+        onManageSchedule: selectedDc != null
+            ? () {
+                Navigator.pop(ctx);
+                _openScheduleModal(selectedDc);
+              }
+            : null,
       ),
     );
   }
@@ -1729,158 +1113,52 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
 
   Widget _buildHeaderBanner(bool isVertical) {
     if (isVertical) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          const Expanded(
-            child: Text(
-              '👤 Doctor Roster',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.primaryTeal,
-              ),
-            ),
-          ),
-          IconButton.filled(
-            key: const Key('add_placement_btn'),
-            style: IconButton.styleFrom(
-              backgroundColor: AppTheme.primaryTeal,
-              minimumSize: const Size(44, 44),
-            ),
-            icon: const Icon(Icons.add, size: 22),
-            tooltip: 'Assign Doctor',
-            onPressed: _openAddPlacementModal,
-          ),
-        ],
-      );
-    }
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text(
-                '👤 Doctor Roster Placement',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.primaryTeal,
-                ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                'Manage doctor roster placements across facility branches, departments, and fee structures',
-                style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
-              ),
-            ],
-          ),
-        ),
-        ElevatedButton.icon(
-          key: const Key('add_placement_btn'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppTheme.primaryTeal,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-          ),
-          icon: const Icon(Icons.add, size: 18),
-          label: const Text('Assign Doctor',
-              style: TextStyle(fontWeight: FontWeight.bold)),
-          onPressed: _openAddPlacementModal,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFilterBar(bool isVertical, int count) {
-    if (isVertical) {
       return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppTheme.borderGray),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(8),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
+        padding: const EdgeInsets.only(bottom: 12),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: AppTheme.borderGray)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (_clinics.isNotEmpty)
-                  Expanded(
-                    flex: 4,
-                    child: DropdownButtonFormField<String>(
-                      initialValue:
-                          _clinics.any((c) => c.clinicId == _selectedClinicId)
-                              ? _selectedClinicId
-                              : (_clinics.isNotEmpty
-                                  ? _clinics.first.clinicId
-                                  : null),
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                      ),
-                      items: _clinics.map((c) {
-                        return DropdownMenuItem(
-                            value: c.clinicId,
-                            child: Text(c.nameEn,
-                                overflow: TextOverflow.ellipsis));
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setState(() {
-                            _selectedClinicId = val;
-                          });
-                          _loadBranchesForClinic(val);
-                          _loadPlacementsData();
-                        }
-                      },
-                    ),
-                  ),
-                if (_clinics.isNotEmpty) const SizedBox(width: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE0F2FE),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
+                const Expanded(
                   child: Text(
-                    '$count',
-                    style: const TextStyle(
-                      fontSize: 12,
+                    '👨‍⚕️ Doctor Roster Placement',
+                    style: TextStyle(
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF0369A1),
+                      color: AppTheme.primaryTeal,
                     ),
                   ),
                 ),
+                ElevatedButton.icon(
+                  key: const Key('add_placement_btn'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryTeal,
+                    foregroundColor: Colors.white,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    minimumSize: Size.zero,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Assign Doctor',
+                      style:
+                          TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  onPressed: _openAddPlacementModal,
+                ),
               ],
             ),
-            const SizedBox(height: 8),
-            TextField(
-              decoration: const InputDecoration(
-                hintText: '🔍 Search doctor / branch / specialty',
-                isDense: true,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              ),
-              onChanged: (v) => setState(() => _searchTerm = v),
+            const SizedBox(height: 4),
+            const Text(
+              'Manage doctor roster placements across facility branches, departments, and fee structures',
+              style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
             ),
           ],
         ),
@@ -1888,24 +1166,149 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
     }
 
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.borderGray),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(8),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+      padding: const EdgeInsets.only(bottom: 16),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppTheme.borderGray)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text(
+                  '👨‍⚕️ Doctor Roster Placement',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.primaryTeal,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Manage doctor roster placements across facility branches, departments, and fee structures',
+                  style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
+                ),
+              ],
+            ),
+          ),
+          ElevatedButton.icon(
+            key: const Key('add_placement_btn'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryTeal,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            ),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Assign Doctor',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+            onPressed: _openAddPlacementModal,
           ),
         ],
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Row(
+    );
+  }
+
+  Widget _buildFilterBar(bool isVertical, int count) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.borderGray),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x06000000),
+            blurRadius: 4,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: isVertical
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    if (_clinics.isNotEmpty) ...[
+                      const Text(
+                        'Facility:',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textMain),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _clinics.any((c) => c.clinicId == _selectedClinicId)
+                              ? _selectedClinicId
+                              : (_clinics.isNotEmpty
+                                  ? _clinics.first.clinicId
+                                  : null),
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 8),
+                          ),
+                          items: _clinics.map((c) {
+                            return DropdownMenuItem(
+                                value: c.clinicId,
+                                child: Text(c.nameEn,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 12)));
+                          }).toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              setState(() => _selectedClinicId = val);
+                              _loadBranchesForClinic(val);
+                              _loadPlacementsData();
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryLightTeal,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '$count Active',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.primaryDarkTeal,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  decoration: const InputDecoration(
+                    hintText: 'Search by name, specialty, or branch...',
+                    prefixIcon:
+                        Icon(Icons.search, size: 18, color: AppTheme.textMuted),
+                    isDense: true,
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  ),
+                  onChanged: (v) => setState(() => _searchTerm = v),
+                ),
+              ],
+            )
+          : Row(
               children: [
                 if (_clinics.isNotEmpty) ...[
                   const Text(
@@ -1917,31 +1320,29 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
                   ),
                   const SizedBox(width: 10),
                   SizedBox(
-                    width: 180,
+                    width: 200,
                     child: DropdownButtonFormField<String>(
-                      initialValue:
-                          _clinics.any((c) => c.clinicId == _selectedClinicId)
-                              ? _selectedClinicId
-                              : (_clinics.isNotEmpty
-                                  ? _clinics.first.clinicId
-                                  : null),
+                      value: _clinics.any((c) => c.clinicId == _selectedClinicId)
+                          ? _selectedClinicId
+                          : (_clinics.isNotEmpty
+                              ? _clinics.first.clinicId
+                              : null),
                       isExpanded: true,
                       decoration: const InputDecoration(
                         isDense: true,
-                        contentPadding:
-                            EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
                       ),
                       items: _clinics.map((c) {
                         return DropdownMenuItem(
                             value: c.clinicId,
                             child: Text(c.nameEn,
-                                overflow: TextOverflow.ellipsis));
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 12.5)));
                       }).toList(),
                       onChanged: (val) {
                         if (val != null) {
-                          setState(() {
-                            _selectedClinicId = val;
-                          });
+                          setState(() => _selectedClinicId = val);
                           _loadBranchesForClinic(val);
                           _loadPlacementsData();
                         }
@@ -1953,8 +1354,9 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
                 Expanded(
                   child: TextField(
                     decoration: const InputDecoration(
-                      hintText:
-                          '🔍 Search doctor by name, specialty, or branch...',
+                      hintText: 'Search by name, specialty, or branch...',
+                      prefixIcon: Icon(Icons.search,
+                          size: 18, color: AppTheme.textMuted),
                       isDense: true,
                       contentPadding:
                           EdgeInsets.symmetric(horizontal: 14, vertical: 11),
@@ -1962,27 +1364,25 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
                     onChanged: (v) => setState(() => _searchTerm = v),
                   ),
                 ),
+                const SizedBox(width: 16),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryLightTeal,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '$count Active Doctor(s)',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.primaryDarkTeal,
+                    ),
+                  ),
+                ),
               ],
             ),
-          ),
-          const SizedBox(width: 16),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE0F2FE),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              '$count Active Doctor(s)',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF0369A1),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -2074,11 +1474,13 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
   }
 
   Widget _buildDoctorCard(DoctorClinicModel dc) {
+    final doc = _getDoctor(dc.doctorId);
     final docName = _getDoctorName(dc.doctorId);
     final branchName = _getBranchName(dc.branchId);
+    final avatarUrl = doc?.avatarUrl != null ? _getLogoUrl(doc!.avatarUrl) : '';
 
     return Card(
-      elevation: 2,
+      elevation: 1.5,
       color: Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
@@ -2088,7 +1490,7 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
       child: Container(
         decoration: const BoxDecoration(
           border: Border(
-            left: BorderSide(color: AppTheme.primaryTeal, width: 5),
+            left: BorderSide(color: AppTheme.primaryTeal, width: 4),
           ),
         ),
         padding: const EdgeInsets.all(14),
@@ -2099,17 +1501,24 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryLightTeal,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppTheme.primaryTeal, width: 1.2),
-                  ),
-                  alignment: Alignment.center,
-                  child: const Icon(Icons.person,
-                      color: AppTheme.primaryTeal, size: 22),
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: AppTheme.primaryLightTeal,
+                  backgroundImage: avatarUrl.isNotEmpty
+                      ? NetworkImage(avatarUrl)
+                      : null,
+                  child: avatarUrl.isEmpty
+                      ? Text(
+                          doc != null && doc.fullName.isNotEmpty
+                              ? doc.fullName[0]
+                              : '👨‍⚕️',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryTeal,
+                          ),
+                        )
+                      : null,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -2118,10 +1527,10 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
+                            horizontal: 7, vertical: 2),
                         decoration: BoxDecoration(
                           color: AppTheme.primaryLightTeal,
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
                           dc.department.isNotEmpty
@@ -2130,20 +1539,53 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
                           style: const TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
-                            color: AppTheme.primaryTeal,
+                            color: AppTheme.primaryDarkTeal,
                           ),
                         ),
                       ),
                       const SizedBox(height: 3),
-                      Text(
-                        docName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.primaryTeal,
-                        ),
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 4,
+                        children: [
+                          Text(
+                            docName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.textMain,
+                            ),
+                          ),
+                          if (doc?.mohVerified == true)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: Colors.green.shade50,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                    color: Colors.green.shade300, width: 0.8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.check_circle,
+                                      size: 10, color: Colors.green.shade700),
+                                  const SizedBox(width: 2),
+                                  Text(
+                                    'MOH',
+                                    style: TextStyle(
+                                      fontSize: 8.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green.shade800,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
                       ),
                     ],
                   ),
@@ -2180,27 +1622,36 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
             ),
             const SizedBox(height: 10),
 
-            // ── Middle Details ──────────────────────────────────────────
-            _cardRow('Branch Location:', branchName,
-                valueColor: AppTheme.primaryTeal),
-            const SizedBox(height: 8),
-            _cardRow('Consultation Fee:',
-                'SAR ${dc.consultationFeeSar.toStringAsFixed(0)}',
-                valueColor: AppTheme.successGreen),
-            const SizedBox(height: 8),
-            _cardRow('Role Designation:',
-                dc.isPrimary ? '⭐ Primary Specialist' : 'Consultant',
-                small: true),
-            const SizedBox(height: 6),
-            _cardRow('Roster Since:', dc.startDate, small: true),
+            // ── Middle Details Box ───────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppTheme.backgroundApp,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.borderGray),
+              ),
+              child: Column(
+                children: [
+                  _cardRow('Branch Location:', branchName,
+                      valueColor: AppTheme.primaryTeal),
+                  const SizedBox(height: 6),
+                  _cardRow('Consultation Fee:',
+                      'SAR ${dc.consultationFeeSar.toStringAsFixed(0)}',
+                      valueColor: AppTheme.successGreen),
+                  const Divider(height: 12, color: AppTheme.borderGray),
+                  _cardRow('Role Designation:',
+                      dc.isPrimary ? '⭐ Primary Specialist' : 'Consultant',
+                      small: true),
+                  const SizedBox(height: 4),
+                  _cardRow('Roster Since:', dc.startDate, small: true),
+                ],
+              ),
+            ),
 
-            // Gap before action buttons (fixed, not Spacer — this card is
-            // reused inside an unbounded-height ListView on phones, where
-            // Spacer() would throw at layout time)
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
 
             // ── Action Buttons 2×2 ─────────────────────────────────────
-            const Divider(height: 14, thickness: 0.5),
+            const Divider(height: 12, thickness: 0.5),
             Row(
               children: [
                 Expanded(
@@ -2379,3 +1830,1623 @@ class _DoctorsScreenState extends ConsumerState<DoctorsScreen> {
     );
   }
 }
+
+class _DoctorLeaveDialog extends ConsumerStatefulWidget {
+  final DoctorClinicModel dc;
+  final DoctorModel? doc;
+  final String branchName;
+  final String avatarUrl;
+
+  const _DoctorLeaveDialog({
+    required this.dc,
+    required this.doc,
+    required this.branchName,
+    required this.avatarUrl,
+  });
+
+  @override
+  ConsumerState<_DoctorLeaveDialog> createState() => _DoctorLeaveDialogState();
+}
+
+class _DoctorLeaveDialogState extends ConsumerState<_DoctorLeaveDialog> {
+  List<DoctorLeaveModel> _leaves = [];
+  bool _isLoading = true;
+  String? _actionLoadingId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLeaves();
+  }
+
+  Future<void> _loadLeaves() async {
+    setState(() => _isLoading = true);
+    try {
+      final data =
+          await ref.read(doctorServiceProvider).getDcLeave(widget.dc.dcId);
+      if (mounted) {
+        setState(() {
+          _leaves = data;
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _leaves = [];
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  String _formatDate(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return 'N/A';
+    try {
+      final dt = DateTime.parse(raw);
+      final months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec'
+      ];
+      return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
+    } catch (_) {
+      return raw.split('T').first;
+    }
+  }
+
+  String _formatDateTime(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return 'N/A';
+    try {
+      final dt = DateTime.parse(raw);
+      final months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec'
+      ];
+      final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+      final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+      final min = dt.minute.toString().padLeft(2, '0');
+      return '${months[dt.month - 1]} ${dt.day}, ${dt.year}, $hour:$min $ampm';
+    } catch (_) {
+      return raw;
+    }
+  }
+
+  String _formatDoctorName(DoctorModel? doc) {
+    if (doc == null || doc.fullName.isEmpty) return 'Doctor';
+    final name = doc.fullName.trim();
+    if (name.toLowerCase().startsWith('dr.') ||
+        name.toLowerCase().startsWith('dr ')) {
+      return name;
+    }
+    return '${doc.title.value}. $name';
+  }
+
+  Future<void> _approveLeave(DoctorLeaveModel leave) async {
+    setState(() => _actionLoadingId = leave.leaveId);
+    try {
+      final payload = {
+        'dcId': leave.dcId,
+        'leaveType': leave.leaveType.value,
+        'startDate': leave.startDate,
+        'endDate': leave.endDate,
+        'isApproved': true,
+        'notes': leave.notes,
+      };
+      await ref.read(doctorServiceProvider).updateLeave(leave.leaveId, payload);
+    } catch (_) {}
+    await _loadLeaves();
+    if (mounted) setState(() => _actionLoadingId = null);
+  }
+
+  Future<void> _revokeLeave(DoctorLeaveModel leave) async {
+    setState(() => _actionLoadingId = leave.leaveId);
+    try {
+      final payload = {
+        'dcId': leave.dcId,
+        'leaveType': leave.leaveType.value,
+        'startDate': leave.startDate,
+        'endDate': leave.endDate,
+        'isApproved': false,
+        'notes': leave.notes,
+      };
+      await ref.read(doctorServiceProvider).updateLeave(leave.leaveId, payload);
+    } catch (_) {}
+    await _loadLeaves();
+    if (mounted) setState(() => _actionLoadingId = null);
+  }
+
+  Future<void> _rejectLeave(DoctorLeaveModel leave) async {
+    setState(() => _actionLoadingId = leave.leaveId);
+    try {
+      await ref.read(doctorServiceProvider).removeLeave(leave.leaveId);
+    } catch (_) {}
+    await _loadLeaves();
+    if (mounted) setState(() => _actionLoadingId = null);
+  }
+
+  Widget _buildLeaveCard(DoctorLeaveModel leave) {
+    final isApproved = leave.isApproved;
+    final isBusy = _actionLoadingId == leave.leaveId;
+    final typeStr = leave.leaveType.value.replaceAll('_', ' ');
+    final startFormatted = _formatDate(leave.startDate);
+    final endFormatted = _formatDate(leave.endDate);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isApproved ? const Color(0xFFF0FDF4) : const Color(0xFFFFFDF7),
+        borderRadius: BorderRadius.circular(8),
+        border: Border(
+          left: BorderSide(
+            color:
+                isApproved ? AppTheme.successGreen : const Color(0xFFF59E0B),
+            width: 4,
+          ),
+          top: const BorderSide(color: AppTheme.borderGray),
+          right: const BorderSide(color: AppTheme.borderGray),
+          bottom: const BorderSide(color: AppTheme.borderGray),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header Row: Badges & Action Buttons
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Badges
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE0F2FE),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      typeStr,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0369A1),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: isApproved
+                          ? const Color(0xFFDCFCE7)
+                          : const Color(0xFFFEF9C3),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      isApproved ? 'Approved' : 'Pending',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: isApproved
+                            ? const Color(0xFF166534)
+                            : const Color(0xFF854D0E),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              // Actions
+              if (isBusy)
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else if (!isApproved)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    InkWell(
+                      onTap: () => _approveLeave(leave),
+                      borderRadius: BorderRadius.circular(4),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF22C55E),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'Approve',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    InkWell(
+                      onTap: () => _rejectLeave(leave),
+                      borderRadius: BorderRadius.circular(4),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: const Color(0xFFEF4444)),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'Reject',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFEF4444),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              else
+                InkWell(
+                  onTap: () => _revokeLeave(leave),
+                  borderRadius: BorderRadius.circular(4),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFF9CA3AF)),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'Revoke',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF4B5563),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Date Range
+          Row(
+            children: [
+              const Text('📅 ', style: TextStyle(fontSize: 12)),
+              Text(
+                startFormatted,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1F2937),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 6),
+                child: Text(
+                  '→',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF9CA3AF),
+                  ),
+                ),
+              ),
+              Text(
+                endFormatted,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1F2937),
+                ),
+              ),
+            ],
+          ),
+          // Notes if available
+          if (leave.notes != null && leave.notes!.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.all(Radius.circular(4)),
+                border: Border(
+                  left: BorderSide(color: Color(0xFFCBD5E1), width: 3),
+                ),
+              ),
+              child: Text(
+                '📝 ${leave.notes}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF475569),
+                ),
+              ),
+            ),
+          ],
+          // Submitted Timestamp
+          if (leave.createdAt != null &&
+              leave.createdAt!.trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Submitted: ${_formatDateTime(leave.createdAt)}',
+              style: const TextStyle(
+                fontSize: 10.5,
+                color: Color(0xFF94A3B8),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pendingCount = _leaves.where((l) => !l.isApproved).length;
+    final approvedCount = _leaves.where((l) => l.isApproved).length;
+    final doctorName = _formatDoctorName(widget.doc);
+
+    return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: AppTheme.primaryLightTeal,
+                  backgroundImage: widget.avatarUrl.isNotEmpty
+                      ? NetworkImage(widget.avatarUrl)
+                      : null,
+                  child: widget.avatarUrl.isEmpty
+                      ? Text(
+                          widget.doc != null && widget.doc!.fullName.isNotEmpty
+                              ? widget.doc!.fullName[0]
+                              : '👨‍⚕️',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryTeal,
+                          ),
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryLightTeal,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'Branch: ${widget.branchName}',
+                          style: const TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.primaryDarkTeal),
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '🏖️ Leave Requests — $doctorName',
+                        style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryTeal),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 20),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.65,
+        ),
+        child: SizedBox(
+          width: (MediaQuery.of(context).size.width - 32).clamp(280.0, 620.0),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Summary Banner
+                Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFF0F9FF), Color(0xFFE0F2FE)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFBAE6FD)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          children: [
+                            Text(
+                              '${_leaves.length}',
+                              style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF0EA5E9)),
+                            ),
+                            const SizedBox(height: 2),
+                            const Text('TOTAL REQUESTS',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.textMuted)),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: Column(
+                          children: [
+                            Text(
+                              '$pendingCount',
+                              style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFFF59E0B)),
+                            ),
+                            const SizedBox(height: 2),
+                            const Text('PENDING',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.textMuted)),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: Column(
+                          children: [
+                            Text(
+                              '$approvedCount',
+                              style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF22C55E)),
+                            ),
+                            const SizedBox(height: 2),
+                            const Text('APPROVED',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.textMuted)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (_isLoading)
+                  const Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (_leaves.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(32),
+                    decoration: BoxDecoration(
+                      color: AppTheme.backgroundApp,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppTheme.borderGray),
+                    ),
+                    child: Column(
+                      children: const [
+                        Text('🏖️', style: TextStyle(fontSize: 36)),
+                        SizedBox(height: 6),
+                        Text(
+                          'No leave requests found for this doctor.',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.textMain),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Leave requests submitted by the doctor will appear here.',
+                          style: TextStyle(
+                              fontSize: 11, color: AppTheme.textMuted),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  ..._leaves.map((l) => _buildLeaveCard(l)),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        OutlinedButton(
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(6),
+            ),
+          ),
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close', style: TextStyle(fontSize: 11.5)),
+        ),
+      ],
+    );
+  }
+}
+
+class _DoctorProfileDialog extends ConsumerStatefulWidget {
+  final String doctorId;
+  final DoctorModel doc;
+  final DoctorClinicModel? dc;
+  final String branchName;
+  final String avatarUrl;
+  final VoidCallback? onManageSchedule;
+
+  const _DoctorProfileDialog({
+    required this.doctorId,
+    required this.doc,
+    this.dc,
+    required this.branchName,
+    required this.avatarUrl,
+    this.onManageSchedule,
+  });
+
+  @override
+  ConsumerState<_DoctorProfileDialog> createState() =>
+      _DoctorProfileDialogState();
+}
+
+class _DoctorProfileDialogState extends ConsumerState<_DoctorProfileDialog> {
+  DoctorDetailResponse? _profile;
+  bool _isLoading = true;
+  int _activeTab = 0; // 0: Specialties, 1: Languages, 2: Qualifications
+
+  final _specController = TextEditingController();
+  final _langController = TextEditingController();
+  final _degreeController = TextEditingController();
+  final _instController = TextEditingController();
+  final _countryController = TextEditingController(text: 'Saudi Arabia');
+  final _yearController =
+      TextEditingController(text: DateTime.now().year.toString());
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  @override
+  void dispose() {
+    _specController.dispose();
+    _langController.dispose();
+    _degreeController.dispose();
+    _instController.dispose();
+    _countryController.dispose();
+    _yearController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadProfile() async {
+    setState(() => _isLoading = true);
+    try {
+      final data = await ref
+          .read(doctorServiceProvider)
+          .getDoctorProfile(widget.doctorId);
+      if (mounted) {
+        setState(() {
+          _profile = data;
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  String _formatDoctorName(DoctorModel doc) {
+    final name = doc.fullName.trim();
+    if (name.isEmpty) return 'Doctor';
+    if (name.toLowerCase().startsWith('dr.') ||
+        name.toLowerCase().startsWith('dr ')) {
+      return name;
+    }
+    final prefix = doc.title.value.isNotEmpty ? '${doc.title.value}. ' : 'Dr. ';
+    return '$prefix$name';
+  }
+
+  Future<void> _addSpecialty() async {
+    final text = _specController.text.trim();
+    if (text.isEmpty) return;
+    try {
+      await ref.read(doctorServiceProvider).addSpecialty({
+        'doctorId': widget.doctorId,
+        'specialtyId': text,
+        'isPrimary': true,
+      });
+      _specController.clear();
+      await _loadProfile();
+    } catch (_) {}
+  }
+
+  Future<void> _removeSpecialty(String id) async {
+    try {
+      await ref.read(doctorServiceProvider).removeSpecialty(id);
+      await _loadProfile();
+    } catch (_) {}
+  }
+
+  Future<void> _addLanguage() async {
+    final text = _langController.text.trim();
+    if (text.isEmpty) return;
+    try {
+      await ref.read(doctorServiceProvider).addLanguage({
+        'doctorId': widget.doctorId,
+        'languageId': text,
+        'proficiency': 'FLUENT',
+      });
+      _langController.clear();
+      await _loadProfile();
+    } catch (_) {}
+  }
+
+  Future<void> _removeLanguage(String id) async {
+    try {
+      await ref.read(doctorServiceProvider).removeLanguage(id);
+      await _loadProfile();
+    } catch (_) {}
+  }
+
+  Future<void> _addQualification() async {
+    final degree = _degreeController.text.trim();
+    final inst = _instController.text.trim();
+    if (degree.isEmpty || inst.isEmpty) return;
+    try {
+      await ref.read(doctorServiceProvider).addQualification({
+        'doctorId': widget.doctorId,
+        'degree': degree,
+        'institution': inst,
+        'country': _countryController.text.trim().isNotEmpty
+            ? _countryController.text.trim()
+            : 'Saudi Arabia',
+        'yearObtained':
+            int.tryParse(_yearController.text.trim()) ?? DateTime.now().year,
+        'sortOrder': 1,
+      });
+      _degreeController.clear();
+      _instController.clear();
+      await _loadProfile();
+    } catch (_) {}
+  }
+
+  Future<void> _removeQualification(String qualId) async {
+    try {
+      await ref.read(doctorServiceProvider).removeQualification(qualId);
+      await _loadProfile();
+    } catch (_) {}
+  }
+
+  Widget _metricBox(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final activeDoc = _profile ?? widget.doc;
+    final doctorName = _formatDoctorName(activeDoc);
+    final fee = widget.dc != null
+        ? widget.dc!.consultationFeeSar
+        : activeDoc.consultationFeeSar;
+    final specialties = _profile?.specialties ?? [];
+    final languages = _profile?.languages ?? [];
+    final qualifications = _profile?.qualifications ?? [];
+
+    return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Expanded(
+            child: Row(
+              children: [
+                Icon(Icons.medical_services_outlined,
+                    color: AppTheme.primaryTeal, size: 20),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Doctor Professional Profile',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 20, color: Color(0xFF64748B)),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.72,
+        ),
+        child: SizedBox(
+          width: (MediaQuery.of(context).size.width - 32).clamp(280.0, 560.0),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Doctor Banner Card
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAF9),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppTheme.primaryLightTeal,
+                          border:
+                              Border.all(color: AppTheme.primaryTeal, width: 2),
+                        ),
+                        child: ClipOval(
+                          child: widget.avatarUrl.isNotEmpty
+                              ? Image.network(
+                                  widget.avatarUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => const Icon(
+                                      Icons.person,
+                                      size: 26,
+                                      color: AppTheme.primaryTeal),
+                                )
+                              : Center(
+                                  child: Text(
+                                    activeDoc.fullName.isNotEmpty
+                                        ? activeDoc.fullName[0]
+                                        : '👨‍⚕️',
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppTheme.primaryTeal,
+                                    ),
+                                  ),
+                                ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    doctorName,
+                                    style: const TextStyle(
+                                      fontSize: 14.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (activeDoc.mohVerified) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFDCFCE7),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text(
+                                      '✓ MOH Verified',
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF166534),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 3),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 2,
+                              children: [
+                                if (activeDoc.email.isNotEmpty)
+                                  Text(
+                                    '✉️ ${activeDoc.email}',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                  ),
+                                if (activeDoc.mohRegistrationNumber.isNotEmpty)
+                                  Text(
+                                    'MOH: ${activeDoc.mohRegistrationNumber}',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // 3 Metrics Grid
+                Row(
+                  children: [
+                    Expanded(
+                      child: _metricBox(
+                        'Experience',
+                        '${activeDoc.experienceYears} Years',
+                        AppTheme.primaryTeal,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _metricBox(
+                        'Rating',
+                        '${activeDoc.overallRating > 0 ? activeDoc.overallRating.toStringAsFixed(1) : "5.0"} ★',
+                        const Color(0xFFF59E0B),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _metricBox(
+                        'Consultation Fee',
+                        'SAR ${fee.toStringAsFixed(0)}',
+                        const Color(0xFF22C55E),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                // Biography
+                const Text(
+                  'Professional Biography',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF334155),
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAF9),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Text(
+                    (activeDoc.bioEn != null && activeDoc.bioEn!.isNotEmpty)
+                        ? activeDoc.bioEn!
+                        : 'No professional biography provided.',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: Color(0xFF334155),
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+                // Active Placement Section
+                if (widget.dc != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Active Placement Details',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryTeal,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Assigned Branch:',
+                                style: TextStyle(
+                                    fontSize: 11, color: Color(0xFF64748B))),
+                            Text(
+                              widget.branchName,
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Department:',
+                                style: TextStyle(
+                                    fontSize: 11, color: Color(0xFF64748B))),
+                            Text(
+                              widget.dc!.department.isNotEmpty
+                                  ? widget.dc!.department
+                                  : 'General',
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Primary Placement:',
+                                style: TextStyle(
+                                    fontSize: 11, color: Color(0xFF64748B))),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: widget.dc!.isPrimary
+                                    ? const Color(0xFFDCFCE7)
+                                    : const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                widget.dc!.isPrimary ? 'Primary' : 'Secondary',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: widget.dc!.isPrimary
+                                      ? const Color(0xFF166534)
+                                      : const Color(0xFF475569),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 14),
+                // Sub-tabs: Specialties / Languages / Qualifications (Horizontally Scrollable)
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _tabPill(0, 'Specialties', specialties.length),
+                      const SizedBox(width: 6),
+                      _tabPill(1, 'Languages', languages.length),
+                      const SizedBox(width: 6),
+                      _tabPill(2, 'Qualifications', qualifications.length),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (_isLoading)
+                  const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (_activeTab == 0) ...[
+                  // Specialties Tab
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 36,
+                          child: TextField(
+                            controller: _specController,
+                            style: const TextStyle(fontSize: 12),
+                            decoration: InputDecoration(
+                              hintText: 'e.g. Cardiology, Pediatrics',
+                              hintStyle: const TextStyle(
+                                  fontSize: 11.5, color: Color(0xFF94A3B8)),
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 8),
+                              filled: true,
+                              fillColor: const Color(0xFFF8FAFC),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(6),
+                                borderSide:
+                                    const BorderSide(color: Color(0xFFE2E8F0)),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(6),
+                                borderSide:
+                                    const BorderSide(color: Color(0xFFE2E8F0)),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryTeal,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(6)),
+                        ),
+                        onPressed: _addSpecialty,
+                        child: const Text('Add',
+                            style: TextStyle(
+                                fontSize: 11.5, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (specialties.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Text('No specialties linked yet.',
+                          style: TextStyle(
+                              fontSize: 11.5, color: Color(0xFF94A3B8))),
+                    )
+                  else
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: specialties.map((s) {
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE0F2FE),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFFBAE6FD)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                s.specialtyId,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF0369A1),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              InkWell(
+                                onTap: () => _removeSpecialty(s.id),
+                                child: const Icon(Icons.close,
+                                    size: 14, color: Color(0xFF0369A1)),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                ] else if (_activeTab == 1) ...[
+                  // Languages Tab
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 36,
+                          child: TextField(
+                            controller: _langController,
+                            style: const TextStyle(fontSize: 12),
+                            decoration: InputDecoration(
+                              hintText: 'e.g. Arabic, English',
+                              hintStyle: const TextStyle(
+                                  fontSize: 11.5, color: Color(0xFF94A3B8)),
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 8),
+                              filled: true,
+                              fillColor: const Color(0xFFF8FAFC),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(6),
+                                borderSide:
+                                    const BorderSide(color: Color(0xFFE2E8F0)),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(6),
+                                borderSide:
+                                    const BorderSide(color: Color(0xFFE2E8F0)),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryTeal,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(6)),
+                        ),
+                        onPressed: _addLanguage,
+                        child: const Text('Add',
+                            style: TextStyle(
+                                fontSize: 11.5, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (languages.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Text('No languages linked yet.',
+                          style: TextStyle(
+                              fontSize: 11.5, color: Color(0xFF94A3B8))),
+                    )
+                  else
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: languages.map((l) {
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDCFCE7),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFFBBF7D0)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '${l.languageId} (${l.proficiency.value})',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF166534),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              InkWell(
+                                onTap: () => _removeLanguage(l.id),
+                                child: const Icon(Icons.close,
+                                    size: 14, color: Color(0xFF166534)),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                ] else ...[
+                  // Qualifications Tab (2 clean rows to avoid horizontal crunch)
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: SizedBox(
+                                height: 36,
+                                child: TextField(
+                                  controller: _degreeController,
+                                  style: const TextStyle(fontSize: 12),
+                                  decoration: InputDecoration(
+                                    hintText: 'Degree (e.g. MBBS)',
+                                    hintStyle: const TextStyle(
+                                        fontSize: 11,
+                                        color: Color(0xFF94A3B8)),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 8),
+                                    filled: true,
+                                    fillColor: Colors.white,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(6),
+                                      borderSide: const BorderSide(
+                                          color: Color(0xFFE2E8F0)),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(6),
+                                      borderSide: const BorderSide(
+                                          color: Color(0xFFE2E8F0)),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: SizedBox(
+                                height: 36,
+                                child: TextField(
+                                  controller: _instController,
+                                  style: const TextStyle(fontSize: 12),
+                                  decoration: InputDecoration(
+                                    hintText: 'Institution',
+                                    hintStyle: const TextStyle(
+                                        fontSize: 11,
+                                        color: Color(0xFF94A3B8)),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 8),
+                                    filled: true,
+                                    fillColor: Colors.white,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(6),
+                                      borderSide: const BorderSide(
+                                          color: Color(0xFFE2E8F0)),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(6),
+                                      borderSide: const BorderSide(
+                                          color: Color(0xFFE2E8F0)),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: SizedBox(
+                                height: 36,
+                                child: TextField(
+                                  controller: _countryController,
+                                  style: const TextStyle(fontSize: 12),
+                                  decoration: InputDecoration(
+                                    hintText: 'Country',
+                                    hintStyle: const TextStyle(
+                                        fontSize: 11,
+                                        color: Color(0xFF94A3B8)),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 8),
+                                    filled: true,
+                                    fillColor: Colors.white,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(6),
+                                      borderSide: const BorderSide(
+                                          color: Color(0xFFE2E8F0)),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(6),
+                                      borderSide: const BorderSide(
+                                          color: Color(0xFFE2E8F0)),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            SizedBox(
+                              width: 70,
+                              height: 36,
+                              child: TextField(
+                                controller: _yearController,
+                                keyboardType: TextInputType.number,
+                                style: const TextStyle(fontSize: 12),
+                                decoration: InputDecoration(
+                                  hintText: 'Year',
+                                  hintStyle: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF94A3B8)),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 8),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(6),
+                                    borderSide: const BorderSide(
+                                        color: Color(0xFFE2E8F0)),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(6),
+                                    borderSide: const BorderSide(
+                                        color: Color(0xFFE2E8F0)),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primaryTeal,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 8),
+                                minimumSize: const Size(0, 36),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(6)),
+                              ),
+                              onPressed: _addQualification,
+                              child: const Text('Add',
+                                  style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.bold)),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  if (qualifications.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Text('No qualifications linked yet.',
+                          style: TextStyle(
+                              fontSize: 11.5, color: Color(0xFF94A3B8))),
+                    )
+                  else
+                    ...qualifications.map((q) {
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${q.degree} — ${q.institution}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                  Text(
+                                    '${q.country} (${q.yearObtained})',
+                                    style: const TextStyle(
+                                      fontSize: 10.5,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            InkWell(
+                              onTap: () => _removeQualification(q.qualId),
+                              child: const Icon(Icons.delete_outline,
+                                  size: 16, color: Color(0xFFEF4444)),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        if (widget.onManageSchedule != null)
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryTeal,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6)),
+            ),
+            icon: const Icon(Icons.calendar_month, size: 14),
+            label: const Text(
+              'Manage Doctor Schedules',
+              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+            ),
+            onPressed: widget.onManageSchedule,
+          ),
+        OutlinedButton(
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          ),
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close', style: TextStyle(fontSize: 11.5)),
+        ),
+      ],
+    );
+  }
+
+  Widget _tabPill(int index, String title, int count) {
+    final isSelected = _activeTab == index;
+    return InkWell(
+      onTap: () => setState(() => _activeTab = index),
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.primaryLightTeal : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: isSelected ? AppTheme.primaryTeal : const Color(0xFFE2E8F0),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color:
+                    isSelected ? AppTheme.primaryDarkTeal : const Color(0xFF64748B),
+              ),
+            ),
+            if (count > 0) ...[
+              const SizedBox(width: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: isSelected ? AppTheme.primaryTeal : const Color(0xFFE2E8F0),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                    color: isSelected ? Colors.white : const Color(0xFF475569),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+

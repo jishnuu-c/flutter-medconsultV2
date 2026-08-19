@@ -69,21 +69,32 @@ class DoctorService {
 
   // ── Leave ───────────────────────────────────────────────────────────
   Future<List<DoctorLeaveModel>> getDcLeave(String dcId) async {
-    final res = await dio.get('/api/medconsult/doctors/clinics/$dcId/leave');
-    final List list = res.data ?? [];
-    return list.map((e) => DoctorLeaveModel.fromJson(e)).toList();
+    try {
+      final res = await dio.get('/api/medconsult/doctors/clinics/$dcId/leave');
+      final data = res.data is String ? jsonDecode(res.data) : res.data;
+      final List list = data is List
+          ? data
+          : (data is Map && data['data'] is List
+              ? data['data']
+              : (data is Map && data['leaves'] is List ? data['leaves'] : []));
+      return list.map((e) => DoctorLeaveModel.fromJson(e)).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<DoctorLeaveModel> addLeave(Map<String, dynamic> dto) async {
     final res = await dio.post('/api/medconsult/doctors/leave/add', data: dto);
-    return DoctorLeaveModel.fromJson(res.data);
+    final data = res.data is String ? jsonDecode(res.data) : res.data;
+    return DoctorLeaveModel.fromJson(data);
   }
 
   Future<DoctorLeaveModel> updateLeave(
       String id, Map<String, dynamic> dto) async {
     final res =
         await dio.patch('/api/medconsult/doctors/leave/$id/update', data: dto);
-    return DoctorLeaveModel.fromJson(res.data);
+    final data = res.data is String ? jsonDecode(res.data) : res.data;
+    return DoctorLeaveModel.fromJson(data);
   }
 
   Future<void> removeLeave(String id) async {
