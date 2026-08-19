@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
+import 'package:http_parser/http_parser.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import 'reference_models.dart';
@@ -133,17 +135,63 @@ class ReferenceService {
   }
 
   Future<InsuranceProviderModel> addInsuranceProvider(
-      Map<String, dynamic> data) async {
+      Map<String, dynamic> data,
+      {String? logoFilePath,
+      List<int>? logoBytes,
+      String? logoFileName}) async {
+    dynamic payload;
+    if (logoFilePath != null || logoBytes != null) {
+      final map = <String, dynamic>{
+        'body': MultipartFile.fromString(
+          jsonEncode(data),
+          contentType: MediaType('application', 'json'),
+        ),
+      };
+      if (logoFilePath != null) {
+        map['file'] = await MultipartFile.fromFile(logoFilePath,
+            filename: logoFileName);
+      } else if (logoBytes != null) {
+        map['file'] = MultipartFile.fromBytes(logoBytes,
+            filename: logoFileName ?? 'logo.png');
+      }
+      payload = FormData.fromMap(map);
+    } else {
+      payload = data;
+    }
     final res = await dio
-        .post('/api/medconsult/insurance-providers/add-provider', data: data);
-    return InsuranceProviderModel.fromJson(res.data);
+        .post('/api/medconsult/insurance-providers/add-provider', data: payload);
+    final resData = res.data is String ? jsonDecode(res.data) : res.data;
+    return InsuranceProviderModel.fromJson(resData);
   }
 
   Future<InsuranceProviderModel> updateInsuranceProvider(
-      String id, Map<String, dynamic> data) async {
+      String id, Map<String, dynamic> data,
+      {String? logoFilePath,
+      List<int>? logoBytes,
+      String? logoFileName}) async {
+    dynamic payload;
+    if (logoFilePath != null || logoBytes != null) {
+      final map = <String, dynamic>{
+        'body': MultipartFile.fromString(
+          jsonEncode(data),
+          contentType: MediaType('application', 'json'),
+        ),
+      };
+      if (logoFilePath != null) {
+        map['file'] = await MultipartFile.fromFile(logoFilePath,
+            filename: logoFileName);
+      } else if (logoBytes != null) {
+        map['file'] = MultipartFile.fromBytes(logoBytes,
+            filename: logoFileName ?? 'logo.png');
+      }
+      payload = FormData.fromMap(map);
+    } else {
+      payload = data;
+    }
     final res = await dio.put('/api/medconsult/insurance-providers/$id/update',
-        data: data);
-    return InsuranceProviderModel.fromJson(res.data);
+        data: payload);
+    final resData = res.data is String ? jsonDecode(res.data) : res.data;
+    return InsuranceProviderModel.fromJson(resData);
   }
 
   Future<void> deleteInsuranceProvider(String id) async {

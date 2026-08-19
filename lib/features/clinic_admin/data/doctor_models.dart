@@ -8,7 +8,9 @@ Map<String, dynamic> _asMap(dynamic v) {
 enum DoctorTitle {
   DR('DR'),
   PROF('PROF'),
-  ASSOC_PROF('ASSOC_PROF');
+  ASSOC_PROF('ASSOC_PROF'),
+  CONSULTANT('CONSULTANT'),
+  SPECIALIST('SPECIALIST');
 
   final String value;
   const DoctorTitle(this.value);

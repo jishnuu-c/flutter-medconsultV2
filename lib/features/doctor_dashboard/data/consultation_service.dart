@@ -47,6 +47,14 @@ class ConsultationService {
     return res.data;
   }
 
+  Future<dynamic> getMyDoctorConsultations({int page = 0, int size = 10}) async {
+    final res = await dio.get(
+      '/api/medconsult/consultations/my/doctor',
+      queryParameters: {'page': page, 'size': size},
+    );
+    return res.data;
+  }
+
   Future<List<dynamic>> getMessagesForConsultation(
       String consultationId) async {
     final res = await dio.get(
