@@ -22,82 +22,80 @@ class DoctorProfileScreen extends ConsumerStatefulWidget {
 class _ProfileCardGroup extends StatelessWidget {
   final String title;
   final Widget child;
-  // Mirrors Angular's per-card `border-left: 5px solid ...` accent —
-  // e.g. #0f172a (var(--primary-dark)) for the Account card, teal for
-  // Personal Overview, amber/accent for Credentials.
   final Color accentColor;
+  final IconData? icon;
+  final Widget? trailing;
+
   const _ProfileCardGroup({
     required this.title,
     required this.child,
     this.accentColor = AppTheme.primaryTeal,
+    this.icon,
+    this.trailing,
   });
 
   @override
   Widget build(BuildContext context) {
-    // NOTE: BoxDecoration.border with non-uniform side colors (accent left
-    // vs. grey top/right/bottom) throws "A borderRadius can only be given
-    // on borders with uniform colors" when combined with borderRadius.
-    // Fix: keep the outer border/radius uniform (grey), and draw the
-    // colored accent as a Positioned strip in a Stack — NOT a Row with
-    // IntrinsicHeight/stretch, because `child` here contains a
-    // LayoutBuilder (via _responsivePair) and IntrinsicHeight forces
-    // intrinsic-dimension queries on its whole subtree, which
-    // LayoutBuilder does not support ("LayoutBuilder does not support
-    // returning intrinsic dimensions"). Stack + Positioned never queries
-    // intrinsics, so it's safe here.
-    final pad = (MediaQuery.of(context).size.width * 0.04).clamp(20, 32);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Stack(
-        children: [
-          Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: AppTheme.surfaceWhite,
-              border: Border.all(color: AppTheme.borderGray),
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2)),
-              ],
-            ),
-            padding: EdgeInsets.fromLTRB(
-                pad - 5, pad.toDouble(), pad.toDouble(), pad.toDouble()),
-            child: Padding(
-              padding: const EdgeInsets.only(left: 5),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.only(bottom: 16),
-                    margin: const EdgeInsets.only(bottom: 20),
-                    decoration: const BoxDecoration(
-                      border: Border(
-                          bottom: BorderSide(color: AppTheme.borderGray)),
-                    ),
-                    child: Text(
-                      title,
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 20,
-                          color: accentColor),
-                    ),
-                  ),
-                  child,
-                ],
-              ),
-            ),
-          ),
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: 5,
-            child: Container(color: accentColor),
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.8)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
         ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(color: accentColor, width: 4.5),
+            ),
+          ),
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        if (icon != null) ...[
+                          Icon(icon, size: 20, color: accentColor),
+                          const SizedBox(width: 8),
+                        ],
+                        Flexible(
+                          child: Text(
+                            title,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: AppTheme.textMain,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (trailing != null) trailing!,
+                ],
+              ),
+              const SizedBox(height: 14),
+              const Divider(height: 1),
+              const SizedBox(height: 16),
+              child,
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -734,21 +732,21 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    color: active ? Colors.white : Colors.transparent,
+                    color: active ? const Color(0xFF0F766E) : Colors.white,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: active
-                          ? AppTheme.primaryTeal.withValues(alpha: 0.3)
-                          : Colors.transparent,
-                      width: 1.5,
+                          ? const Color(0xFF0F766E)
+                          : AppTheme.borderGray,
+                      width: 1,
                     ),
                     boxShadow: active
                         ? [
                             BoxShadow(
-                                color: AppTheme.primaryDarkTeal
-                                    .withValues(alpha: 0.08),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4)),
+                                color: const Color(0xFF0F766E)
+                                    .withValues(alpha: 0.25),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3)),
                           ]
                         : null,
                   ),
@@ -761,16 +759,16 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
                                   active ? FontWeight.bold : FontWeight.w600,
                               fontSize: 13,
                               color: active
-                                  ? AppTheme.primaryDarkTeal
+                                  ? Colors.white
                                   : AppTheme.textSecondary)),
                       if (i > 0) ...[
                         const SizedBox(width: 6),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 7, vertical: 1),
+                              horizontal: 7, vertical: 1.5),
                           decoration: BoxDecoration(
                             color: active
-                                ? AppTheme.primaryLightTeal
+                                ? Colors.white.withValues(alpha: 0.25)
                                 : const Color(0xFFF1F5F9),
                             borderRadius: BorderRadius.circular(20),
                           ),
@@ -779,7 +777,7 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
                                   color: active
-                                      ? AppTheme.primaryDarkTeal
+                                      ? Colors.white
                                       : AppTheme.textMuted)),
                         ),
                       ],
@@ -1507,8 +1505,8 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
         border: Border.all(
             color: const Color(0xFFE2E8F0), width: 2, style: BorderStyle.solid),
       ),
-      child: Column(
-        children: const [
+      child: const Column(
+        children: [
           Text('🏥', style: TextStyle(fontSize: 40)),
           SizedBox(height: 10),
           Text('No Clinic Placements Yet',
@@ -1658,79 +1656,248 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
   // MOH-verified / registration-ID badges on the right (wraps on mobile).
   // NOTE: rating/experience/fee live in the "Personal Overview" card
   // below (Card 1), not here — matches the Angular markup exactly.
+  // Modernized Hero Banner: doctor avatar, verified status, specialty, and quick KPIs
   Widget _buildHeaderBanner(DoctorDetailResponse? profile, bool isMobile) {
+    final rawAvatarUrl = _profile?.avatarUrl ?? ref.read(authNotifierProvider).currentUser?.avatarUrl ?? '';
+    final avatarUrl = rawAvatarUrl.isNotEmpty
+        ? (rawAvatarUrl.startsWith('http')
+            ? rawAvatarUrl
+            : '$kBaseUrl${rawAvatarUrl.startsWith('/') ? '' : '/'}$rawAvatarUrl')
+        : '';
+    final isMohVerified = profile?.mohVerified ?? false;
+
     return Container(
-      padding: const EdgeInsets.only(bottom: 16),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppTheme.borderGray)),
-      ),
-      child: Wrap(
-        alignment: WrapAlignment.spaceBetween,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        runSpacing: 12,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('👨‍⚕️ Professional Profile',
-                  style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.primaryTeal)),
-              const SizedBox(height: 4),
-              const Text(
-                  'Manage personal bio, clinical credentials, spoken languages, and academic qualifications',
-                  style: TextStyle(fontSize: 13, color: AppTheme.textMuted)),
-            ],
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF042F2E), Color(0xFF0F766E), Color(0xFF14B8A6)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F766E).withValues(alpha: 0.28),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
           ),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              if (profile != null)
-                Chip(
-                  label: Text(profile.mohVerified
-                      ? '✓ MOH Verified License'
-                      : 'MOH Verification Pending'),
-                  labelStyle: TextStyle(
-                      color: profile.mohVerified
-                          ? const Color(0xFF166534)
-                          : const Color(0xFF1E429F),
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12.5),
-                  backgroundColor: profile.mohVerified
-                      ? const Color(0xFFDCFCE7)
-                      : const Color(0xFFE1EFFE),
-                  side: BorderSide.none,
+        ],
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(isMobile ? 18 : 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GestureDetector(
+                  onTap: _pickAvatar,
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: isMobile ? 64 : 74,
+                        height: isMobile ? 64 : 74,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.4),
+                              width: 2.5),
+                          image: avatarUrl.isNotEmpty
+                              ? DecorationImage(
+                                  image: NetworkImage(avatarUrl),
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
+                        ),
+                        child: avatarUrl.isEmpty
+                            ? Center(
+                                child: Text(
+                                  ref.read(authNotifierProvider).currentUser?.initials ?? 'DR',
+                                  style: TextStyle(
+                                    fontSize: isMobile ? 22 : 26,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              )
+                            : null,
+                      ),
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0D9488),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 1.5),
+                          ),
+                          child: const Icon(Icons.camera_alt, size: 12, color: Colors.white),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              if (profile != null && profile.mohRegistrationNumber.isNotEmpty)
-                Chip(
-                  label:
-                      Text('Registration ID: ${profile.mohRegistrationNumber}'),
-                  labelStyle: const TextStyle(
-                      color: AppTheme.primaryDarkTeal,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12.5),
-                  backgroundColor: AppTheme.primaryLightTeal,
-                  side: BorderSide.none,
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _doctorDisplayName,
+                        style: TextStyle(
+                          fontSize: isMobile ? 18 : 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          letterSpacing: -0.3,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        profile?.specialties.isNotEmpty == true
+                            ? profile!.specialties.map((s) => _specialtyName(s.specialtyId)).join(' • ')
+                            : 'Medical Practitioner & Consultant',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Colors.white.withValues(alpha: 0.88),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: isMohVerified
+                                  ? const Color(0xFF22C55E).withValues(alpha: 0.25)
+                                  : Colors.amber.withValues(alpha: 0.25),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isMohVerified
+                                    ? const Color(0xFF22C55E).withValues(alpha: 0.5)
+                                    : Colors.amber.withValues(alpha: 0.5),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  isMohVerified ? Icons.verified : Icons.pending_outlined,
+                                  size: 11,
+                                  color: isMohVerified ? const Color(0xFF86EFAC) : const Color(0xFFFDE68A),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  isMohVerified ? 'MOH Verified' : 'MOH Verification Pending',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: isMohVerified ? const Color(0xFF86EFAC) : const Color(0xFFFDE68A),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (profile != null && profile.mohRegistrationNumber.isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.18),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+                              ),
+                              child: Text(
+                                'ID: ${profile.mohRegistrationNumber}',
+                                style: const TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-            ],
+              ],
+            ),
+            const SizedBox(height: 16),
+            // 4-item Metrics Grid
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.22),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+              ),
+              child: Row(
+                children: [
+                  _buildHeroMetric('EXPERIENCE', '${profile?.experienceYears ?? 0} Yrs', Icons.work_history_outlined),
+                  _buildHeroDivider(),
+                  _buildHeroMetric('RATING', '⭐ ${profile?.overallRating ?? 0}', Icons.star_rounded),
+                  _buildHeroDivider(),
+                  _buildHeroMetric('FEE', 'SAR ${profile?.consultationFeeSar ?? 150}', Icons.payments_outlined),
+                  _buildHeroDivider(),
+                  _buildHeroMetric('CLINICS', '${profile?.clinics.length ?? 0}', Icons.local_hospital_outlined),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeroMetric(String label, String value, IconData icon) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.4,
+              color: Colors.white.withValues(alpha: 0.75),
+            ),
+          ),
+          const SizedBox(height: 3),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
+  Widget _buildHeroDivider() {
+    return Container(
+      width: 1,
+      height: 24,
+      color: Colors.white.withValues(alpha: 0.2),
+    );
+  }
+
   // Mirrors Angular Card 0: avatar upload + "1. User Account Details" form.
-  // Uses ClipRRect + Stack/Positioned for the accent strip, same fix as
-  // _ProfileCardGroup (uniform border/radius, colored strip drawn on top).
-  // Accent color matches Angular exactly: var(--primary-dark, #0f172a).
   Widget _buildAccountCard(dynamic user, bool isMobile) {
     const accentColor = Color(0xFF0F172A);
-    final pad = isMobile
-        ? 14.0
-        : 0.0; // wide-screen padding computed inline below via clamp
     final rawAvatarUrl = _profile?.avatarUrl ?? user?.avatarUrl ?? '';
     final avatarUrl = rawAvatarUrl.isNotEmpty
         ? (rawAvatarUrl.startsWith('http')
@@ -1738,157 +1905,128 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
             : '$kBaseUrl${rawAvatarUrl.startsWith('/') ? '' : '/'}$rawAvatarUrl')
         : '';
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Stack(
+    return _ProfileCardGroup(
+      title: '1. User Account Details',
+      accentColor: accentColor,
+      icon: Icons.person_outline,
+      trailing: !_isEditingAccount
+          ? OutlinedButton.icon(
+              onPressed: _enableAccountEdit,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: accentColor,
+                side: const BorderSide(color: accentColor),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                minimumSize: const Size(0, 32),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              icon: const Icon(Icons.edit_outlined, size: 14),
+              label: const Text('Edit Account', style: TextStyle(fontSize: 12)),
+            )
+          : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Account identity strip
           Container(
-            width: double.infinity,
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppTheme.surfaceWhite,
-              border: Border.all(color: AppTheme.borderGray),
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2)),
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.8)),
+            ),
+            child: Row(
+              children: [
+                GestureDetector(
+                  onTap: _pickAvatar,
+                  child: Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: 26,
+                        backgroundColor: AppTheme.primaryLightTeal,
+                        backgroundImage: avatarUrl.isNotEmpty
+                            ? NetworkImage(avatarUrl)
+                            : null,
+                        child: avatarUrl.isEmpty
+                            ? Text(
+                                user?.initials ?? 'DR',
+                                style: const TextStyle(
+                                    color: AppTheme.primaryTeal,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15),
+                              )
+                            : null,
+                      ),
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: const BoxDecoration(
+                            color: accentColor,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.camera_alt, size: 10, color: Colors.white),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(user?.fullName ?? '',
+                          style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.textMain)),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(user?.email ?? '',
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.textMuted),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDCFCE7),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text('DOCTOR',
+                                style: TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF166534))),
+                          ),
+                        ],
+                      ),
+                      if (_stagedAvatarPath != null)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 4),
+                          child: Text(
+                              '📷 New profile photo selected. Tap "Save Account Info" to upload.',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFFB45309))),
+                        ),
+                    ],
+                  ),
+                ),
               ],
             ),
-            padding: EdgeInsets.fromLTRB((isMobile ? pad : 27),
-                isMobile ? 14 : 32, isMobile ? 14 : 32, isMobile ? 14 : 32),
-            child: Padding(
-              padding: const EdgeInsets.only(left: 5),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header row: avatar + name/email/role + edit button
-                  Container(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: const BoxDecoration(
-                      border: Border(
-                          bottom: BorderSide(color: AppTheme.borderGray)),
-                    ),
-                    child: Wrap(
-                      alignment: WrapAlignment.spaceBetween,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      runSpacing: 12,
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            GestureDetector(
-                              onTap: _pickAvatar,
-                              child: Stack(
-                                clipBehavior: Clip.none,
-                                children: [
-                                  CircleAvatar(
-                                    radius: 34,
-                                    backgroundColor: AppTheme.primaryLightTeal,
-                                    backgroundImage: avatarUrl.isNotEmpty
-                                        ? NetworkImage(avatarUrl)
-                                        : null,
-                                    onBackgroundImageError: avatarUrl.isNotEmpty
-                                        ? (_, __) {}
-                                        : null,
-                                    child: avatarUrl.isEmpty
-                                        ? Text(
-                                            user?.initials ?? 'DR',
-                                            style: const TextStyle(
-                                                color: AppTheme.primaryTeal,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 18),
-                                          )
-                                        : null,
-                                  ),
-                                  Positioned(
-                                    bottom: -2,
-                                    right: -2,
-                                    child: Container(
-                                      width: 24,
-                                      height: 24,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: accentColor,
-                                        border: Border.all(
-                                            color: Colors.white, width: 2),
-                                      ),
-                                      alignment: Alignment.center,
-                                      child: const Text('📷',
-                                          style: TextStyle(fontSize: 11)),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(user?.fullName ?? '',
-                                    style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.textMain)),
-                                const SizedBox(height: 4),
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text('✉️ ${user?.email ?? ''}',
-                                        style: const TextStyle(
-                                            fontSize: 12,
-                                            color: AppTheme.textMuted)),
-                                    const SizedBox(width: 6),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFDCFCE7),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: const Text('DOCTOR',
-                                          style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w700,
-                                              color: Color(0xFF166534))),
-                                    ),
-                                  ],
-                                ),
-                                if (_stagedAvatarPath != null)
-                                  const Padding(
-                                    padding: EdgeInsets.only(top: 4),
-                                    child: Text(
-                                        '📷 New profile photo selected. Tap "Save Account Info" to upload.',
-                                        style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: Color(0xFFB45309))),
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        if (!_isEditingAccount)
-                          OutlinedButton(
-                            onPressed: _enableAccountEdit,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: accentColor,
-                              side: const BorderSide(color: accentColor),
-                            ),
-                            child: const Text('✏️ Edit Account Details'),
-                          ),
-                      ],
-                    ),
-                  ),
-
-                  // "1. User Account Details" form
-                  const Text('1. User Account Details',
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                          color: AppTheme.textMain)),
-                  const SizedBox(height: 12),
+          ),
+          const SizedBox(height: 16),
                   _responsivePair(
                     _labeled(
                       'Full Name *',
@@ -1986,17 +2124,6 @@ class _DoctorProfileScreenState extends ConsumerState<DoctorProfileScreen> {
                   ],
                 ],
               ),
-            ),
-          ),
-          const Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: 5,
-            child: ColoredBox(color: accentColor),
-          ),
-        ],
-      ),
-    );
+            );
   }
 }

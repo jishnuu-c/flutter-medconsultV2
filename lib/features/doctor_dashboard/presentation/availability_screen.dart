@@ -229,12 +229,17 @@ class _DoctorAvailabilityScreenState
   Future<void> _submitSchedule() async {
     if (_selectedDcId == null) return;
     setState(() => _isLoading = true);
+    var st = _schStartTime;
+    if (st.length == 5) st += ':00';
+    var et = _schEndTime;
+    if (et.length == 5) et += ':00';
+
     try {
       await ref.read(doctorServiceProvider).addSchedule({
         'dcId': _selectedDcId,
         'dayOfWeek': _dayOfWeek,
-        'startTime': _schStartTime,
-        'endTime': _schEndTime,
+        'startTime': st,
+        'endTime': et,
         'slotDurationMin': _slotDurationMin,
         'sessionType': _schSessionType.value,
         'maxPatients': 20,

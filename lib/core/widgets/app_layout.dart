@@ -25,9 +25,14 @@ class MenuItemData {
   final String label;
   final String route;
   final IconData icon;
+  final IconData? activeIcon;
 
-  const MenuItemData(
-      {required this.label, required this.route, required this.icon});
+  const MenuItemData({
+    required this.label,
+    required this.route,
+    required this.icon,
+    this.activeIcon,
+  });
 }
 
 /// Allows sub-pages (e.g. Clinic Details) to request hiding the top header bar and bottom navigation bar.
@@ -49,101 +54,149 @@ class AppLayout extends ConsumerWidget {
           MenuItemData(
               label: 'Home Dashboard',
               route: '/patient/home',
-              icon: Icons.dashboard_outlined),
+              icon: Icons.home_outlined,
+              activeIcon: Icons.home_rounded),
           MenuItemData(
               label: 'Browse Doctors',
               route: '/patient/doctors',
-              icon: Icons.medical_services_outlined),
+              icon: Icons.medical_services_outlined,
+              activeIcon: Icons.medical_services_rounded),
           MenuItemData(
               label: 'Clinics & Branches',
               route: '/patient/clinics',
-              icon: Icons.local_hospital_outlined),
+              icon: Icons.local_hospital_outlined,
+              activeIcon: Icons.local_hospital_rounded),
           MenuItemData(
               label: 'Book Appointment',
               route: '/patient/book-appointment',
-              icon: Icons.calendar_month_outlined),
+              icon: Icons.calendar_month_outlined,
+              activeIcon: Icons.calendar_month_rounded),
           MenuItemData(
               label: 'My Appointments',
               route: '/patient/appointments',
-              icon: Icons.calendar_month_outlined),
+              icon: Icons.event_note_outlined,
+              activeIcon: Icons.event_note_rounded),
           MenuItemData(
               label: 'Tele-Consultations',
               route: '/patient/consultations',
-              icon: Icons.forum_outlined),
+              icon: Icons.forum_outlined,
+              activeIcon: Icons.forum_rounded),
           MenuItemData(
               label: 'Medical Records (EMR)',
               route: '/patient/emr',
-              icon: Icons.folder_shared_outlined),
+              icon: Icons.folder_shared_outlined,
+              activeIcon: Icons.folder_shared_rounded),
           MenuItemData(
               label: 'Personal Health Metrics',
               route: '/patient/health-profile',
-              icon: Icons.favorite_border),
+              icon: Icons.favorite_border_rounded,
+              activeIcon: Icons.favorite_rounded),
           MenuItemData(
               label: 'My General Profile',
               route: '/patient/profile',
-              icon: Icons.person_outline),
+              icon: Icons.person_outline_rounded,
+              activeIcon: Icons.person_rounded),
         ];
       case UserRole.DOCTOR:
         return const [
           MenuItemData(
               label: 'Professional Profile',
               route: '/doctor/profile',
-              icon: Icons.medical_services_outlined),
+              icon: Icons.medical_services_outlined,
+              activeIcon: Icons.medical_services_rounded),
           MenuItemData(
               label: 'Consultation Schedule',
               route: '/doctor/schedule',
-              icon: Icons.calendar_month_outlined),
+              icon: Icons.calendar_month_outlined,
+              activeIcon: Icons.calendar_month_rounded),
           MenuItemData(
               label: 'Appointments History',
               route: '/doctor/appointments-history',
-              icon: Icons.folder_shared_outlined),
+              icon: Icons.folder_shared_outlined,
+              activeIcon: Icons.folder_shared_rounded),
           MenuItemData(
               label: 'My Consultations',
               route: '/doctor/consultations',
-              icon: Icons.forum_outlined),
+              icon: Icons.forum_outlined,
+              activeIcon: Icons.forum_rounded),
           MenuItemData(
               label: 'Case Rooms',
               route: '/doctor/caserooms',
-              icon: Icons.forum_outlined),
+              icon: Icons.forum_outlined,
+              activeIcon: Icons.forum_rounded),
           MenuItemData(
               label: 'Patient EMR Records',
               route: '/doctor/patients',
-              icon: Icons.folder_shared_outlined),
+              icon: Icons.folder_shared_outlined,
+              activeIcon: Icons.folder_shared_rounded),
           MenuItemData(
               label: 'Availability & Slots',
               route: '/doctor/availability',
-              icon: Icons.favorite_border),
+              icon: Icons.favorite_border_rounded,
+              activeIcon: Icons.favorite_rounded),
         ];
       case UserRole.CLINIC_ADMIN:
         return const [
           MenuItemData(
               label: 'Dashboard',
               route: '/clinic-admin/dashboard',
-              icon: Icons.dashboard_outlined),
+              icon: Icons.dashboard_outlined,
+              activeIcon: Icons.dashboard_rounded),
           MenuItemData(
               label: 'My Clinics',
               route: '/clinic-admin/clinics',
-              icon: Icons.local_hospital_outlined),
+              icon: Icons.local_hospital_outlined,
+              activeIcon: Icons.local_hospital_rounded),
           MenuItemData(
               label: 'Doctors Roster',
               route: '/clinic-admin/doctors',
-              icon: Icons.medical_services_outlined),
+              icon: Icons.medical_services_outlined,
+              activeIcon: Icons.medical_services_rounded),
         ];
       case UserRole.SYSTEM_ADMIN:
         return const [
           MenuItemData(
               label: 'Global Configurations',
               route: '/system-admin',
-              icon: Icons.settings_outlined),
+              icon: Icons.settings_outlined,
+              activeIcon: Icons.settings_rounded),
         ];
     }
   }
 
   // Subset of _getMenuItems shown as quick-access bottom nav on mobile.
-  // Max 4 items (kept in same order as drawer) so labels stay readable.
-  List<MenuItemData> _getBottomNavItems(List<MenuItemData> menuItems) {
-    if (menuItems.length <= 4) return menuItems;
-    return menuItems.take(4).toList();
+  List<MenuItemData> _getBottomNavItems(List<MenuItemData> menuItems, UserRole? role) {
+    if (role == UserRole.PATIENT) {
+      return const [
+        MenuItemData(
+            label: 'Home',
+            route: '/patient/home',
+            icon: Icons.home_outlined,
+            activeIcon: Icons.home_rounded),
+        MenuItemData(
+            label: 'Doctors',
+            route: '/patient/doctors',
+            icon: Icons.medical_services_outlined,
+            activeIcon: Icons.medical_services_rounded),
+        MenuItemData(
+            label: 'Clinics',
+            route: '/patient/clinics',
+            icon: Icons.local_hospital_outlined,
+            activeIcon: Icons.local_hospital_rounded),
+        MenuItemData(
+            label: 'Consultations',
+            route: '/patient/consultations',
+            icon: Icons.forum_outlined,
+            activeIcon: Icons.forum_rounded),
+        MenuItemData(
+            label: 'Profile',
+            route: '/patient/profile',
+            icon: Icons.person_outline_rounded,
+            activeIcon: Icons.person_rounded),
+      ];
+    }
+    if (menuItems.length <= 5) return menuItems;
+    return menuItems.take(5).toList();
   }
 
   @override
@@ -151,11 +204,12 @@ class AppLayout extends ConsumerWidget {
     final authState = ref.watch(authNotifierProvider);
     final user = authState.currentUser;
     final menuItems = _getMenuItems(user?.role);
-    final bottomNavItems = _getBottomNavItems(menuItems);
+    final bottomNavItems = _getBottomNavItems(menuItems, user?.role);
     final isDesktop = MediaQuery.of(context).size.width >= 900;
     final location = GoRouterState.of(context).uri.toString();
-    final bottomNavIndex =
-        bottomNavItems.indexWhere((item) => item.route == location);
+    final bottomNavIndex = bottomNavItems.indexWhere(
+      (item) => location == item.route || (item.route != '/patient/home' && location.startsWith(item.route)),
+    );
 
     final sidebarWidget = Container(
       width: 260,
@@ -291,23 +345,50 @@ class AppLayout extends ConsumerWidget {
     return Scaffold(
       drawer: (isDesktop || hideBars) ? null : Drawer(child: sidebarWidget),
       bottomNavigationBar: (!hideBars && !isDesktop && bottomNavItems.length >= 2)
-          ? BottomNavigationBar(
-              type: bottomNavItems.length > 3
-                  ? BottomNavigationBarType.fixed
-                  : BottomNavigationBarType.shifting,
-              backgroundColor: Colors.white,
-              selectedItemColor: AppTheme.primaryTeal,
-              unselectedItemColor: AppTheme.textMain.withValues(alpha: 0.5),
-              currentIndex: bottomNavIndex < 0 ? 0 : bottomNavIndex,
-              onTap: (index) => context.go(bottomNavItems[index].route),
-              items: bottomNavItems
-                  .map(
-                    (item) => BottomNavigationBarItem(
-                      icon: Icon(item.icon),
-                      label: item.label,
-                    ),
-                  )
-                  .toList(),
+          ? Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, -3),
+                  ),
+                ],
+                border: const Border(
+                  top: BorderSide(color: AppTheme.borderGray, width: 0.8),
+                ),
+              ),
+              child: SafeArea(
+                top: false,
+                child: SizedBox(
+                  height: 56,
+                  child: BottomNavigationBar(
+                    type: BottomNavigationBarType.fixed,
+                    backgroundColor: Colors.white,
+                    elevation: 0,
+                    showSelectedLabels: false,
+                    showUnselectedLabels: false,
+                    selectedFontSize: 0,
+                    unselectedFontSize: 0,
+                    selectedItemColor: AppTheme.primaryTeal,
+                    unselectedItemColor: const Color(0xFF94A3B8),
+                    currentIndex: bottomNavIndex < 0 ? 0 : bottomNavIndex,
+                    onTap: (index) => context.go(bottomNavItems[index].route),
+                    items: bottomNavItems
+                        .map(
+                          (item) => BottomNavigationBarItem(
+                            icon: Icon(item.icon, size: 24),
+                            activeIcon:
+                                Icon(item.activeIcon ?? item.icon, size: 26),
+                            label: '',
+                            tooltip: item.label,
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+              ),
             )
           : null,
       body: SafeArea(

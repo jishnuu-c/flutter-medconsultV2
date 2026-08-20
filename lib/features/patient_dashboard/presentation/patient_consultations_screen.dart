@@ -135,7 +135,6 @@ class _PatientConsultationsScreenState
   String? _patientId;
   List<dynamic> _consultations = [];
   List<dynamic> _doctors = [];
-  Map<String, dynamic>? _selectedConsultation;
 
   @override
   void initState() {
@@ -174,35 +173,24 @@ class _PatientConsultationsScreenState
   }
 
   void _selectConsultation(dynamic c) {
-    if (MediaQuery.of(context).size.width <= 768) {
-      // Mobile: Push chat screen as a fullscreen route on root navigator.
-      // This completely overlays the ShellRoute's top bar and bottom navbar.
-      Navigator.of(context, rootNavigator: true).push(
-        MaterialPageRoute(
-          builder: (context) => Scaffold(
-            backgroundColor: AppTheme.backgroundApp,
-            body: ConsultationChatView(
-              consultation: Map<String, dynamic>.from(c),
-              patientId: _patientId,
-              doctors: _doctors,
-              isMobile: true,
-              onClose: () => Navigator.of(context).pop(),
-            ),
+    // Push chat screen as a fullscreen route on root navigator.
+    // This completely hides the ShellRoute's top bar, sidebar, and bottom navigation bar.
+    Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: const Color(0xFFF8FAFC),
+          body: ConsultationChatView(
+            consultation: Map<String, dynamic>.from(c),
+            patientId: _patientId,
+            doctors: _doctors,
+            isMobile: true,
+            onClose: () => Navigator.of(context).pop(),
           ),
         ),
-      ).then((_) {
-        _loadConsultations();
-      });
-    } else {
-      // Desktop: Show inline in split-screen (master-detail) layout
-      setState(() {
-        _selectedConsultation = Map<String, dynamic>.from(c);
-      });
-    }
-  }
-
-  void _closeThread() {
-    setState(() => _selectedConsultation = null);
+      ),
+    ).then((_) {
+      _loadConsultations();
+    });
   }
 
   Color _statusColor(String? status) {
@@ -382,11 +370,11 @@ class _PatientConsultationsScreenState
                                         'subject': subjectController.text.trim(),
                                         'isUrgent': isUrgent,
                                       });
-                                      if (mounted) Navigator.pop(ctx);
+                                      if (ctx.mounted) Navigator.pop(ctx);
                                       _loadConsultations();
                                     } catch (_) {
                                       setDialogState(() => submitting = false);
-                                      if (mounted) {
+                                      if (context.mounted) {
                                         ScaffoldMessenger.of(context).showSnackBar(
                                           const SnackBar(
                                             content: Text('Failed to book consultation.'),
@@ -597,148 +585,153 @@ class _PatientConsultationsScreenState
     );
   }
 
-  Widget _buildDesktopPlaceholder() {
-    return Container(
-      color: AppTheme.backgroundApp,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.video_call,
-                size: 64,
-                color: AppTheme.primaryTeal,
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Select a Consultation',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textMain,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Choose a consultation from the left side list\nto start messaging your doctor.',
-              style: TextStyle(
-                fontSize: 14,
-                color: AppTheme.textMuted,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final isMobile = size.width <= 768;
 
     return Scaffold(
-      floatingActionButton: (isMobile && _selectedConsultation == null)
-          ? FloatingActionButton.extended(
-              onPressed: _patientId == null ? null : _openBookDialog,
-              icon: const Icon(Icons.add),
-              label: const Text('New Consultation'),
-              backgroundColor: AppTheme.primaryTeal,
-              foregroundColor: Colors.white,
-            )
-          : null,
-      body: Row(
-        children: [
-          // Left Sidebar (always shown on Desktop, takes full width on Mobile if no chat is open)
-          Expanded(
-            flex: isMobile ? 1 : 0,
-            child: Container(
-              width: isMobile ? double.infinity : 320,
-              color: Colors.white,
-              child: SafeArea(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      backgroundColor: AppTheme.backgroundApp,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _patientId == null ? null : _openBookDialog,
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('New Consultation', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFF0F766E),
+        foregroundColor: Colors.white,
+      ),
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: () async {
+            await _loadConsultations();
+            await _loadDoctors();
+          },
+          color: AppTheme.primaryTeal,
+          child: ListView(
+            padding: EdgeInsets.all(isMobile ? 14 : 24),
+            children: [
+              // Hero Header Card
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(isMobile ? 18 : 22),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF042F2E), Color(0xFF0F766E), Color(0xFF14B8A6)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF0F766E).withValues(alpha: 0.25),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Row(
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16),
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Text(
+                              'TELEMEDICINE & CHAT',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
                           const Text(
-                            'Consultations',
+                            'My Consultations',
                             style: TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.bold,
-                              color: AppTheme.textMain,
+                              color: Colors.white,
                             ),
                           ),
-                          if (!isMobile) ...[
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton.icon(
-                                onPressed: _patientId == null ? null : _openBookDialog,
-                                icon: const Icon(Icons.add, size: 16),
-                                label: const Text('New Consultation'),
-                              ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Chat directly with your verified specialists and review medical advice',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: Colors.white.withValues(alpha: 0.88),
                             ),
-                          ],
+                          ),
                         ],
                       ),
                     ),
-                    const Divider(height: 1),
-                    Expanded(
-                      child: _isLoading && _consultations.isEmpty
-                          ? const Center(child: CircularProgressIndicator())
-                          : _consultations.isEmpty
-                              ? _buildEmptyState()
-                              : ListView.builder(
-                                  itemCount: _consultations.length,
-                                  itemBuilder: (context, index) {
-                                    final c = _consultations[index];
-                                    final isSelected = _selectedConsultation != null &&
-                                        c['consultationId'] == _selectedConsultation!['consultationId'];
-                                    return _buildConsultationListItem(c, isSelected);
-                                  },
-                                ),
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      onPressed: _patientId == null ? null : _openBookDialog,
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text('New', style: TextStyle(fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: const Color(0xFF0F766E),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
                     ),
                   ],
                 ),
               ),
-            ),
-          ),
-          // Right Chat Panel (Desktop Only)
-          if (!isMobile)
-            Expanded(
-              child: _selectedConsultation == null
-                  ? _buildDesktopPlaceholder()
-                  : Container(
-                      color: AppTheme.backgroundApp,
-                      child: ConsultationChatView(
-                        consultation: _selectedConsultation!,
-                        patientId: _patientId,
-                        doctors: _doctors,
-                        isMobile: false,
-                        onClose: _closeThread,
-                      ),
+              const SizedBox(height: 16),
+
+              // Search and consultation count
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Active Threads (${_consultations.length})',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textMain,
                     ),
-            ),
-        ],
+                  ),
+                  const Text(
+                    'Tap a consultation to enter chat',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: AppTheme.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // List of Consultations
+              if (_isLoading && _consultations.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 60),
+                  child: Center(child: CircularProgressIndicator(color: AppTheme.primaryTeal)),
+                )
+              else if (_consultations.isEmpty)
+                _buildEmptyState()
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _consultations.length,
+                  separatorBuilder: (context, index) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final c = _consultations[index];
+                    return _buildConsultationListItem(c, false);
+                  },
+                ),
+              const SizedBox(height: 40),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1195,37 +1188,51 @@ class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
         (!hasFile ||
             (msg['body'] != meta?.originalFilename &&
                 msg['body'] != 'Sent an attachment'));
+    final senderName = (msg['senderName'] ?? '').toString();
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        constraints: BoxConstraints(maxWidth: maxWidth * 0.78),
-        margin: const EdgeInsets.symmetric(vertical: 6),
+        constraints: BoxConstraints(maxWidth: maxWidth * 0.80),
+        margin: const EdgeInsets.symmetric(vertical: 5),
         child: Column(
           crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Text(
-                '${msg['senderName'] ?? ''} • ${_shortTime(msg['sentAt'])}',
-                style: const TextStyle(fontSize: 10, color: AppTheme.textMuted),
+            if (!isMine && senderName.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(left: 8, bottom: 3),
+                child: Text(
+                  senderName,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.primaryTeal,
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(height: 3),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: isMine ? AppTheme.primaryTeal : Colors.white,
+                gradient: isMine
+                    ? const LinearGradient(
+                        colors: [Color(0xFF0F766E), Color(0xFF0D9488)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      )
+                    : null,
+                color: isMine ? null : Colors.white,
                 borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(16),
-                  topRight: const Radius.circular(16),
-                  bottomRight: Radius.circular(isMine ? 4 : 16),
-                  bottomLeft: Radius.circular(isMine ? 16 : 4),
+                  topLeft: const Radius.circular(18),
+                  topRight: const Radius.circular(18),
+                  bottomRight: Radius.circular(isMine ? 3 : 18),
+                  bottomLeft: Radius.circular(isMine ? 18 : 3),
                 ),
-                border: isMine ? null : Border.all(color: AppTheme.borderGray, width: 0.7),
+                border: isMine
+                    ? null
+                    : Border.all(color: const Color(0xFFE2E8F0), width: 1),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
+                    color: Colors.black.withValues(alpha: 0.035),
                     blurRadius: 6,
                     offset: const Offset(0, 2),
                   ),
@@ -1239,11 +1246,35 @@ class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
                       msg['body'] ?? '',
                       style: TextStyle(
                         fontSize: 14,
-                        color: isMine ? Colors.white : AppTheme.textMain,
-                        height: 1.3,
+                        color: isMine ? Colors.white : const Color(0xFF1E293B),
+                        height: 1.35,
                       ),
                     ),
                   if (hasFile) _buildAttachment(msg, fileId, isMine),
+                  const SizedBox(height: 3),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Text(
+                        _shortTime(msg['sentAt']),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: isMine
+                              ? Colors.white.withValues(alpha: 0.75)
+                              : AppTheme.textMuted,
+                        ),
+                      ),
+                      if (isMine) ...[
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.done_all_rounded,
+                          size: 13,
+                          color: Colors.white.withValues(alpha: 0.85),
+                        ),
+                      ],
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -1266,8 +1297,8 @@ class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isMine
-                ? Colors.white.withValues(alpha: 0.4)
-                : Colors.black.withValues(alpha: 0.12),
+                ? Colors.white.withValues(alpha: 0.3)
+                : const Color(0xFFE2E8F0),
           ),
         ),
         clipBehavior: Clip.antiAlias,
@@ -1279,7 +1310,18 @@ class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
                 height: 140,
                 alignment: Alignment.center,
                 color: Colors.black.withValues(alpha: 0.04),
-                child: const Text('Loading media...', style: TextStyle(fontSize: 11)),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 8),
+                    Text('Loading media...', style: TextStyle(fontSize: 11)),
+                  ],
+                ),
               )
             else
               GestureDetector(
@@ -1303,15 +1345,24 @@ class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
                       ),
                     ),
                   ),
-                  TextButton(
-                    onPressed: () => _downloadChatFile(fileId, filename),
-                    style: TextButton.styleFrom(
-                      backgroundColor: isMine ? Colors.white : AppTheme.primaryTeal,
-                      foregroundColor: isMine ? AppTheme.primaryTeal : Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      minimumSize: const Size(0, 0),
+                  const SizedBox(width: 6),
+                  InkWell(
+                    onTap: () => _downloadChatFile(fileId, filename),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: isMine ? Colors.white : AppTheme.primaryTeal,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'Save',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.bold,
+                          color: isMine ? AppTheme.primaryTeal : Colors.white,
+                        ),
+                      ),
                     ),
-                    child: const Text('Save', style: TextStyle(fontSize: 11)),
                   ),
                 ],
               ),
@@ -1323,18 +1374,29 @@ class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
 
     return Container(
       margin: const EdgeInsets.only(top: 6),
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: isMine ? Colors.white.withValues(alpha: 0.18) : AppTheme.backgroundApp,
-        borderRadius: BorderRadius.circular(8),
+        color: isMine ? Colors.white.withValues(alpha: 0.15) : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: isMine ? Colors.white.withValues(alpha: 0.3) : AppTheme.borderGray,
+          color: isMine ? Colors.white.withValues(alpha: 0.3) : const Color(0xFFE2E8F0),
         ),
       ),
       child: Row(
         children: [
-          const Text('📄', style: TextStyle(fontSize: 18)),
-          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: isMine ? Colors.white.withValues(alpha: 0.2) : const Color(0xFFE0F2FE),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              Icons.description_rounded,
+              size: 20,
+              color: isMine ? Colors.white : const Color(0xFF0284C7),
+            ),
+          ),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1344,8 +1406,8 @@ class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.bold,
                     color: isMine ? Colors.white : AppTheme.textMain,
                   ),
                 ),
@@ -1360,15 +1422,14 @@ class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
             ),
           ),
           const SizedBox(width: 6),
-          TextButton(
-            onPressed: () => _downloadChatFile(fileId, filename),
-            style: TextButton.styleFrom(
-              backgroundColor: isMine ? Colors.white : AppTheme.primaryTeal,
-              foregroundColor: isMine ? AppTheme.primaryTeal : Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              minimumSize: const Size(0, 0),
+          IconButton(
+            icon: Icon(
+              Icons.download_rounded,
+              size: 18,
+              color: isMine ? Colors.white : AppTheme.primaryTeal,
             ),
-            child: const Text('Download', style: TextStyle(fontSize: 11)),
+            onPressed: () => _downloadChatFile(fileId, filename),
+            tooltip: 'Download File',
           ),
         ],
       ),
@@ -1377,16 +1438,42 @@ class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
 
   Widget _buildMessagesList(double maxWidth) {
     if (_isLoading && _messages.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(
+        child: CircularProgressIndicator(color: AppTheme.primaryTeal),
+      );
     }
     if (_messages.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'No messages yet. Send a message below to start the conversation.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppTheme.textMuted),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFCCFBF1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.forum_outlined, size: 28, color: Color(0xFF0F766E)),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'No messages yet',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textMain,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Type your clinical question below to start the conversation.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              ),
+            ],
           ),
         ),
       );
@@ -1394,7 +1481,7 @@ class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
     final currentUserId = ref.read(authNotifierProvider).currentUser?.id;
     return ListView.builder(
       controller: _messagesScrollController,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       itemCount: _messages.length,
       itemBuilder: (context, idx) {
         final msg = _messages[idx];
@@ -1411,32 +1498,37 @@ class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
         padding: EdgeInsets.only(
           left: 16,
           right: 16,
-          top: 12,
-          bottom: bottomPadding + 12,
+          top: 14,
+          bottom: bottomPadding + 14,
         ),
-        color: const Color(0xFFF1F5F9),
+        decoration: const BoxDecoration(
+          color: Color(0xFFF8FAFC),
+          border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+        ),
         child: Row(
           children: [
+            const Icon(Icons.lock_outline_rounded, size: 18, color: AppTheme.textMuted),
+            const SizedBox(width: 8),
             const Expanded(
               child: Text(
                 'This consultation is closed.',
                 style: TextStyle(
                   color: AppTheme.textMuted,
                   fontSize: 13,
-                  fontWeight: FontWeight.w500,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
             ElevatedButton.icon(
               onPressed: _openReviewModal,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryTeal,
+                backgroundColor: const Color(0xFF0F766E),
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              icon: const Icon(Icons.star_rounded, size: 16),
-              label: const Text('Rate Consultation'),
+              icon: const Icon(Icons.star_rounded, size: 16, color: Colors.amber),
+              label: const Text('Rate Doctor', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ],
         ),
@@ -1444,48 +1536,55 @@ class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
     }
     return Container(
       padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
+        left: 12,
+        right: 12,
         top: 10,
         bottom: bottomPadding + 10,
       ),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: AppTheme.borderGray)),
+        border: const Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (_selectedFile != null)
             Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.only(bottom: 8, left: 4),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryLightTeal.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.primaryLightTeal),
+                  color: const Color(0xFFCCFBF1),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFF99F6E4)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.attach_file, size: 14, color: AppTheme.primaryTeal),
+                    const Icon(Icons.attach_file_rounded, size: 14, color: Color(0xFF0F766E)),
                     const SizedBox(width: 6),
                     Flexible(
                       child: Text(
                         '${_selectedFile!.name} (${_formatFileSize(_selectedFile!.size)})',
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.primaryDarkTeal,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0F766E),
                         ),
                       ),
                     ),
                     const SizedBox(width: 8),
                     GestureDetector(
                       onTap: _clearSelectedFile,
-                      child: const Icon(Icons.cancel, size: 16, color: AppTheme.dangerRed),
+                      child: const Icon(Icons.cancel, size: 16, color: Color(0xFFDC2626)),
                     ),
                   ],
                 ),
@@ -1494,7 +1593,7 @@ class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
           Row(
             children: [
               IconButton(
-                icon: const Icon(Icons.add_circle_outline, color: AppTheme.primaryTeal, size: 26),
+                icon: const Icon(Icons.add_circle_outline_rounded, color: Color(0xFF0F766E), size: 24),
                 tooltip: 'Attach file',
                 onPressed: _isUploadingFile ? null : _pickFile,
               ),
@@ -1506,9 +1605,9 @@ class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
                   textCapitalization: TextCapitalization.sentences,
                   decoration: InputDecoration(
                     hintText: 'Type your message...',
-                    hintStyle: const TextStyle(color: AppTheme.textMuted),
+                    hintStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 13.5),
                     filled: true,
-                    fillColor: AppTheme.backgroundApp,
+                    fillColor: const Color(0xFFF1F5F9),
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     border: OutlineInputBorder(
@@ -1521,7 +1620,7 @@ class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide.none,
+                      borderSide: const BorderSide(color: Color(0xFF0F766E), width: 1.2),
                     ),
                   ),
                   onSubmitted: (_) => _sendMessage(),
@@ -1534,14 +1633,14 @@ class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
                       child: SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0F766E)),
                       ),
                     )
                   : CircleAvatar(
-                      backgroundColor: AppTheme.primaryTeal,
+                      backgroundColor: const Color(0xFF0F766E),
                       radius: 20,
                       child: IconButton(
-                        icon: const Icon(Icons.send, color: Colors.white, size: 16),
+                        icon: const Icon(Icons.send_rounded, color: Colors.white, size: 17),
                         onPressed: _sendMessage,
                       ),
                     ),
@@ -1826,12 +1925,19 @@ class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
         SafeArea(
           child: Column(
             children: [
-              // Chat Header
+              // Modern Elevated Chat Header
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: const BoxDecoration(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
                   color: Colors.white,
-                  border: Border(bottom: BorderSide(color: AppTheme.borderGray)),
+                  border: const Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Row(
                   children: [
@@ -1840,14 +1946,32 @@ class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
                         icon: const Icon(Icons.arrow_back, color: AppTheme.textMain),
                         onPressed: widget.onClose,
                       ),
-                    _buildDoctorAvatar(
-                      widget.consultation['doctorName'] ?? '',
-                      avatarUrl: (widget.consultation['doctorAvatarUrl'] ??
-                              widget.consultation['avatarUrl'] ??
-                              widget.consultation['doctorProfileImage'] ??
-                              widget.consultation['imageUrl'])
-                          ?.toString(),
-                      doctorId: widget.consultation['doctorId']?.toString(),
+                    Stack(
+                      children: [
+                        _buildDoctorAvatar(
+                          widget.consultation['doctorName'] ?? '',
+                          radius: 20,
+                          avatarUrl: (widget.consultation['doctorAvatarUrl'] ??
+                                  widget.consultation['avatarUrl'] ??
+                                  widget.consultation['doctorProfileImage'] ??
+                                  widget.consultation['imageUrl'])
+                              ?.toString(),
+                          doctorId: widget.consultation['doctorId']?.toString(),
+                        ),
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: Container(
+                            width: 11,
+                            height: 11,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF22C55E),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -1856,22 +1980,30 @@ class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            'Dr. ${widget.consultation['doctorName'] ?? ''}',
+                            'Dr. ${widget.consultation['doctorName'] ?? 'Consulting Specialist'}',
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 15,
                               color: AppTheme.textMain,
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            widget.consultation['subject'] ?? '',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: AppTheme.textMuted,
-                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  widget.consultation['subject'] ?? 'Medical Consultation',
+                                  style: const TextStyle(
+                                    fontSize: 11.5,
+                                    color: AppTheme.textMuted,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -1879,23 +2011,24 @@ class _ConsultationChatViewState extends ConsumerState<ConsultationChatView> {
                     if (widget.consultation['isUrgent'] == true)
                       Container(
                         margin: const EdgeInsets.only(right: 8),
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                         decoration: BoxDecoration(
-                          color: AppTheme.dangerRed.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(4),
+                          color: const Color(0xFFFEE2E2),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: const Color(0xFFFECACA)),
                         ),
                         child: const Text(
-                          'Urgent',
+                          'URGENT',
                           style: TextStyle(
-                            color: AppTheme.dangerRed,
-                            fontSize: 9,
+                            color: Color(0xFFDC2626),
+                            fontSize: 9.5,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
                     _buildStatusBadge(widget.consultation['status'] as String?),
                     if (!widget.isMobile) ...[
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
                       IconButton(
                         icon: const Icon(Icons.close, color: AppTheme.textMuted),
                         onPressed: widget.onClose,

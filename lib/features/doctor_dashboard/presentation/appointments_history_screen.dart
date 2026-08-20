@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_notification.dart';
 import '../../clinic_admin/data/doctor_service.dart';
 import '../../doctor_dashboard/data/appointment_service.dart';
 import '../../../core/network/api_client.dart';
 
-/// Mirrors Angular's doctor-dashboard/appointments-history — mobile view.
+/// Doctor-side Appointments History screen — mobile optimized.
 class DoctorAppointmentsHistoryScreen extends ConsumerStatefulWidget {
   const DoctorAppointmentsHistoryScreen({super.key});
 
@@ -21,13 +22,13 @@ class _DoctorAppointmentsHistoryScreenState
   String? _doctorId;
   List<dynamic> _appointments = [];
 
-  // Filters — mirrors Angular's selectedStatus / selectedSessionType / fromDate / toDate
+  // Filters
   String _selectedStatus = '';
   String _selectedSessionType = '';
   DateTime? _fromDate;
   DateTime? _toDate;
 
-  // Pagination — mirrors Angular's page / size / totalPages / totalElements
+  // Pagination
   int _page = 0;
   final int _size = 10;
   int _totalPages = 1;
@@ -48,6 +49,21 @@ class _DoctorAppointmentsHistoryScreenState
     {'label': 'Video Call', 'value': 'VIDEO_CALL'},
   ];
 
+  static const _avatarBgColors = [
+    Color(0xFFE0F2FE),
+    Color(0xFFF0FDFA),
+    Color(0xFFEDE9FE),
+    Color(0xFFFEF3C7),
+    Color(0xFFECFDF5),
+  ];
+  static const _avatarFgColors = [
+    Color(0xFF0369A1),
+    Color(0xFF0F766E),
+    Color(0xFF6D28D9),
+    Color(0xFFB45309),
+    Color(0xFF047857),
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -60,25 +76,23 @@ class _DoctorAppointmentsHistoryScreenState
       final user = ref.read(authNotifierProvider).currentUser;
       if (user == null) throw Exception('No logged-in user found.');
       final doctors = await ref.read(doctorServiceProvider).getAllDoctors();
-      // Match by email/fullName, not userId — mirrors Angular
-      // (appointments-history.component.ts). `userId` on the doctor
-      // record isn't reliable for self-lookup on this backend; matching
-      // on it can pick the wrong doctor's record and send the wrong
-      // doctorId downstream (→ 403).
       final match = doctors.where((d) =>
           (d.email.isNotEmpty &&
               d.email.toLowerCase() == user.email.toLowerCase()) ||
           (d.fullName.trim().isNotEmpty &&
               d.fullName.trim().toLowerCase() ==
                   user.fullName.trim().toLowerCase()));
-      if (match.isEmpty)
+      if (match.isEmpty) {
         throw Exception('Doctor profile not found for this user.');
+      }
       _doctorId = match.first.doctorId;
       await _loadAppointments();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to load appointments: $e')));
+        AppNotification.showError(
+          context,
+          'Failed to load appointments: $e',
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -88,9 +102,6 @@ class _DoctorAppointmentsHistoryScreenState
   Future<void> _loadAppointments() async {
     setState(() => _isLoading = true);
     try {
-      // Mirrors Angular: uses the POST /search endpoint with doctorId in
-      // the body, not GET /doctor/{doctorId} — the latter 403s for a
-      // plain DOCTOR-role token on this backend.
       final searchRequest = <String, dynamic>{
         'doctorId': _doctorId,
         'page': _page,
@@ -103,7 +114,8 @@ class _DoctorAppointmentsHistoryScreenState
         searchRequest['sessionType'] = _selectedSessionType;
       }
       if (_fromDate != null) {
-        searchRequest['fromDate'] = _fromDate!.toIso8601String().split('T').first;
+        searchRequest['fromDate'] =
+            _fromDate!.toIso8601String().split('T').first;
       }
       if (_toDate != null) {
         searchRequest['toDate'] = _toDate!.toIso8601String().split('T').first;
@@ -122,8 +134,10 @@ class _DoctorAppointmentsHistoryScreenState
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to load appointments history: $e')));
+        AppNotification.showError(
+          context,
+          'Failed to load appointments history: $e',
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -160,54 +174,39 @@ class _DoctorAppointmentsHistoryScreenState
     }
   }
 
-  // ---- Angular-matching palette helpers ----
-
   Color _statusBg(String status) {
-    switch (status) {
+    switch (status.toUpperCase()) {
       case 'COMPLETED':
-        return const Color(0xFFDEF7EC);
+        return const Color(0xFFDCFCE7);
       case 'CONFIRMED':
-        return const Color(0xFFE1EFFE);
+        return const Color(0xFFCCFBF1);
       case 'SCHEDULED':
-        return const Color(0xFFFDF6B2);
+        return const Color(0xFFE0F2FE);
       case 'CANCELLED':
+        return const Color(0xFFFEE2E2);
       case 'NO_SHOW':
-        return const Color(0xFFFDE8E8);
+        return const Color(0xFFFEF3C7);
       default:
         return const Color(0xFFF3F4F6);
     }
   }
 
   Color _statusFg(String status) {
-    switch (status) {
+    switch (status.toUpperCase()) {
       case 'COMPLETED':
-        return const Color(0xFF03543F);
+        return const Color(0xFF166534);
       case 'CONFIRMED':
-        return const Color(0xFF1E429F);
+        return const Color(0xFF0F766E);
       case 'SCHEDULED':
-        return const Color(0xFF723B13);
+        return const Color(0xFF0369A1);
       case 'CANCELLED':
+        return const Color(0xFFB91C1C);
       case 'NO_SHOW':
-        return const Color(0xFF9B1C1C);
+        return const Color(0xFFB45309);
       default:
         return const Color(0xFF4B5563);
     }
   }
-
-  static const _avatarBgColors = [
-    Color(0xFFE1F5EE),
-    Color(0xFFDBEAFE),
-    Color(0xFFEDE9FE),
-    Color(0xFFFEF3C7),
-    Color(0xFFDCFCE7),
-  ];
-  static const _avatarFgColors = [
-    Color(0xFF085041),
-    Color(0xFF1E40AF),
-    Color(0xFF5B21B6),
-    Color(0xFF92400E),
-    Color(0xFF166534),
-  ];
 
   int _colorIdx(String name) => name.isNotEmpty
       ? name.codeUnitAt(0) % _avatarBgColors.length
@@ -224,135 +223,231 @@ class _DoctorAppointmentsHistoryScreenState
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      onRefresh: _resolveDoctorIdAndLoad,
-      color: const Color(0xFF085041),
-      child: ListView(
-        padding: const EdgeInsets.all(16),
+    final isMobile = MediaQuery.of(context).size.width <= 600;
+
+    return Scaffold(
+      backgroundColor: AppTheme.backgroundApp,
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: _resolveDoctorIdAndLoad,
+          color: AppTheme.primaryTeal,
+          child: ListView(
+            padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 16 : 24,
+              vertical: isMobile ? 16 : 24,
+            ),
+            children: [
+              // 1. Header Banner
+              _buildHeaderBanner(isMobile),
+              const SizedBox(height: 16),
+
+              // 2. Filters Card
+              _buildFiltersCard(isMobile),
+              const SizedBox(height: 16),
+
+              // 3. Appointments List
+              if (_isLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 40),
+                  child: Center(
+                    child: CircularProgressIndicator(color: AppTheme.primaryTeal),
+                  ),
+                )
+              else if (_appointments.isEmpty)
+                _buildEmptyState()
+              else ...[
+                ..._appointments.map((a) => _buildAppointmentCard(a, isMobile)),
+                const SizedBox(height: 12),
+                _buildPaginationFooter(),
+              ],
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 1. HEADER BANNER
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildHeaderBanner(bool isMobile) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(isMobile ? 18 : 24),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0F766E), Color(0xFF115E59)],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F766E).withOpacity(0.2),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildHeader(),
-          const SizedBox(height: 16),
-          _buildFiltersCard(),
-          const SizedBox(height: 16),
-          if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 40),
-              child: Center(
-                  child: CircularProgressIndicator(color: Color(0xFF085041))),
-            )
-          else if (_appointments.isEmpty)
-            _buildEmptyState()
-          else ...[
-            ..._appointments.map(_buildAppointmentCard),
-            const SizedBox(height: 8),
-            _buildPaginationFooter(),
-          ],
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.16),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withOpacity(0.2)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.history_rounded, size: 13, color: Colors.white),
+                    SizedBox(width: 5),
+                    Text(
+                      'CLINICAL ARCHIVE',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF14B8A6).withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'Total: $_totalElements',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Appointments History',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: isMobile ? 22 : 26,
+              fontWeight: FontWeight.bold,
+              letterSpacing: -0.3,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            'Search, filter, and review details of all patient clinical appointments',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.85),
+              fontSize: isMobile ? 12 : 13.5,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildHeader() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('📜 Appointments History',
-                  style: TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF085041))),
-              const SizedBox(height: 4),
-              const Text(
-                  'All appointments booked with you, past and upcoming.',
-                  style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted)),
-            ],
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: const Color(0xFFCCFBF1),
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Text('Total: $_totalElements',
-              style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF0F766E))),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFiltersCard() {
+  // ─────────────────────────────────────────────────────────────────────────
+  // 2. FILTERS CARD
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildFiltersCard(bool isMobile) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.borderGray),
+        color: AppTheme.surfaceWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.borderGray.withOpacity(0.7)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Expanded(child: _buildDropdown('Status', _selectedStatus,
-                  _statusOptions, (v) {
-                setState(() => _selectedStatus = v);
-                _applyFilters();
-              })),
-              const SizedBox(width: 10),
-              Expanded(child: _buildDropdown('Mode', _selectedSessionType,
-                  _sessionTypeOptions, (v) {
-                setState(() => _selectedSessionType = v);
-                _applyFilters();
-              })),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
               Expanded(
-                  child: _buildDateField('From Date', _fromDate, (d) {
-                setState(() => _fromDate = d);
-                _applyFilters();
-              })),
-              const SizedBox(width: 10),
-              Expanded(child: _buildDateField('To Date', _toDate, (d) {
-                setState(() => _toDate = d);
-                _applyFilters();
-              })),
+                child: _buildDropdown(
+                  'Status',
+                  _selectedStatus,
+                  _statusOptions,
+                  (v) {
+                    setState(() => _selectedStatus = v);
+                    _applyFilters();
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildDropdown(
+                  'Mode',
+                  _selectedSessionType,
+                  _sessionTypeOptions,
+                  (v) {
+                    setState(() => _selectedSessionType = v);
+                    _applyFilters();
+                  },
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
           Row(
+            children: [
+              Expanded(
+                child: _buildDateField('From Date', _fromDate, (d) {
+                  setState(() => _fromDate = d);
+                  _applyFilters();
+                }),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildDateField('To Date', _toDate, (d) {
+                  setState(() => _toDate = d);
+                  _applyFilters();
+                }),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              TextButton(
+              TextButton.icon(
                 onPressed: _clearFilters,
                 style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF4B5563),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
-                child: const Text('🧹 Clear', style: TextStyle(fontSize: 12.5)),
+                  foregroundColor: AppTheme.textMuted,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                ),
+                icon: const Icon(Icons.clear_all, size: 16),
+                label: const Text('Clear Filters', style: TextStyle(fontSize: 12)),
               ),
-              const SizedBox(width: 6),
-              ElevatedButton(
+              const SizedBox(width: 8),
+              ElevatedButton.icon(
                 onPressed: _loadAppointments,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF085041),
-                  foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
-                child: const Text('🔍 Refresh', style: TextStyle(fontSize: 12.5)),
+                icon: const Icon(Icons.refresh, size: 15),
+                label: const Text('Refresh', style: TextStyle(fontSize: 12)),
               ),
             ],
           ),
@@ -366,25 +461,24 @@ class _DoctorAppointmentsHistoryScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: const TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF374151))),
-        const SizedBox(height: 4),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textMain),
+        ),
+        const SizedBox(height: 6),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
-            color: const Color(0xFFF9FAFB),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFFD1D5DB)),
+            color: AppTheme.backgroundApp,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppTheme.borderGray.withOpacity(0.8)),
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
               value: value,
               isExpanded: true,
-              icon: const Icon(Icons.keyboard_arrow_down, size: 18),
-              style: const TextStyle(fontSize: 12.5, color: Color(0xFF1F2937)),
+              icon: const Icon(Icons.keyboard_arrow_down, size: 18, color: AppTheme.textMuted),
+              style: const TextStyle(fontSize: 12.5, color: AppTheme.textMain),
               items: options
                   .map((o) => DropdownMenuItem(
                       value: o['value'], child: Text(o['label']!)))
@@ -402,12 +496,11 @@ class _DoctorAppointmentsHistoryScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: const TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF374151))),
-        const SizedBox(height: 4),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textMain),
+        ),
+        const SizedBox(height: 6),
         InkWell(
           onTap: () async {
             final picked = await showDatePicker(
@@ -418,18 +511,28 @@ class _DoctorAppointmentsHistoryScreenState
             );
             onPicked(picked);
           },
+          borderRadius: BorderRadius.circular(10),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             decoration: BoxDecoration(
-              color: const Color(0xFFF9FAFB),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFD1D5DB)),
+              color: AppTheme.backgroundApp,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppTheme.borderGray.withOpacity(0.8)),
             ),
-            child: Text(
-              value == null
-                  ? '—'
-                  : '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}',
-              style: const TextStyle(fontSize: 12.5, color: Color(0xFF1F2937)),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  value == null
+                      ? 'Select date'
+                      : '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: value == null ? AppTheme.textMuted : AppTheme.textMain,
+                  ),
+                ),
+                const Icon(Icons.calendar_today_outlined, size: 14, color: AppTheme.textMuted),
+              ],
             ),
           ),
         ),
@@ -439,19 +542,45 @@ class _DoctorAppointmentsHistoryScreenState
 
   Widget _buildEmptyState() {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 40),
+      padding: const EdgeInsets.all(36),
       alignment: Alignment.center,
-      child: const Text('No appointments history matches the current filters.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.borderGray.withOpacity(0.7)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: const BoxDecoration(color: Color(0xFFF1F5F9), shape: BoxShape.circle),
+            child: const Icon(Icons.event_busy, size: 28, color: AppTheme.textMuted),
+          ),
+          const SizedBox(height: 10),
+          const Text('No Appointments History Found', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          const SizedBox(height: 4),
+          const Text(
+            'No appointment records match the current status or date range.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildAppointmentCard(dynamic a) {
-    final status = (a['status'] ?? '').toString();
-    final sessionType = (a['sessionType'] ?? '').toString();
+  // ─────────────────────────────────────────────────────────────────────────
+  // 3. APPOINTMENT CARD
+  // ─────────────────────────────────────────────────────────────────────────
+  Widget _buildAppointmentCard(dynamic a, bool isMobile) {
+    final status = (a['status'] ?? 'SCHEDULED').toString();
+    final sessionType = (a['sessionType'] ?? 'IN_CLINIC').toString();
     final patientName = (a['patientName'] ?? 'Patient').toString();
-    final rawAvatarUrl = (a['patientAvatarUrl'] ?? a['patientAvatar'] ?? a['avatarUrl'] ?? '').toString();
+    final rawAvatarUrl = (a['patientAvatarUrl'] ??
+            a['patientAvatar'] ??
+            a['avatarUrl'] ??
+            '')
+        .toString();
     final avatarUrl = rawAvatarUrl.isNotEmpty
         ? (rawAvatarUrl.startsWith('http')
             ? rawAvatarUrl
@@ -460,112 +589,174 @@ class _DoctorAppointmentsHistoryScreenState
     final scheduledDate = (a['scheduledDate'] ?? '').toString();
     final startTime = (a['startTime'] ?? '').toString();
     final clinicName = (a['clinicNameEn'] ?? '').toString();
+    final department = (a['department'] ?? '').toString();
     final idx = _colorIdx(patientName);
 
-    return InkWell(
-      onTap: () => _openDetails(a),
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: const Color(0xFFE5E7EB)),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 16,
-                  backgroundColor: _avatarBgColors[idx],
-                  backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
-                  onBackgroundImageError: avatarUrl.isNotEmpty ? (_, __) {} : null,
-                  child: avatarUrl.isEmpty
-                      ? Text(_initials(patientName),
-                          style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12,
-                              color: _avatarFgColors[idx]))
-                      : null,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(patientName,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 14)),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: _statusBg(status),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(status,
-                      style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w700,
-                          color: _statusFg(status))),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '🗓️ $scheduledDate  @ ⏰ ${startTime.length >= 5 ? startTime.substring(0, 5) : startTime}',
-              style: const TextStyle(fontSize: 12.5, color: Color(0xFF374151)),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '🏢 ${clinicName.isEmpty ? 'Private Clinic' : clinicName} (${sessionType == 'IN_CLINIC' ? 'In-Clinic' : 'Video Call'})',
-              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
-            ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: OutlinedButton(
-                onPressed: () => _openDetails(a),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF4B5563),
-                  side: const BorderSide(color: Color(0xFFD1D5DB)),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                ),
-                child: const Text('👁️ View Details',
-                    style: TextStyle(fontSize: 12)),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.borderGray.withOpacity(0.7)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: _avatarBgColors[idx],
+                backgroundImage:
+                    avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+                onBackgroundImageError:
+                    avatarUrl.isNotEmpty ? (_, __) {} : null,
+                child: avatarUrl.isEmpty
+                    ? Text(
+                        _initials(patientName),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          color: _avatarFgColors[idx],
+                        ),
+                      )
+                    : null,
               ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      patientName,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: sessionType == 'IN_CLINIC'
+                                ? const Color(0xFFEFF6FF)
+                                : const Color(0xFFF5F3FF),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            sessionType == 'IN_CLINIC' ? '🏢 In-Clinic' : '💻 Video Call',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: sessionType == 'IN_CLINIC'
+                                  ? const Color(0xFF2563EB)
+                                  : const Color(0xFF7C3AED),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _statusBg(status),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  status.replaceAll('_', ' '),
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.bold,
+                    color: _statusFg(status),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Divider(height: 1),
+          const SizedBox(height: 10),
+
+          // Date & Time + Location
+          Row(
+            children: [
+              const Icon(Icons.calendar_today_outlined, size: 13, color: AppTheme.textMuted),
+              const SizedBox(width: 5),
+              Text(
+                '$scheduledDate • ${startTime.length >= 5 ? startTime.substring(0, 5) : startTime}',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textMain),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const Icon(Icons.local_hospital_outlined, size: 13, color: AppTheme.textMuted),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  '${clinicName.isEmpty ? "Private Clinic" : clinicName}${department.isNotEmpty ? " ($department)" : ""}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Action Button
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _openDetails(a),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                side: const BorderSide(color: AppTheme.borderGray),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              icon: const Icon(Icons.visibility_outlined, size: 14),
+              label: const Text('View Full Details', style: TextStyle(fontSize: 12)),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildPaginationFooter() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF9FAFB),
-        borderRadius: BorderRadius.circular(8),
+        color: AppTheme.surfaceWhite,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.borderGray.withOpacity(0.7)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text('Page ${_page + 1} of $_totalPages',
-              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+          Text(
+            'Page ${_page + 1} of $_totalPages',
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textMuted),
+          ),
           Row(
             children: [
               OutlinedButton(
                 onPressed: _page == 0 ? null : _prevPage,
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF4B5563),
-                  side: const BorderSide(color: Color(0xFFD1D5DB)),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  minimumSize: const Size(60, 30),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
                 child: const Text('◀ Prev', style: TextStyle(fontSize: 11.5)),
               ),
@@ -573,10 +764,9 @@ class _DoctorAppointmentsHistoryScreenState
               OutlinedButton(
                 onPressed: _page >= _totalPages - 1 ? null : _nextPage,
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF4B5563),
-                  side: const BorderSide(color: Color(0xFFD1D5DB)),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  minimumSize: const Size(60, 30),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
                 child: const Text('Next ▶', style: TextStyle(fontSize: 11.5)),
               ),
@@ -587,10 +777,17 @@ class _DoctorAppointmentsHistoryScreenState
     );
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // 4. APPOINTMENT DETAILS BOTTOM SHEET
+  // ─────────────────────────────────────────────────────────────────────────
   void _openDetails(dynamic a) {
-    final status = (a['status'] ?? '').toString();
+    final status = (a['status'] ?? 'SCHEDULED').toString();
     final patientName = (a['patientName'] ?? 'Patient').toString();
-    final rawAvatarUrl = (a['patientAvatarUrl'] ?? a['patientAvatar'] ?? a['avatarUrl'] ?? '').toString();
+    final rawAvatarUrl = (a['patientAvatarUrl'] ??
+            a['patientAvatar'] ??
+            a['avatarUrl'] ??
+            '')
+        .toString();
     final avatarUrl = rawAvatarUrl.isNotEmpty
         ? (rawAvatarUrl.startsWith('http')
             ? rawAvatarUrl
@@ -601,147 +798,139 @@ class _DoctorAppointmentsHistoryScreenState
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      backgroundColor: Colors.transparent,
       builder: (ctx) {
         return DraggableScrollableSheet(
           expand: false,
           initialChildSize: 0.75,
           maxChildSize: 0.92,
           builder: (ctx, scrollController) {
-            return Column(
-              children: [
-                // Header banner — mirrors Angular's spec-modal-header gradient
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Color(0xFF085041), Color(0xFF0F766E)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(top: 10, bottom: 8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.borderGray,
+                      borderRadius: BorderRadius.circular(2),
                     ),
-                    borderRadius:
-                        BorderRadius.vertical(top: Radius.circular(20)),
                   ),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 26,
-                        backgroundColor: _avatarBgColors[idx],
-                        backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
-                        onBackgroundImageError: avatarUrl.isNotEmpty ? (_, __) {} : null,
-                        child: avatarUrl.isEmpty
-                            ? Text(_initials(patientName),
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 18,
-                                    color: _avatarFgColors[idx]))
-                            : null,
+                  // Header
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF0F766E), Color(0xFF115E59)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(patientName,
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16)),
-                            const SizedBox(height: 4),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: _statusBg(status),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(status,
+                    ),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 26,
+                          backgroundColor: _avatarBgColors[idx],
+                          backgroundImage:
+                              avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+                          child: avatarUrl.isEmpty
+                              ? Text(
+                                  _initials(patientName),
                                   style: TextStyle(
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w700,
-                                      color: _statusFg(status))),
-                            ),
-                          ],
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    color: _avatarFgColors[idx],
+                                  ),
+                                )
+                              : null,
                         ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.of(ctx).pop(),
-                        icon: const Icon(Icons.close, color: Colors.white),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: ListView(
-                    controller: scrollController,
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      _detailSpecCard('📅', 'Scheduled Date & Time',
-                          '🗓️ ${a['scheduledDate'] ?? ''}   ⏰ ${(a['startTime'] ?? '').toString().length >= 5 ? (a['startTime'] as String).substring(0, 5) : a['startTime'] ?? ''} (${a['durationMinutes'] ?? '-'} min)\n${(a['sessionType'] ?? '') == 'IN_CLINIC' ? '🏢 In-Clinic Visit' : '💻 Video Call Session'}'),
-                      _detailSpecCard(
-                          '🏥',
-                          'Clinical Assignment',
-                          '${a['clinicNameEn'] ?? 'Private Clinic'}\n🩺 ${a['department'] ?? 'General Practice'} • 📍 ${a['branchNameEn'] ?? 'Main Branch'}'),
-                      _detailSpecCard('📝', 'Reason for Consultation',
-                          (a['reason'] ?? 'No specific reasons provided by the patient.').toString()),
-                      if (status == 'CANCELLED' || status == 'NO_SHOW')
-                        _detailSpecCard(
-                          '⚠️',
-                          'Cancellation Information',
-                          'Cancelled By: ${a['cancelledById'] ?? 'System'}\nReason: ${a['cancelReason'] ?? 'No reason provided'}',
-                          danger: true,
-                        ),
-                      const SizedBox(height: 8),
-                      const Text('🚀 Quick Shortcuts',
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF374151))),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            Navigator.of(ctx).pop();
-                            // Navigate to EMR for a['patientId']
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF0F766E),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8)),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                patientName,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'ID: ${(a['patientId'] ?? '').toString().length > 10 ? '${(a['patientId'] ?? '').toString().substring(0, 8)}...' : (a['patientId'] ?? '')}',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: Colors.white.withOpacity(0.8),
+                                ),
+                              ),
+                            ],
                           ),
-                          child: const Text('📋 View Patient EMR Chart'),
                         ),
-                      ),
-                      if ((a['consultationId'] ?? '').toString().isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: () {
-                              Navigator.of(ctx).pop();
-                              // Navigate to consultation chat for a['consultationId']
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF085041),
-                              foregroundColor: Colors.white,
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8)),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: _statusBg(status),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            status.replaceAll('_', ' '),
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.bold,
+                              color: _statusFg(status),
                             ),
-                            child: const Text('💬 Go to Consultation Chat'),
                           ),
                         ),
                       ],
-                    ],
+                    ),
                   ),
-                ),
-              ],
+
+                  // Detail Body
+                  Expanded(
+                    child: ListView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.all(20),
+                      children: [
+                        _detailRow('Appointment ID', (a['appointmentId'] ?? '--').toString()),
+                        _detailRow('Scheduled Date', (a['scheduledDate'] ?? '--').toString()),
+                        _detailRow('Slot Time', '${a['startTime'] ?? '--'} - ${a['endTime'] ?? '--'} (${a['durationMinutes'] ?? '30'} mins)'),
+                        _detailRow('Session Mode', a['sessionType'] == 'IN_CLINIC' ? 'In-Clinic Consultation' : 'Telehealth Video Call'),
+                        _detailRow('Clinic Location', a['clinicNameEn'] ?? 'Main Branch'),
+                        _detailRow('Department', a['department'] ?? 'General Medicine'),
+                        if (a['patientPhone'] != null)
+                          _detailRow('Patient Phone', a['patientPhone'].toString()),
+                        if (a['patientEmail'] != null)
+                          _detailRow('Patient Email', a['patientEmail'].toString()),
+                        if (a['reasonForVisit'] != null && a['reasonForVisit'].toString().isNotEmpty)
+                          _detailRow('Reason for Visit', a['reasonForVisit'].toString()),
+                        if (a['cancellationReason'] != null && a['cancellationReason'].toString().isNotEmpty)
+                          _detailRow('Cancellation Reason', a['cancellationReason'].toString(), isWarning: true),
+                      ],
+                    ),
+                  ),
+
+                  Container(
+                    padding: EdgeInsets.fromLTRB(20, 10, 20, 12 + MediaQuery.of(context).padding.bottom),
+                    decoration: const BoxDecoration(
+                      border: Border(top: BorderSide(color: AppTheme.borderGray)),
+                    ),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Close'),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             );
           },
         );
@@ -749,50 +938,21 @@ class _DoctorAppointmentsHistoryScreenState
     );
   }
 
-  Widget _detailSpecCard(String icon, String title, String body,
-      {bool danger = false}) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: danger ? const Color(0xFFFFF1F2) : const Color(0xFFF8FAFC),
-        border: Border.all(
-            color: danger ? const Color(0xFFFECDD3) : const Color(0xFFE2E8F0)),
-        borderRadius: BorderRadius.circular(12),
-      ),
+  Widget _detailRow(String label, String value, {bool isWarning = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: danger ? const Color(0xFFFFE4E6) : const Color(0xFFF1F5F9),
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(12)),
+          Text(label, style: const TextStyle(fontSize: 11.5, color: AppTheme.textMuted, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+              color: isWarning ? AppTheme.dangerRed : AppTheme.textMain,
             ),
-            child: Row(
-              children: [
-                Text(icon, style: const TextStyle(fontSize: 13)),
-                const SizedBox(width: 6),
-                Text(title.toUpperCase(),
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.4,
-                        color: danger
-                            ? const Color(0xFFDC2626)
-                            : const Color(0xFF475569))),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Text(body,
-                style: TextStyle(
-                    fontSize: 13,
-                    height: 1.4,
-                    color: danger
-                        ? const Color(0xFFDC2626)
-                        : const Color(0xFF334155))),
           ),
         ],
       ),

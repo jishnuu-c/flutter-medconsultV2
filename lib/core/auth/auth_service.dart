@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http_parser/http_parser.dart';
 import '../network/api_client.dart';
 import '../models/auth_models.dart';
 
@@ -48,6 +50,20 @@ class AuthService {
       data: payload,
     );
     return AuthResponseDto.fromJson(response.data);
+  }
+
+  Future<UserModel> updateUserProfile(Map<String, dynamic> dto) async {
+    final formData = FormData.fromMap({
+      'body': MultipartFile.fromString(
+        jsonEncode(dto),
+        contentType: MediaType.parse('application/json'),
+      ),
+    });
+    final response = await dio.patch(
+      '/api/medconsult/users/profile/update',
+      data: formData,
+    );
+    return UserModel.fromJson(response.data);
   }
 
   Future<UserModel> fetchCurrentUser() async {

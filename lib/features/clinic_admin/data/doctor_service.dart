@@ -53,14 +53,16 @@ class DoctorService {
   Future<DoctorScheduleModel> addSchedule(Map<String, dynamic> dto) async {
     final res =
         await dio.post('/api/medconsult/doctors/schedules/add', data: dto);
-    return DoctorScheduleModel.fromJson(res.data);
+    final data = res.data is String ? jsonDecode(res.data) : res.data;
+    return DoctorScheduleModel.fromJson(data);
   }
 
   Future<DoctorScheduleModel> updateSchedule(
       String id, Map<String, dynamic> dto) async {
     final res = await dio.patch('/api/medconsult/doctors/schedules/$id/update',
         data: dto);
-    return DoctorScheduleModel.fromJson(res.data);
+    final data = res.data is String ? jsonDecode(res.data) : res.data;
+    return DoctorScheduleModel.fromJson(data);
   }
 
   Future<void> removeSchedule(String id) async {

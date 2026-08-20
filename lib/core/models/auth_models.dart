@@ -65,6 +65,7 @@ class UserModel {
   final String? avatarUrl;
   final Gender? gender;
   final String? phone;
+  final String preferredLang;
 
   UserModel({
     required this.id,
@@ -74,6 +75,7 @@ class UserModel {
     this.avatarUrl,
     this.gender,
     this.phone,
+    this.preferredLang = 'en',
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -98,6 +100,7 @@ class UserModel {
       avatarUrl: json['avatarUrl'] ?? json['avatar'],
       gender: json['gender'] != null ? Gender.fromString(json['gender']) : null,
       phone: json['phone'] ?? json['phoneNumber'] ?? json['mobile'],
+      preferredLang: json['preferredLang']?.toString() ?? 'en',
     );
   }
 
@@ -110,6 +113,7 @@ class UserModel {
       'avatarUrl': avatarUrl,
       'gender': gender?.value,
       'phone': phone,
+      'preferredLang': preferredLang,
     };
   }
 

@@ -9,9 +9,7 @@ import '../../clinic_admin/data/doctor_models.dart';
 import '../../clinic_admin/data/clinic_service.dart';
 import '../../clinic_admin/data/clinic_models.dart';
 
-/// Turns a relative avatar path returned by the API into an absolute URL
-/// NetworkImage can load. Mirrors app_layout.dart's private helper since
-/// that one isn't exported.
+/// Turns a relative avatar path into an absolute URL.
 String? _resolveAvatarUrl(String? raw) {
   if (raw == null || raw.trim().isEmpty) return null;
   final value = raw.trim();
@@ -47,16 +45,12 @@ String _initialsOf(String name) {
   return name.trim().substring(0, name.trim().length.clamp(0, 2)).toUpperCase();
 }
 
-/// A single simple id/label pair used to feed the multi-select and
-/// single-select filter widgets below (specialties, cities, languages).
 class _Option {
   final String id;
   final String label;
   const _Option(this.id, this.label);
 }
 
-/// Doctor + the reference ids resolved for it (specialties, languages,
-/// cities via its clinic branches). Mirrors Angular's EnrichedDoctor.
 class _EnrichedDoctor {
   final DoctorModel doctor;
   final List<String> specialtyIds;
@@ -77,10 +71,6 @@ class _EnrichedDoctor {
   });
 }
 
-/// Mirrors Angular's patient-dashboard/doctors (browse & search doctors).
-/// Header banner, search + filters (specialty / city / rating / language /
-/// experience / fee), doctor grid, mobile filter drawer, and the doctor
-/// profile view are styled and featured to match doctors.component 1:1.
 class PatientDoctorsScreen extends ConsumerStatefulWidget {
   const PatientDoctorsScreen({super.key});
 
@@ -89,33 +79,20 @@ class PatientDoctorsScreen extends ConsumerStatefulWidget {
       _PatientDoctorsScreenState();
 }
 
-// Extra brand tokens from styles.css not yet in AppTheme.
 class _C {
-  static const tealDark = Color(0xFF085041); // --teal-d
-  static const tealMid = Color(0xFF0F6E56); // --teal-m
-  static const tealLight = Color(0xFFE1F5EE); // --teal-l
-  static const off = Color(0xFFF8FAF9); // --off
-  static const t3 = Color(0xFF6B7280); // --t3
-  static const border2 = Color(0xFFD1D5DB); // --border2
-  static const feeBg = Color(0xFFECFDF5);
-  static const feeText = Color(0xFF065F46);
-  static const ratingBg = Color(0xFFFEF3C7);
-  static const ratingText = Color(0xFF92400E);
-  static const chipBorder = Color(0xFFA7F3D0);
-
   static const avatarBg = [
-    Color(0xFFE1F5EE),
-    Color(0xFFDBEAFE),
+    Color(0xFFE0F2FE),
+    Color(0xFFF0FDFA),
     Color(0xFFEDE9FE),
     Color(0xFFFEF3C7),
-    Color(0xFFDCFCE7),
+    Color(0xFFECFDF5),
   ];
   static const avatarFg = [
-    Color(0xFF085041),
-    Color(0xFF1E40AF),
-    Color(0xFF5B21B6),
-    Color(0xFF92400E),
-    Color(0xFF166534),
+    Color(0xFF0369A1),
+    Color(0xFF0F766E),
+    Color(0xFF6D28D9),
+    Color(0xFFB45309),
+    Color(0xFF047857),
   ];
 }
 
@@ -170,8 +147,6 @@ class _PatientDoctorsScreenState extends ConsumerState<PatientDoctorsScreen> {
       final clinics = results[3] as List<ClinicModel>;
       final doctors = results[4] as List<DoctorModel>;
 
-      // Map every clinic branch to its city, so a doctor's clinic
-      // placements can be resolved to filterable city ids.
       final branchToCityId = <String, String>{};
       if (clinics.isNotEmpty) {
         final branchLists = await Future.wait(clinics.map((c) => clinicService
@@ -390,94 +365,142 @@ class _PatientDoctorsScreenState extends ConsumerState<PatientDoctorsScreen> {
     final crossAxisCount = width >= 1100 ? 3 : (width >= 768 ? 2 : 1);
     final filtered = _filtered;
 
-    return RefreshIndicator(
-      onRefresh: _loadDoctors,
-      child: ListView(
-        padding: EdgeInsets.all(isMobile ? 16 : 24),
-        children: [
-          _HeaderBanner(isMobile: isMobile),
-          const SizedBox(height: 20),
-          if (isMobile)
-            _MobileSearchRow(
-              controller: _searchController,
-              activeFilterCount: _activeFilterCount,
-              onChanged: () => setState(() {}),
-              onFilterTap: _openMobileFilterDrawer,
-              selectedSpecialtyIds: _selectedSpecialtyIds,
-              selectedCityIds: _selectedCityIds,
-              selectedRating: _selectedRating,
-              selectedLanguageId: _selectedLanguageId,
-              specialtyName: _specialtyName,
-              cityName: _cityName,
-              languageName: _languageName,
-              onClearSpecialty: (id) => setState(() => _selectedSpecialtyIds = {
-                    ..._selectedSpecialtyIds
-                  }..remove(id)),
-              onClearCity: (id) => setState(
-                  () => _selectedCityIds = {..._selectedCityIds}..remove(id)),
-              onClearRating: () => setState(() => _selectedRating = 0),
-              onClearLanguage: () => setState(() => _selectedLanguageId = ''),
-              onClearAll: _resetFilters,
-            )
-          else
-            _DesktopFiltersPanel(
-              controller: _searchController,
-              onChanged: () => setState(() {}),
-              specialtyOptions: _specialtyOptions,
-              cityOptions: _cityOptions,
-              languageOptions: _languageOptions,
-              selectedSpecialtyIds: _selectedSpecialtyIds,
-              selectedCityIds: _selectedCityIds,
-              selectedRating: _selectedRating,
-              selectedLanguageId: _selectedLanguageId,
-              minExperience: _minExperience,
-              maxFee: _maxFee,
-              showAdvanced: _showAdvancedFilters,
-              onToggleAdvanced: () =>
-                  setState(() => _showAdvancedFilters = !_showAdvancedFilters),
-              onSpecialtyChanged: (v) =>
-                  setState(() => _selectedSpecialtyIds = v),
-              onCityChanged: (v) => setState(() => _selectedCityIds = v),
-              onRatingChanged: (v) => setState(() => _selectedRating = v),
-              onLanguageChanged: (v) => setState(() => _selectedLanguageId = v),
-              onExperienceChanged: (v) => setState(() => _minExperience = v),
-              onFeeChanged: (v) => setState(() => _maxFee = v),
-              onReset: _resetFilters,
-            ),
-          const SizedBox(height: 20),
-          if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 60),
-              child: Center(
-                  child:
-                      CircularProgressIndicator(color: AppTheme.primaryTeal)),
-            )
-          else if (filtered.isEmpty)
-            _EmptyState(onReset: _resetFilters)
-          else
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: crossAxisCount,
-                mainAxisExtent: 340,
-                crossAxisSpacing: 20,
-                mainAxisSpacing: 20,
-              ),
-              itemCount: filtered.length,
-              itemBuilder: (context, i) {
-                final doc = filtered[i];
-                return _DoctorCard(
-                  entry: doc,
-                  displayName: _displayDoctorName(doc.doctor.fullName),
-                  specialtyNames: doc.specialtyIds.map(_specialtyName).toList(),
-                  languageNames: doc.languageIds.map(_languageName).toList(),
-                  onViewProfile: () => _viewDoctorDetails(doc),
-                  onBook: () => _bookAppointment(doc),
-                );
-              },
-            ),
-        ],
+    return Scaffold(
+      backgroundColor: AppTheme.backgroundApp,
+      body: SafeArea(
+        child: RefreshIndicator(
+          color: AppTheme.primaryTeal,
+          onRefresh: _loadDoctors,
+          child: ListView(
+            padding: EdgeInsets.all(isMobile ? 16 : 24),
+            children: [
+              // 1. Header Banner
+              _HeaderBanner(isMobile: isMobile, count: filtered.length),
+              const SizedBox(height: 16),
+
+              // 2. Search & Quick Filters
+              if (isMobile)
+                _MobileSearchRow(
+                  controller: _searchController,
+                  activeFilterCount: _activeFilterCount,
+                  specialties: _specialties,
+                  selectedSpecialtyIds: _selectedSpecialtyIds,
+                  onSelectSpecialty: (id) {
+                    setState(() {
+                      if (_selectedSpecialtyIds.contains(id)) {
+                        _selectedSpecialtyIds.remove(id);
+                      } else {
+                        _selectedSpecialtyIds.add(id);
+                      }
+                    });
+                  },
+                  onClearAllSpecialties: () =>
+                      setState(() => _selectedSpecialtyIds = {}),
+                  onChanged: () => setState(() {}),
+                  onFilterTap: _openMobileFilterDrawer,
+                  selectedCityIds: _selectedCityIds,
+                  selectedRating: _selectedRating,
+                  selectedLanguageId: _selectedLanguageId,
+                  specialtyName: _specialtyName,
+                  cityName: _cityName,
+                  languageName: _languageName,
+                  onClearSpecialty: (id) => setState(
+                      () => _selectedSpecialtyIds = {..._selectedSpecialtyIds}..remove(id)),
+                  onClearCity: (id) => setState(
+                      () => _selectedCityIds = {..._selectedCityIds}..remove(id)),
+                  onClearRating: () => setState(() => _selectedRating = 0),
+                  onClearLanguage: () =>
+                      setState(() => _selectedLanguageId = ''),
+                  onClearAll: _resetFilters,
+                )
+              else
+                _DesktopFiltersPanel(
+                  controller: _searchController,
+                  onChanged: () => setState(() {}),
+                  specialtyOptions: _specialtyOptions,
+                  cityOptions: _cityOptions,
+                  languageOptions: _languageOptions,
+                  selectedSpecialtyIds: _selectedSpecialtyIds,
+                  selectedCityIds: _selectedCityIds,
+                  selectedRating: _selectedRating,
+                  selectedLanguageId: _selectedLanguageId,
+                  minExperience: _minExperience,
+                  maxFee: _maxFee,
+                  showAdvanced: _showAdvancedFilters,
+                  onToggleAdvanced: () =>
+                      setState(() => _showAdvancedFilters = !_showAdvancedFilters),
+                  onSpecialtyChanged: (v) =>
+                      setState(() => _selectedSpecialtyIds = v),
+                  onCityChanged: (v) => setState(() => _selectedCityIds = v),
+                  onRatingChanged: (v) => setState(() => _selectedRating = v),
+                  onLanguageChanged: (v) =>
+                      setState(() => _selectedLanguageId = v),
+                  onExperienceChanged: (v) =>
+                      setState(() => _minExperience = v),
+                  onFeeChanged: (v) => setState(() => _maxFee = v),
+                  onReset: _resetFilters,
+                ),
+              const SizedBox(height: 16),
+
+              // 3. Doctors List / Grid
+              if (_isLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 60),
+                  child: Center(
+                    child: CircularProgressIndicator(color: AppTheme.primaryTeal),
+                  ),
+                )
+              else if (filtered.isEmpty)
+                _EmptyState(onReset: _resetFilters)
+              else if (isMobile)
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: filtered.length,
+                  separatorBuilder: (context, index) => const SizedBox(height: 14),
+                  itemBuilder: (context, i) {
+                    final doc = filtered[i];
+                    return _DoctorCard(
+                      entry: doc,
+                      displayName: _displayDoctorName(doc.doctor.fullName),
+                      specialtyNames:
+                          doc.specialtyIds.map(_specialtyName).toList(),
+                      languageNames:
+                          doc.languageIds.map(_languageName).toList(),
+                      onViewProfile: () => _viewDoctorDetails(doc),
+                      onBook: () => _bookAppointment(doc),
+                    );
+                  },
+                )
+              else
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: crossAxisCount,
+                    mainAxisExtent: 360,
+                    crossAxisSpacing: 18,
+                    mainAxisSpacing: 18,
+                  ),
+                  itemCount: filtered.length,
+                  itemBuilder: (context, i) {
+                    final doc = filtered[i];
+                    return _DoctorCard(
+                      entry: doc,
+                      displayName: _displayDoctorName(doc.doctor.fullName),
+                      specialtyNames:
+                          doc.specialtyIds.map(_specialtyName).toList(),
+                      languageNames:
+                          doc.languageIds.map(_languageName).toList(),
+                      onViewProfile: () => _viewDoctorDetails(doc),
+                      onBook: () => _bookAppointment(doc),
+                    );
+                  },
+                ),
+              const SizedBox(height: 30),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -486,57 +509,93 @@ class _PatientDoctorsScreenState extends ConsumerState<PatientDoctorsScreen> {
 // ── Header Banner ──────────────────────────────────────────────────────
 class _HeaderBanner extends StatelessWidget {
   final bool isMobile;
-  const _HeaderBanner({required this.isMobile});
+  final int count;
+  const _HeaderBanner({required this.isMobile, required this.count});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.symmetric(
-          horizontal: isMobile ? 20 : 36, vertical: isMobile ? 20 : 32),
+      padding: EdgeInsets.all(isMobile ? 18 : 26),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [_C.tealDark, _C.tealMid],
+          colors: [Color(0xFF0F766E), Color(0xFF115E59)],
         ),
-        borderRadius: BorderRadius.circular(isMobile ? 16 : 20),
+        borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-              color: AppTheme.primaryTeal.withOpacity(0.25),
-              blurRadius: 24,
-              offset: const Offset(0, 10)),
+            color: const Color(0xFF0F766E).withOpacity(0.2),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.14),
-              borderRadius: BorderRadius.circular(9999),
-              border: Border.all(color: Colors.white.withOpacity(0.15)),
-            ),
-            child: const Text('MEDICAL SPECIALIST DIRECTORY',
-                style: TextStyle(
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.16),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withOpacity(0.2)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.medical_services_outlined, size: 12, color: Colors.white),
+                    SizedBox(width: 5),
+                    Text(
+                      'SPECIALIST DIRECTORY',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF14B8A6).withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '$count Available',
+                  style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.8)),
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
-          Text('Browse Doctors',
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: isMobile ? 24 : 34,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.5)),
-          const SizedBox(height: 6),
+          const SizedBox(height: 10),
           Text(
-            'Find and book consultations with top medical experts near you',
+            'Browse Doctors',
             style: TextStyle(
-                color: _C.tealLight, fontSize: isMobile ? 13 : 15, height: 1.5),
+              color: Colors.white,
+              fontSize: isMobile ? 22 : 28,
+              fontWeight: FontWeight.bold,
+              letterSpacing: -0.3,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            'Find and book consultations with certified medical specialists',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.85),
+              fontSize: isMobile ? 12 : 14,
+            ),
           ),
         ],
       ),
@@ -544,226 +603,16 @@ class _HeaderBanner extends StatelessWidget {
   }
 }
 
-// ── Reusable multi-select trigger + bottom sheet ────────────────────────
-Future<void> _openMultiSelect({
-  required BuildContext context,
-  required String title,
-  required List<_Option> options,
-  required Set<String> selected,
-  required ValueChanged<Set<String>> onChanged,
-}) async {
-  final result = await showModalBottomSheet<Set<String>>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (_) => _MultiSelectSheet(
-        title: title, options: options, initialSelected: selected),
-  );
-  if (result != null) onChanged(result);
-}
-
-Widget _multiSelectField({
-  required BuildContext context,
-  required String placeholder,
-  required List<_Option> options,
-  required Set<String> selected,
-  required ValueChanged<Set<String>> onChanged,
-}) {
-  final label = selected.isEmpty
-      ? placeholder
-      : selected
-          .map((id) => options
-              .firstWhere((o) => o.id == id, orElse: () => _Option(id, id))
-              .label)
-          .join(', ');
-  return Material(
-    color: Colors.transparent,
-    child: InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: () => _openMultiSelect(
-        context: context,
-        title: placeholder,
-        options: options,
-        selected: selected,
-        onChanged: onChanged,
-      ),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          color: _C.off,
-          border: Border.all(color: AppTheme.borderGray),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 13.5,
-                      color: selected.isEmpty ? _C.t3 : AppTheme.textMain)),
-            ),
-            const Icon(Icons.keyboard_arrow_down, size: 18, color: _C.t3),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-class _MultiSelectSheet extends StatefulWidget {
-  final String title;
-  final List<_Option> options;
-  final Set<String> initialSelected;
-
-  const _MultiSelectSheet({
-    required this.title,
-    required this.options,
-    required this.initialSelected,
-  });
-
-  @override
-  State<_MultiSelectSheet> createState() => _MultiSelectSheetState();
-}
-
-class _MultiSelectSheetState extends State<_MultiSelectSheet> {
-  late Set<String> _selected;
-  String _query = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _selected = {...widget.initialSelected};
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final filtered = widget.options
-        .where((o) => o.label.toLowerCase().contains(_query.toLowerCase()))
-        .toList();
-    return DraggableScrollableSheet(
-      initialChildSize: 0.62,
-      minChildSize: 0.4,
-      maxChildSize: 0.92,
-      expand: false,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 14, 12, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(widget.title,
-                          style: const TextStyle(
-                              fontSize: 17, fontWeight: FontWeight.w700)),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close, size: 20),
-                    ),
-                  ],
-                ),
-              ),
-              if (widget.options.length > 6)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: TextField(
-                    onChanged: (v) => setState(() => _query = v),
-                    decoration: InputDecoration(
-                      hintText: 'Search...',
-                      prefixIcon:
-                          const Icon(Icons.search, size: 18, color: _C.t3),
-                      filled: true,
-                      fillColor: _C.off,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              const BorderSide(color: AppTheme.borderGray)),
-                      enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              const BorderSide(color: AppTheme.borderGray)),
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 8),
-              const Divider(height: 1, color: AppTheme.borderGray),
-              Expanded(
-                child: filtered.isEmpty
-                    ? const Center(
-                        child: Text('No results',
-                            style: TextStyle(color: _C.t3, fontSize: 13)))
-                    : ListView.builder(
-                        controller: scrollController,
-                        itemCount: filtered.length,
-                        itemBuilder: (context, i) {
-                          final o = filtered[i];
-                          final checked = _selected.contains(o.id);
-                          return CheckboxListTile(
-                            value: checked,
-                            controlAffinity: ListTileControlAffinity.leading,
-                            activeColor: AppTheme.primaryTeal,
-                            title: Text(o.label,
-                                style: const TextStyle(fontSize: 13.5)),
-                            onChanged: (v) => setState(() {
-                              if (v == true) {
-                                _selected.add(o.id);
-                              } else {
-                                _selected.remove(o.id);
-                              }
-                            }),
-                          );
-                        },
-                      ),
-              ),
-              Container(
-                padding: EdgeInsets.fromLTRB(
-                    20, 12, 20, 12 + MediaQuery.of(context).padding.bottom),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF8FAFC),
-                  border: Border(top: BorderSide(color: AppTheme.borderGray)),
-                ),
-                child: Row(
-                  children: [
-                    OutlinedButton(
-                      onPressed: () => setState(() => _selected.clear()),
-                      child: const Text('Clear',
-                          style: TextStyle(fontWeight: FontWeight.w700)),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () => Navigator.of(context).pop(_selected),
-                        child: const Text('Apply',
-                            style: TextStyle(fontWeight: FontWeight.w700)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-// ── Mobile search row + active chips ────────────────────────────────────
+// ── Mobile Search & Quick Specialty Row ───────────────────────────────────
 class _MobileSearchRow extends StatelessWidget {
   final TextEditingController controller;
   final int activeFilterCount;
+  final List<SpecialtyModel> specialties;
+  final Set<String> selectedSpecialtyIds;
+  final ValueChanged<String> onSelectSpecialty;
+  final VoidCallback onClearAllSpecialties;
   final VoidCallback onChanged;
   final VoidCallback onFilterTap;
-  final Set<String> selectedSpecialtyIds;
   final Set<String> selectedCityIds;
   final double selectedRating;
   final String selectedLanguageId;
@@ -779,9 +628,12 @@ class _MobileSearchRow extends StatelessWidget {
   const _MobileSearchRow({
     required this.controller,
     required this.activeFilterCount,
+    required this.specialties,
+    required this.selectedSpecialtyIds,
+    required this.onSelectSpecialty,
+    required this.onClearAllSpecialties,
     required this.onChanged,
     required this.onFilterTap,
-    required this.selectedSpecialtyIds,
     required this.selectedCityIds,
     required this.selectedRating,
     required this.selectedLanguageId,
@@ -803,64 +655,81 @@ class _MobileSearchRow extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: TextField(
-                controller: controller,
-                onChanged: (_) => onChanged(),
-                decoration: InputDecoration(
-                  hintText: 'Search doctor name...',
-                  hintStyle: const TextStyle(fontSize: 14, color: _C.t3),
-                  prefixIcon: const Icon(Icons.search, size: 20, color: _C.t3),
-                  filled: true,
-                  fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: AppTheme.borderGray)),
-                  enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: AppTheme.borderGray)),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceWhite,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppTheme.borderGray.withOpacity(0.8)),
+                ),
+                child: TextField(
+                  controller: controller,
+                  onChanged: (_) => onChanged(),
+                  decoration: InputDecoration(
+                    hintText: 'Search doctor by name or bio...',
+                    hintStyle: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
+                    prefixIcon: const Icon(Icons.search, size: 18, color: AppTheme.textMuted),
+                    suffixIcon: controller.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.close, size: 16, color: AppTheme.textMuted),
+                            onPressed: () {
+                              controller.clear();
+                              onChanged();
+                            },
+                          )
+                        : null,
+                    isDense: true,
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  ),
                 ),
               ),
             ),
             const SizedBox(width: 8),
             Material(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
+              color: activeFilterCount > 0 ? AppTheme.primaryLightTeal : AppTheme.surfaceWhite,
+              borderRadius: BorderRadius.circular(14),
               child: InkWell(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
                 onTap: onFilterTap,
                 child: Container(
-                  height: 44,
+                  height: 46,
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   decoration: BoxDecoration(
-                    border: Border.all(color: _C.border2),
-                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: activeFilterCount > 0
+                          ? AppTheme.primaryTeal
+                          : AppTheme.borderGray.withOpacity(0.8),
+                    ),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                   child: Row(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.tune,
-                          size: 16, color: Color(0xFF0F172A)),
+                      Icon(
+                        Icons.tune,
+                        size: 16,
+                        color: activeFilterCount > 0 ? AppTheme.primaryDarkTeal : AppTheme.textMain,
+                      ),
                       const SizedBox(width: 6),
-                      const Text('Filter',
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF0F172A))),
+                      Text(
+                        'Filter',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: activeFilterCount > 0 ? AppTheme.primaryDarkTeal : AppTheme.textMain,
+                        ),
+                      ),
                       if (activeFilterCount > 0) ...[
                         const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 1),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: AppTheme.primaryTeal,
-                            borderRadius: BorderRadius.circular(9999),
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                          child: Text('$activeFilterCount',
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w700)),
+                          child: Text(
+                            '$activeFilterCount',
+                            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
                         ),
                       ],
                     ],
@@ -870,30 +739,49 @@ class _MobileSearchRow extends StatelessWidget {
             ),
           ],
         ),
-        if (activeFilterCount > 0) ...[
+
+        // Quick Specialty Filter Chips Carousel
+        if (specialties.isNotEmpty) ...[
           const SizedBox(height: 10),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
+                _buildQuickPill(
+                  label: 'All',
+                  isSelected: selectedSpecialtyIds.isEmpty,
+                  onTap: onClearAllSpecialties,
+                ),
+                for (final s in specialties.take(8))
+                  _buildQuickPill(
+                    label: s.nameEn.isNotEmpty ? s.nameEn : 'Specialty',
+                    isSelected: selectedSpecialtyIds.contains(s.specialtyId),
+                    onTap: () => onSelectSpecialty(s.specialtyId),
+                  ),
+              ],
+            ),
+          ),
+        ],
+
+        // Active Filter Chips
+        if (activeFilterCount > 0) ...[
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
                 for (final id in selectedSpecialtyIds)
-                  _chip('🩺 ${specialtyName(id)}', () => onClearSpecialty(id)),
+                  _activeFilterChip('🩺 ${specialtyName(id)}', () => onClearSpecialty(id)),
                 for (final id in selectedCityIds)
-                  _chip('📍 ${cityName(id)}', () => onClearCity(id)),
+                  _activeFilterChip('📍 ${cityName(id)}', () => onClearCity(id)),
                 if (selectedRating > 0)
-                  _chip(
-                      '★ ${selectedRating.toStringAsFixed(selectedRating.truncateToDouble() == selectedRating ? 0 : 1)}+',
-                      onClearRating),
+                  _activeFilterChip('★ ${selectedRating.toStringAsFixed(1)}+', onClearRating),
                 if (selectedLanguageId.isNotEmpty)
-                  _chip('🗣️ ${languageName(selectedLanguageId)}',
-                      onClearLanguage),
+                  _activeFilterChip('🗣️ ${languageName(selectedLanguageId)}', onClearLanguage),
                 TextButton(
                   onPressed: onClearAll,
                   child: const Text('Clear All',
-                      style: TextStyle(
-                          color: Color(0xFFEF4444),
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12)),
+                      style: TextStyle(color: AppTheme.dangerRed, fontWeight: FontWeight.bold, fontSize: 11.5)),
                 ),
               ],
             ),
@@ -903,31 +791,56 @@ class _MobileSearchRow extends StatelessWidget {
     );
   }
 
-  Widget _chip(String label, VoidCallback onRemove) {
+  Widget _buildQuickPill({
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected ? AppTheme.primaryTeal : AppTheme.surfaceWhite,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isSelected ? AppTheme.primaryTeal : AppTheme.borderGray.withOpacity(0.8),
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+              color: isSelected ? Colors.white : AppTheme.textSecondary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _activeFilterChip(String label, VoidCallback onRemove) {
     return Container(
-      margin: const EdgeInsets.only(right: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      margin: const EdgeInsets.only(right: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
-        color: _C.feeBg,
-        borderRadius: BorderRadius.circular(9999),
-        border: Border.all(color: _C.chipBorder),
+        color: const Color(0xFFF0FDFA),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFF99F6E4)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label,
-              style: const TextStyle(
-                  color: _C.feeText,
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w600)),
+          Text(label, style: const TextStyle(color: Color(0xFF0F766E), fontSize: 11, fontWeight: FontWeight.w600)),
           const SizedBox(width: 4),
           InkWell(
             onTap: onRemove,
-            child: const Text('✕',
-                style: TextStyle(
-                    color: _C.feeText,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700)),
+            child: const Icon(Icons.close, size: 13, color: Color(0xFF0F766E)),
           ),
         ],
       ),
@@ -935,7 +848,7 @@ class _MobileSearchRow extends StatelessWidget {
   }
 }
 
-// ── Desktop filters panel ───────────────────────────────────────────────
+// ── Desktop Filters Panel ────────────────────────────────────────────────
 class _DesktopFiltersPanel extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onChanged;
@@ -984,249 +897,299 @@ class _DesktopFiltersPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: AppTheme.borderGray),
+        color: AppTheme.surfaceWhite,
+        border: Border.all(color: AppTheme.borderGray.withOpacity(0.8)),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 6),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          LayoutBuilder(builder: (context, constraints) {
-            final perRow = constraints.maxWidth >= 900
-                ? 4
-                : (constraints.maxWidth >= 560 ? 2 : 1);
-            const spacing = 20.0;
-            final itemWidth =
-                (constraints.maxWidth - spacing * (perRow - 1)) / perRow;
-
-            final fields = [
-              _labeled(
-                'Search Doctor Name',
-                TextField(
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
                   controller: controller,
                   onChanged: (_) => onChanged(),
                   decoration: InputDecoration(
-                    hintText: 'Type to search...',
-                    hintStyle: const TextStyle(fontSize: 13.5),
-                    suffixIcon:
-                        const Icon(Icons.search, size: 18, color: _C.t3),
+                    hintText: 'Search by doctor name or bio...',
+                    prefixIcon: const Icon(Icons.search, size: 18),
                     filled: true,
-                    fillColor: _C.off,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 12),
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide:
-                            const BorderSide(color: AppTheme.borderGray)),
-                    enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide:
-                            const BorderSide(color: AppTheme.borderGray)),
+                    fillColor: AppTheme.backgroundApp,
+                    isDense: true,
                   ),
                 ),
               ),
-              _labeled(
-                'Medical Specialty',
-                _multiSelectField(
-                  context: context,
-                  placeholder: 'All Specialties',
-                  options: specialtyOptions,
-                  selected: selectedSpecialtyIds,
-                  onChanged: onSpecialtyChanged,
-                ),
+              const SizedBox(width: 12),
+              ElevatedButton.icon(
+                onPressed: onToggleAdvanced,
+                icon: Icon(showAdvanced ? Icons.expand_less : Icons.tune, size: 16),
+                label: const Text('Filters'),
               ),
-              _labeled(
-                'Location / City',
-                _multiSelectField(
-                  context: context,
-                  placeholder: 'All Cities',
-                  options: cityOptions,
-                  selected: selectedCityIds,
-                  onChanged: onCityChanged,
-                ),
-              ),
-              _labeled(
-                'Minimum Rating',
-                _ratingDropdown(selectedRating, onRatingChanged),
-              ),
-            ];
-
-            return Wrap(
-              spacing: spacing,
-              runSpacing: 16,
-              children: [
-                for (final f in fields) SizedBox(width: itemWidth, child: f),
+              if (selectedSpecialtyIds.isNotEmpty ||
+                  selectedCityIds.isNotEmpty ||
+                  selectedRating > 0 ||
+                  selectedLanguageId.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                TextButton(onPressed: onReset, child: const Text('Reset')),
               ],
-            );
-          }),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: onToggleAdvanced,
-              icon: Icon(showAdvanced ? Icons.expand_less : Icons.tune,
-                  size: 16, color: _C.tealMid),
-              label: const Text('Advanced Filters',
-                  style: TextStyle(
-                      color: _C.tealMid,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13)),
-            ),
-          ),
-          AnimatedCrossFade(
-            duration: const Duration(milliseconds: 220),
-            crossFadeState: showAdvanced
-                ? CrossFadeState.showFirst
-                : CrossFadeState.showSecond,
-            firstChild: Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Container(
-                padding: const EdgeInsets.only(top: 20),
-                decoration: const BoxDecoration(
-                  border: Border(top: BorderSide(color: AppTheme.borderGray)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: _labeled(
-                            'Spoken Language',
-                            _languageDropdown(languageOptions,
-                                selectedLanguageId, onLanguageChanged),
-                          ),
-                        ),
-                        const SizedBox(width: 20),
-                        Expanded(
-                          child: _labeled(
-                            'Min Experience  ·  $minExperience Years',
-                            Slider(
-                              value: minExperience.toDouble(),
-                              min: 0,
-                              max: 30,
-                              divisions: 30,
-                              activeColor: AppTheme.primaryTeal,
-                              onChanged: (v) => onExperienceChanged(v.round()),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 20),
-                        Expanded(
-                          child: _labeled(
-                            'Max Consultation Fee  ·  ${maxFee.toStringAsFixed(0)} SAR',
-                            Slider(
-                              value: maxFee,
-                              min: 50,
-                              max: 500,
-                              divisions: 45,
-                              activeColor: AppTheme.primaryTeal,
-                              onChanged: onFeeChanged,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: OutlinedButton.icon(
-                        onPressed: onReset,
-                        icon: const Icon(Icons.refresh, size: 15),
-                        label: const Text('Reset Filters',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 13)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            secondChild: const SizedBox.shrink(),
+            ],
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _labeled(String label, Widget child) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(label,
-            style: const TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.textSecondary)),
-        const SizedBox(height: 6),
-        child,
-      ],
-    );
-  }
-
-  Widget _ratingDropdown(double value, ValueChanged<double> onChanged) {
-    const options = [0.0, 3.0, 4.0, 4.5];
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: _C.off,
-        border: Border.all(color: AppTheme.borderGray),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<double>(
-          value: options.contains(value) ? value : 0.0,
-          isExpanded: true,
-          icon: const Icon(Icons.keyboard_arrow_down, size: 18, color: _C.t3),
-          items: options
-              .map((v) => DropdownMenuItem(
-                    value: v,
-                    child: Text(v == 0 ? 'Any Rating' : '$v ★ & up',
-                        style: const TextStyle(fontSize: 13.5)),
-                  ))
-              .toList(),
-          onChanged: (v) => onChanged(v ?? 0),
-        ),
-      ),
-    );
-  }
-
-  Widget _languageDropdown(
-      List<_Option> options, String value, ValueChanged<String> onChanged) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: _C.off,
-        border: Border.all(color: AppTheme.borderGray),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          isExpanded: true,
-          icon: const Icon(Icons.keyboard_arrow_down, size: 18, color: _C.t3),
-          items: [
-            const DropdownMenuItem(
-                value: '',
-                child: Text('All Languages', style: TextStyle(fontSize: 13.5))),
-            ...options.map((o) => DropdownMenuItem(
-                value: o.id,
-                child: Text(o.label, style: const TextStyle(fontSize: 13.5)))),
-          ],
-          onChanged: (v) => onChanged(v ?? ''),
-        ),
       ),
     );
   }
 }
 
-// ── Mobile bottom sheet filter drawer ───────────────────────────────────
+// ── Doctor Card (Mobile Optimized) ─────────────────────────────────────────
+class _DoctorCard extends StatelessWidget {
+  final _EnrichedDoctor entry;
+  final String displayName;
+  final List<String> specialtyNames;
+  final List<String> languageNames;
+  final VoidCallback onViewProfile;
+  final VoidCallback onBook;
+
+  const _DoctorCard({
+    required this.entry,
+    required this.displayName,
+    required this.specialtyNames,
+    required this.languageNames,
+    required this.onViewProfile,
+    required this.onBook,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final doctor = entry.doctor;
+    final avatarUrl = _resolveAvatarUrl(doctor.avatarUrl);
+    final primarySpecialty = specialtyNames.isNotEmpty ? specialtyNames.first : 'Specialist';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceWhite,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.borderGray.withOpacity(0.7)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Top Info Row: Avatar + Title + Rating
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              GestureDetector(
+                onTap: onViewProfile,
+                child: Container(
+                  width: 58,
+                  height: 58,
+                  decoration: BoxDecoration(
+                    color: entry.avatarBg,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFF0F766E).withOpacity(0.2), width: 1.5),
+                  ),
+                  child: ClipOval(
+                    child: avatarUrl != null
+                        ? Image.network(
+                            avatarUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Center(
+                              child: Text(
+                                entry.initials,
+                                style: TextStyle(color: entry.avatarFg, fontWeight: FontWeight.bold, fontSize: 18),
+                              ),
+                            ),
+                          )
+                        : Center(
+                            child: Text(
+                              entry.initials,
+                              style: TextStyle(color: entry.avatarFg, fontWeight: FontWeight.bold, fontSize: 18),
+                            ),
+                          ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: onViewProfile,
+                            child: Text(
+                              displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 15.5,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textMain,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (doctor.mohVerified)
+                          const Padding(
+                            padding: EdgeInsets.only(left: 4),
+                            child: Icon(Icons.verified, size: 16, color: Color(0xFF0D9488)),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      primarySpecialty,
+                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppTheme.primaryTeal),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEF3C7),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.star, size: 12, color: Color(0xFFD97706)),
+                              const SizedBox(width: 3),
+                              Text(
+                                '${doctor.overallRating}',
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF92400E)),
+                              ),
+                              const SizedBox(width: 2),
+                              Text(
+                                '(${doctor.reviewCount})',
+                                style: const TextStyle(fontSize: 10, color: Color(0xFFB45309)),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${doctor.experienceYears} yrs exp',
+                          style: const TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+          const SizedBox(height: 12),
+
+          // Detail Badges
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.payments_outlined, size: 15, color: Color(0xFF059669)),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${doctor.consultationFeeSar.toStringAsFixed(0)} SAR',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF059669)),
+                  ),
+                  const Text(' / consult', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                ],
+              ),
+              if (languageNames.isNotEmpty)
+                Text(
+                  '🗣️ ${languageNames.take(2).join(', ')}',
+                  style: const TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Action Buttons
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: onViewProfile,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    side: const BorderSide(color: AppTheme.borderGray),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: const Text('View Profile', style: TextStyle(fontSize: 12.5, color: AppTheme.textMain)),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: onBook,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(Icons.calendar_month, size: 14),
+                  label: const Text('Book', style: TextStyle(fontSize: 12.5)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Empty State ───────────────────────────────────────────────────────────
+class _EmptyState extends StatelessWidget {
+  final VoidCallback onReset;
+  const _EmptyState({required this.onReset});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.borderGray.withOpacity(0.8)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: const BoxDecoration(color: Color(0xFFF1F5F9), shape: BoxShape.circle),
+            child: const Icon(Icons.search_off, size: 32, color: AppTheme.textMuted),
+          ),
+          const SizedBox(height: 12),
+          const Text('No Doctors Found', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          const Text(
+            'Try adjusting your search keyword, specialty, or rating filters.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(onPressed: onReset, child: const Text('Clear All Filters')),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Mobile Filter Drawer ─────────────────────────────────────────────────
 class _MobileFilterDrawer extends StatelessWidget {
   final TextEditingController searchController;
   final List<_Option> specialtyOptions;
@@ -1275,8 +1238,8 @@ class _MobileFilterDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
-      initialChildSize: 0.75,
-      minChildSize: 0.4,
+      initialChildSize: 0.82,
+      minChildSize: 0.5,
       maxChildSize: 0.95,
       expand: false,
       builder: (context, scrollController) {
@@ -1287,142 +1250,84 @@ class _MobileFilterDrawer extends StatelessWidget {
           ),
           child: Column(
             children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(top: 10, bottom: 8),
+                decoration: BoxDecoration(color: AppTheme.borderGray, borderRadius: BorderRadius.circular(2)),
+              ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 14, 12, 8),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                 child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Expanded(
-                      child: Text('Filter Specialists',
-                          style: TextStyle(
-                              fontSize: 17, fontWeight: FontWeight.w700)),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close, size: 20),
-                    ),
+                    const Text('Filter Specialists', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                    IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(context)),
                   ],
                 ),
               ),
-              const Divider(height: 1, color: AppTheme.borderGray),
+              const Divider(height: 1),
               Expanded(
                 child: ListView(
                   controller: scrollController,
                   padding: const EdgeInsets.all(20),
                   children: [
-                    const Text('Search Doctor Name',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 13)),
+                    const Text('Medical Specialty', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     const SizedBox(height: 8),
-                    TextField(
-                      controller: searchController,
-                      onChanged: (_) => onSearchChanged(),
-                      decoration: InputDecoration(
-                        hintText: 'Type doctor name...',
-                        filled: true,
-                        fillColor: _C.off,
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 12),
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide:
-                                const BorderSide(color: AppTheme.borderGray)),
-                      ),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: specialtyOptions.map((s) {
+                        final isSel = selectedSpecialtyIds.contains(s.id);
+                        return ChoiceChip(
+                          label: Text(s.label),
+                          selected: isSel,
+                          selectedColor: AppTheme.primaryLightTeal,
+                          labelStyle: TextStyle(
+                            color: isSel ? AppTheme.primaryDarkTeal : AppTheme.textSecondary,
+                            fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+                            fontSize: 12,
+                          ),
+                          onSelected: (val) {
+                            final next = Set<String>.from(selectedSpecialtyIds);
+                            if (val) {
+                              next.add(s.id);
+                            } else {
+                              next.remove(s.id);
+                            }
+                            onSpecialtyChanged(next);
+                          },
+                        );
+                      }).toList(),
                     ),
-                    const SizedBox(height: 20),
-                    const Text('Medical Specialty',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 13)),
+                    const SizedBox(height: 18),
+
+                    const Text('Minimum Rating', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     const SizedBox(height: 8),
-                    _multiSelectField(
-                      context: context,
-                      placeholder: 'All Specialties',
-                      options: specialtyOptions,
-                      selected: selectedSpecialtyIds,
-                      onChanged: onSpecialtyChanged,
-                    ),
-                    const SizedBox(height: 20),
-                    const Text('Location / City',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 13)),
-                    const SizedBox(height: 8),
-                    _multiSelectField(
-                      context: context,
-                      placeholder: 'All Cities',
-                      options: cityOptions,
-                      selected: selectedCityIds,
-                      onChanged: onCityChanged,
-                    ),
-                    const SizedBox(height: 20),
-                    const Text('Minimum Rating',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 13)),
-                    const SizedBox(height: 10),
                     Wrap(
                       spacing: 8,
                       children: [0.0, 3.0, 4.0, 4.5].map((r) {
-                        final selected = selectedRating == r;
+                        final isSel = selectedRating == r;
                         return ChoiceChip(
                           label: Text(r == 0 ? 'Any' : '$r★+'),
-                          selected: selected,
+                          selected: isSel,
                           selectedColor: AppTheme.primaryLightTeal,
                           labelStyle: TextStyle(
-                              color: selected
-                                  ? _C.tealDark
-                                  : AppTheme.textSecondary,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12.5),
+                            color: isSel ? AppTheme.primaryDarkTeal : AppTheme.textSecondary,
+                            fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+                            fontSize: 12,
+                          ),
                           onSelected: (_) => onRatingChanged(r),
                         );
                       }).toList(),
                     ),
-                    const SizedBox(height: 20),
-                    const Text('Spoken Language',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 13)),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        ChoiceChip(
-                          label: const Text('Any'),
-                          selected: selectedLanguageId.isEmpty,
-                          selectedColor: AppTheme.primaryLightTeal,
-                          labelStyle: TextStyle(
-                              color: selectedLanguageId.isEmpty
-                                  ? _C.tealDark
-                                  : AppTheme.textSecondary,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12.5),
-                          onSelected: (_) => onLanguageChanged(''),
-                        ),
-                        for (final o in languageOptions)
-                          ChoiceChip(
-                            label: Text(o.label),
-                            selected: selectedLanguageId == o.id,
-                            selectedColor: AppTheme.primaryLightTeal,
-                            labelStyle: TextStyle(
-                                color: selectedLanguageId == o.id
-                                    ? _C.tealDark
-                                    : AppTheme.textSecondary,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12.5),
-                            onSelected: (_) => onLanguageChanged(o.id),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 18),
+
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('🎓 Min Experience',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 13)),
-                        const Spacer(),
-                        Text('$minExperience Years',
-                            style: const TextStyle(
-                                color: AppTheme.primaryTeal,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12.5)),
+                        const Text('Min Experience', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        Text('$minExperience yrs', style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primaryTeal)),
                       ],
                     ),
                     Slider(
@@ -1434,17 +1339,12 @@ class _MobileFilterDrawer extends StatelessWidget {
                       onChanged: (v) => onExperienceChanged(v.round()),
                     ),
                     const SizedBox(height: 12),
+
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('💰 Max Consultation Fee',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 13)),
-                        const Spacer(),
-                        Text('${maxFee.toStringAsFixed(0)} SAR',
-                            style: const TextStyle(
-                                color: AppTheme.primaryTeal,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12.5)),
+                        const Text('Max Fee', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        Text('${maxFee.toStringAsFixed(0)} SAR', style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primaryTeal)),
                       ],
                     ),
                     Slider(
@@ -1459,8 +1359,7 @@ class _MobileFilterDrawer extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: EdgeInsets.fromLTRB(
-                    20, 12, 20, 12 + MediaQuery.of(context).padding.bottom),
+                padding: EdgeInsets.fromLTRB(20, 12, 20, 12 + MediaQuery.of(context).padding.bottom),
                 decoration: const BoxDecoration(
                   color: Color(0xFFF8FAFC),
                   border: Border(top: BorderSide(color: AppTheme.borderGray)),
@@ -1469,21 +1368,13 @@ class _MobileFilterDrawer extends StatelessWidget {
                   children: [
                     OutlinedButton(
                       onPressed: onReset,
-                      style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 18, vertical: 14)),
-                      child: const Text('Reset All',
-                          style: TextStyle(fontWeight: FontWeight.w700)),
+                      child: const Text('Reset All'),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: ElevatedButton(
                         onPressed: onShowResults,
-                        style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14)),
-                        child: Text('Show Doctors ($resultCount)',
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w700)),
+                        child: Text('Show Results ($resultCount)'),
                       ),
                     ),
                   ],
@@ -1497,286 +1388,7 @@ class _MobileFilterDrawer extends StatelessWidget {
   }
 }
 
-// ── Doctor Card ───────────────────────────────────────────────────────
-class _DoctorCard extends StatelessWidget {
-  final _EnrichedDoctor entry;
-  final String displayName;
-  final List<String> specialtyNames;
-  final List<String> languageNames;
-  final VoidCallback onViewProfile;
-  final VoidCallback onBook;
-
-  const _DoctorCard({
-    required this.entry,
-    required this.displayName,
-    required this.specialtyNames,
-    required this.languageNames,
-    required this.onViewProfile,
-    required this.onBook,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final doctor = entry.doctor;
-    final avatarUrl = _resolveAvatarUrl(doctor.avatarUrl);
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: AppTheme.borderGray),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.02),
-              blurRadius: 10,
-              offset: const Offset(0, 4)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Column(
-                children: [
-                  GestureDetector(
-                    onTap: onViewProfile,
-                    child: avatarUrl != null
-                        ? CircleAvatar(
-                            radius: 34,
-                            backgroundColor: entry.avatarBg,
-                            backgroundImage: NetworkImage(avatarUrl),
-                            onBackgroundImageError: (_, __) {},
-                          )
-                        : CircleAvatar(
-                            radius: 34,
-                            backgroundColor: entry.avatarBg,
-                            child: Text(entry.initials,
-                                style: TextStyle(
-                                    color: entry.avatarFg,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 18)),
-                          ),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: _C.feeBg,
-                      border: Border.all(color: const Color(0x2605966A)),
-                      borderRadius: BorderRadius.circular(9999),
-                    ),
-                    child: Text(
-                        '${doctor.consultationFeeSar.toStringAsFixed(0)} SAR',
-                        style: const TextStyle(
-                            color: _C.feeText,
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w700)),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    GestureDetector(
-                      onTap: onViewProfile,
-                      child: Text(displayName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              color: _C.tealDark,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15.5)),
-                    ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 4,
-                      runSpacing: 4,
-                      children: specialtyNames.isEmpty
-                          ? [
-                              _specialtyBadge('General Practitioner',
-                                  filled: false)
-                            ]
-                          : specialtyNames
-                              .take(3)
-                              .map((n) => _specialtyBadge(n, filled: true))
-                              .toList(),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: _C.ratingBg,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.star,
-                              size: 12, color: Color(0xFFF59E0B)),
-                          const SizedBox(width: 4),
-                          Text('${doctor.overallRating}',
-                              style: const TextStyle(
-                                  color: _C.ratingText,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700)),
-                          const SizedBox(width: 3),
-                          Text('(${doctor.reviewCount} reviews)',
-                              style: const TextStyle(
-                                  color: Color(0xFFB45309), fontSize: 11)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              const Icon(Icons.badge_outlined, size: 14, color: _C.t3),
-              const SizedBox(width: 6),
-              const Text('Experience: ',
-                  style:
-                      TextStyle(fontSize: 12.5, color: AppTheme.textSecondary)),
-              Text('${doctor.experienceYears} Years',
-                  style: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.textSecondary)),
-            ],
-          ),
-          if (languageNames.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                const Icon(Icons.language, size: 14, color: _C.t3),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(languageNames.join(', '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 12.5, color: AppTheme.textSecondary)),
-                ),
-              ],
-            ),
-          ],
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.only(top: 14),
-            decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: AppTheme.borderGray)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: onViewProfile,
-                    icon: const Icon(Icons.person_outline, size: 15),
-                    label: const Text('View Profile',
-                        style: TextStyle(fontSize: 12.5)),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: _C.tealMid,
-                      side: const BorderSide(color: _C.border2),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: onBook,
-                    icon: const Icon(Icons.calendar_today_outlined, size: 14),
-                    label: const Text('Book', style: TextStyle(fontSize: 12.5)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryTeal,
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _specialtyBadge(String label, {required bool filled}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: filled ? _C.tealLight : _C.off,
-        border: filled ? null : Border.all(color: AppTheme.borderGray),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(label,
-          style: TextStyle(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w700,
-              color: filled ? _C.tealDark : _C.t3)),
-    );
-  }
-}
-
-// ── Empty state ─────────────────────────────────────────────────────────
-class _EmptyState extends StatelessWidget {
-  final VoidCallback onReset;
-  const _EmptyState({required this.onReset});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 56, horizontal: 24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _C.border2, style: BorderStyle.solid),
-      ),
-      child: Column(
-        children: [
-          const Icon(Icons.search_off, size: 40, color: _C.t3),
-          const SizedBox(height: 12),
-          const Text('No Doctors Found',
-              style: TextStyle(
-                  color: _C.tealDark,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700)),
-          const SizedBox(height: 6),
-          const Text(
-            'Try adjusting your search filters or click below to clear all preferences.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: _C.t3, fontSize: 13),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: onReset,
-            icon: const Icon(Icons.refresh, size: 16),
-            label: const Text('Show All Doctors'),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryTeal,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 22, vertical: 12)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Doctor profile bottom sheet (View Profile) ─────────────────────────
-// Fetches the full DoctorDetailResponse (bio, specialties, spoken
-// languages, associated clinics/branches, qualifications) the same way
-// Angular's doctor-detail page does, instead of only showing the handful
-// of fields available on the list-row DoctorModel.
+// ── Doctor Profile Bottom Sheet ──────────────────────────────────────────
 class _DoctorProfileSheet extends ConsumerStatefulWidget {
   final String doctorId;
   final _EnrichedDoctor fallback;
@@ -1793,14 +1405,12 @@ class _DoctorProfileSheet extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<_DoctorProfileSheet> createState() =>
-      _DoctorProfileSheetState();
+  ConsumerState<_DoctorProfileSheet> createState() => _DoctorProfileSheetState();
 }
 
 class _DoctorProfileSheetState extends ConsumerState<_DoctorProfileSheet> {
   DoctorDetailResponse? _detail;
   bool _loading = true;
-  String? _error;
 
   @override
   void initState() {
@@ -1814,9 +1424,8 @@ class _DoctorProfileSheetState extends ConsumerState<_DoctorProfileSheet> {
           .read(doctorServiceProvider)
           .getDoctorProfile(widget.doctorId);
       if (mounted) setState(() => _detail = detail);
-    } catch (e) {
-      if (mounted) setState(() => _error = 'Failed to load full profile.');
-    } finally {
+    } catch (_) {}
+    finally {
       if (mounted) setState(() => _loading = false);
     }
   }
@@ -1841,36 +1450,25 @@ class _DoctorProfileSheetState extends ConsumerState<_DoctorProfileSheet> {
           ),
           child: Column(
             children: [
-              const SizedBox(height: 10),
               Container(
                 width: 40,
                 height: 4,
-                decoration: BoxDecoration(
-                    color: AppTheme.borderGray,
-                    borderRadius: BorderRadius.circular(4)),
+                margin: const EdgeInsets.only(top: 10, bottom: 12),
+                decoration: BoxDecoration(color: AppTheme.borderGray, borderRadius: BorderRadius.circular(2)),
               ),
               Expanded(
                 child: ListView(
                   controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
                   children: [
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         CircleAvatar(
-                          radius: 32,
+                          radius: 30,
                           backgroundColor: widget.fallback.avatarBg,
-                          backgroundImage: avatarUrl != null
-                              ? NetworkImage(avatarUrl)
-                              : null,
-                          onBackgroundImageError:
-                              avatarUrl != null ? (_, __) {} : null,
+                          backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
                           child: avatarUrl == null
-                              ? Text(initials,
-                                  style: TextStyle(
-                                      color: widget.fallback.avatarFg,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 18))
+                              ? Text(initials, style: TextStyle(color: widget.fallback.avatarFg, fontWeight: FontWeight.bold, fontSize: 18))
                               : null,
                         ),
                         const SizedBox(width: 14),
@@ -1878,144 +1476,72 @@ class _DoctorProfileSheetState extends ConsumerState<_DoctorProfileSheet> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(displayName,
-                                  style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w700)),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  Icon(
-                                      doctor.mohVerified
-                                          ? Icons.verified
-                                          : Icons.hourglass_bottom,
-                                      size: 13,
-                                      color: doctor.mohVerified
-                                          ? AppTheme.primaryTeal
-                                          : _C.t3),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                      doctor.mohVerified
-                                          ? 'MOH Verified License'
-                                          : 'MOH Verification Pending',
-                                      style: TextStyle(
-                                          fontSize: 11.5,
-                                          fontWeight: FontWeight.w600,
-                                          color: doctor.mohVerified
-                                              ? AppTheme.primaryTeal
-                                              : _C.t3)),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              if (_detail != null &&
-                                  _detail!.specialties.isNotEmpty)
-                                Wrap(
-                                  spacing: 6,
-                                  runSpacing: 6,
-                                  children: _detail!.specialties
-                                      .map((s) => Container(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 8, vertical: 3),
-                                            decoration: BoxDecoration(
-                                              color: _C.tealLight,
-                                              borderRadius:
-                                                  BorderRadius.circular(9999),
-                                            ),
-                                            child: Text(
-                                                widget.specialtyName(
-                                                    s.specialtyId),
-                                                style: const TextStyle(
-                                                    color: _C.tealDark,
-                                                    fontSize: 11,
-                                                    fontWeight:
-                                                        FontWeight.w700)),
-                                          ))
-                                      .toList(),
+                              Text(displayName, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 2),
+                              Text(
+                                doctor.mohVerified ? '✓ MOH Verified License' : 'Verification In Review',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: doctor.mohVerified ? AppTheme.primaryTeal : AppTheme.textMuted,
                                 ),
+                              ),
                             ],
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 18),
-                    // Quick stats strip.
+                    const SizedBox(height: 16),
+                    const Divider(height: 1),
+                    const SizedBox(height: 16),
+
+                    // Quick Stats Strip
                     Row(
                       children: [
-                        Expanded(
-                            child: _statCell(
-                                Icons.schedule,
-                                '${doctor.experienceYears} Years',
-                                'Experience')),
-                        Expanded(
-                            child: _statCell(
-                                Icons.star,
-                                '${doctor.overallRating} / 5.0',
-                                '${doctor.reviewCount} reviews')),
-                        Expanded(
-                            child: _statCell(
-                                Icons.payments_outlined,
-                                '${doctor.consultationFeeSar.toStringAsFixed(0)} SAR',
-                                'Consultation Fee')),
+                        Expanded(child: _statItem('Experience', '${doctor.experienceYears} Years', Icons.work_outline)),
+                        Expanded(child: _statItem('Rating', '${doctor.overallRating} ★', Icons.star_border)),
+                        Expanded(child: _statItem('Fee', '${doctor.consultationFeeSar.toStringAsFixed(0)} SAR', Icons.payments_outlined)),
                       ],
                     ),
                     const SizedBox(height: 18),
+
                     if (_loading)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 24),
-                        child: Center(
-                            child: CircularProgressIndicator(
-                                color: AppTheme.primaryTeal)),
-                      )
+                      const Center(child: CircularProgressIndicator(color: AppTheme.primaryTeal))
                     else ...[
-                      if (_error != null)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Text(_error!,
-                              style: const TextStyle(
-                                  color: Color(0xFFEF4444), fontSize: 12.5)),
-                        ),
-                      if ((doctor.bioEn != null &&
-                          doctor.bioEn!.trim().isNotEmpty)) ...[
-                        _sectionTitle('Professional Biography'),
+                      if (doctor.bioEn != null && doctor.bioEn!.isNotEmpty) ...[
+                        const Text('Professional Bio', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                         const SizedBox(height: 6),
-                        Text(doctor.bioEn!,
-                            style:
-                                const TextStyle(fontSize: 13.5, height: 1.5)),
-                        const SizedBox(height: 18),
+                        Text(doctor.bioEn!, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary, height: 1.4)),
+                        const SizedBox(height: 16),
                       ],
-                      if (_detail != null) ...[
-                        _sectionTitle('Associated Clinics & Locations'),
+
+                      if (_detail != null && _detail!.clinics.isNotEmpty) ...[
+                        const Text('Associated Clinics', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                         const SizedBox(height: 8),
-                        if (_detail!.clinics.isEmpty)
-                          _emptyNote(
-                              'No registered clinical locations assigned.')
-                        else
-                          ..._detail!.clinics.map((cl) => _clinicTile(cl)),
-                        const SizedBox(height: 18),
-                        _sectionTitle('Academic Qualifications'),
-                        const SizedBox(height: 8),
-                        if (_detail!.qualifications.isEmpty)
-                          _emptyNote(
-                              'No qualifications recorded on profile file.')
-                        else
-                          ..._detail!.qualifications
-                              .map((q) => _qualificationTile(q)),
-                        const SizedBox(height: 18),
-                        _sectionTitle('Spoken Languages'),
-                        const SizedBox(height: 8),
-                        if (_detail!.languages.isEmpty)
-                          _emptyNote('No languages documented.')
-                        else
-                          ..._detail!.languages.map((l) => _languageTile(l)),
-                        const SizedBox(height: 18),
+                        ..._detail!.clinics.map((c) => Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: AppTheme.backgroundApp,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.local_hospital_outlined, size: 18, color: AppTheme.primaryTeal),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(c.clinicNameEn ?? 'Clinic', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                                  ),
+                                ],
+                              ),
+                            )),
                       ],
                     ],
                   ],
                 ),
               ),
               Container(
-                padding: EdgeInsets.fromLTRB(
-                    24, 12, 24, 16 + MediaQuery.of(context).padding.bottom),
+                padding: EdgeInsets.fromLTRB(20, 12, 20, 12 + MediaQuery.of(context).padding.bottom),
                 decoration: const BoxDecoration(
                   border: Border(top: BorderSide(color: AppTheme.borderGray)),
                 ),
@@ -2023,9 +1549,8 @@ class _DoctorProfileSheetState extends ConsumerState<_DoctorProfileSheet> {
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: widget.onBook,
-                    style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14)),
-                    child: const Text('Book Consultation'),
+                    style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                    child: const Text('Book Consultation Now'),
                   ),
                 ),
               ),
@@ -2036,151 +1561,19 @@ class _DoctorProfileSheetState extends ConsumerState<_DoctorProfileSheet> {
     );
   }
 
-  Widget _statCell(IconData icon, String value, String label) {
-    return Column(
-      children: [
-        Icon(icon, size: 18, color: AppTheme.primaryTeal),
-        const SizedBox(height: 4),
-        Text(value,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-        Text(label,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 10.5, color: _C.t3)),
-      ],
-    );
-  }
-
-  Widget _sectionTitle(String text) {
-    return Text(text,
-        style: const TextStyle(
-            fontSize: 14.5, fontWeight: FontWeight.w700, color: _C.tealDark));
-  }
-
-  Widget _emptyNote(String text) {
+  Widget _statItem(String label, String value, IconData icon) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: _C.off,
+        color: AppTheme.backgroundApp,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppTheme.borderGray),
-      ),
-      child: Text(text, style: const TextStyle(fontSize: 12.5, color: _C.t3)),
-    );
-  }
-
-  Widget _clinicTile(DoctorClinicModel cl) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: _C.off,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppTheme.borderGray),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(cl.clinicNameEn ?? 'Clinic Location',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 13.5)),
-              ),
-              if (cl.isPrimary)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                      color: _C.feeBg,
-                      borderRadius: BorderRadius.circular(9999)),
-                  child: const Text('Primary',
-                      style: TextStyle(
-                          color: _C.feeText,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700)),
-                ),
-            ],
-          ),
-          const SizedBox(height: 2),
-          Text(cl.branchNameEn ?? 'Main Branch',
-              style: const TextStyle(fontSize: 12, color: _C.t3)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 14,
-            runSpacing: 4,
-            children: [
-              Text('Department: ${cl.department}',
-                  style: const TextStyle(
-                      fontSize: 11.5, color: AppTheme.textSecondary)),
-              Text('Fee: ${cl.consultationFeeSar.toStringAsFixed(0)} SAR',
-                  style: const TextStyle(
-                      fontSize: 11.5, color: AppTheme.textSecondary)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _qualificationTile(DoctorQualificationModel q) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: _C.off,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppTheme.borderGray),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.school_outlined, size: 18, color: _C.tealMid),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(q.degree,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 13)),
-                Text('${q.institution}, ${q.country}',
-                    style: const TextStyle(fontSize: 11.5, color: _C.t3)),
-              ],
-            ),
-          ),
-          Text('${q.yearObtained}',
-              style: const TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                  color: _C.tealMid)),
-        ],
-      ),
-    );
-  }
-
-  Widget _languageTile(DoctorLanguageModel l) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          const Icon(Icons.language, size: 15, color: _C.t3),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(widget.languageName(l.languageId),
-                style:
-                    const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-                border: Border.all(color: AppTheme.primaryTeal),
-                borderRadius: BorderRadius.circular(9999)),
-            child: Text(l.proficiency.value,
-                style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.primaryTeal)),
-          ),
+          Icon(icon, size: 16, color: AppTheme.primaryTeal),
+          const SizedBox(height: 4),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          Text(label, style: const TextStyle(fontSize: 10.5, color: AppTheme.textMuted)),
         ],
       ),
     );

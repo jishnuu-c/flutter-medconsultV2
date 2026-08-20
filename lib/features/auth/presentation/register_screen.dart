@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/models/auth_models.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_notification.dart';
 
 // Colors pulled direct from Angular CSS vars (register.component.css)
 class _AuthColors {
@@ -570,29 +571,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Widget _errorAlert() {
     return Container(
       key: const Key('register_error_alert'),
-      width: double.infinity,
       margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: _AuthColors.redL,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _AuthColors.red),
-      ),
-      child: Row(
-        children: [
-          const Text('⚠️', style: TextStyle(fontSize: 14)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              _errorMessage,
-              style: const TextStyle(
-                color: _AuthColors.redD,
-                fontSize: 12.3, // 0.88rem
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
+      child: AppAlertBlock.error(
+        message: _errorMessage,
       ),
     );
   }

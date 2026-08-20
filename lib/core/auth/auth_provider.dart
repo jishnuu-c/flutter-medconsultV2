@@ -77,8 +77,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
           isInitialized: true,
         );
 
-        if (user == null && _authService != null) {
-          await fetchCurrentUser();
+        if (_authService != null) {
+          try {
+            await fetchCurrentUser();
+          } catch (_) {
+            await logout();
+          }
         }
       } else {
         state = state.copyWith(isInitialized: true);
@@ -124,6 +128,23 @@ class AuthNotifier extends StateNotifier<AuthState> {
         // is never silently defaulted.
         await fetchCurrentUser();
         return;
+      }
+    } catch (e) {
+      state = state.copyWith(isLoading: false);
+      rethrow;
+    }
+  }
+
+  Future<void> updateUserProfile(Map<String, dynamic> dto) async {
+    state = state.copyWith(isLoading: true);
+    try {
+      if (_authService != null) {
+        final updatedUser = await _authService!.updateUserProfile(dto);
+        state = state.copyWith(currentUser: updatedUser, isLoading: false);
+        try {
+          final prefs = _prefs ?? await SharedPreferences.getInstance();
+          await prefs.setString(kCurrentUserKey, jsonEncode(updatedUser.toJson()));
+        } catch (_) {}
       }
     } catch (e) {
       state = state.copyWith(isLoading: false);

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
@@ -89,10 +91,23 @@ class CaseRoomService {
   // Mirrors case-room.service.ts's uploadFile (generic files endpoint, not
   // caseroom-scoped) and clinical-record.service.ts's downloadFile (blob).
 
-  Future<dynamic> uploadFile(String filePath, String fileName,
-      {String category = 'OTHER', String? patientId}) async {
+  Future<dynamic> uploadFile({
+    String? filePath,
+    Uint8List? bytes,
+    required String fileName,
+    String category = 'OTHER',
+    String? patientId,
+  }) async {
+    MultipartFile multipartFile;
+    if (bytes != null) {
+      multipartFile = MultipartFile.fromBytes(bytes, filename: fileName);
+    } else if (filePath != null) {
+      multipartFile = await MultipartFile.fromFile(filePath, filename: fileName);
+    } else {
+      throw ArgumentError('Either bytes or filePath must be provided');
+    }
     final formData = FormData.fromMap({
-      'file': await MultipartFile.fromFile(filePath, filename: fileName),
+      'file': multipartFile,
       'category': category,
       if (patientId != null) 'patientId': patientId,
     });

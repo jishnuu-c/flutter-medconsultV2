@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_notification.dart';
 import '../data/reference_models.dart';
 import '../data/reference_service.dart';
 import '../../clinic_admin/data/doctor_models.dart';
@@ -235,9 +236,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load data: ${_errorMessage(e)}')),
-        );
+        _snack('Failed to load data: ${_errorMessage(e)}');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -249,6 +248,27 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
       return e.response?.statusMessage ?? e.message ?? 'Network error';
     }
     return e.toString();
+  }
+
+  void _snack(String msg, {bool? isError}) {
+    if (!mounted) return;
+    final lower = msg.toLowerCase();
+    final isErr = isError ??
+        (lower.contains('fail') ||
+            lower.contains('error') ||
+            lower.contains('could not') ||
+            lower.contains('invalid') ||
+            lower.contains('exception'));
+    final isWarn = lower.contains('notice') ||
+        lower.contains('please') ||
+        lower.contains('already');
+    if (isErr) {
+      AppNotification.showError(context, msg);
+    } else if (isWarn) {
+      AppNotification.showWarning(context, msg);
+    } else {
+      AppNotification.showSuccess(context, msg);
+    }
   }
 
   Future<void> _loadLocalities(CityModel city) async {
@@ -264,10 +284,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
     } catch (e) {
       if (mounted) {
         setState(() => _localities = []);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Failed to load localities: ${_errorMessage(e)}')),
-        );
+        _snack('Failed to load localities: ${_errorMessage(e)}');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -288,11 +305,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
     } catch (e) {
       if (mounted) {
         setState(() => _subSpecialties = []);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content:
-                  Text('Failed to load sub-specialties: ${_errorMessage(e)}')),
-        );
+        _snack('Failed to load sub-specialties: ${_errorMessage(e)}');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -461,12 +474,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                                 Navigator.pop(dialogCtx);
                               }
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(isEdit
-                                          ? 'City updated.'
-                                          : 'City added.')),
-                                );
+                                _snack(isEdit ? 'City updated.' : 'City added.');
                                 _loadData();
                               }
                             } catch (e) {
@@ -474,11 +482,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                                 Navigator.pop(dialogCtx);
                               }
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(
-                                          'Error: ${_errorMessage(e)}')),
-                                );
+                                _snack('Error: ${_errorMessage(e)}');
                                 _loadData();
                               }
                             }
@@ -606,12 +610,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                                 Navigator.pop(dialogCtx);
                               }
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(isEdit
-                                          ? 'Locality updated.'
-                                          : 'Locality added.')),
-                                );
+                                _snack(isEdit ? 'Locality updated.' : 'Locality added.');
                                 if (_selectedCityForLocalities != null) {
                                   _loadLocalities(_selectedCityForLocalities!);
                                 }
@@ -621,11 +620,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                                 Navigator.pop(dialogCtx);
                               }
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(
-                                          'Error: ${_errorMessage(e)}')),
-                                );
+                                _snack('Error: ${_errorMessage(e)}');
                               }
                             }
                           },
@@ -779,12 +774,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                                 Navigator.pop(dialogCtx);
                               }
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(isEdit
-                                          ? 'Specialty updated.'
-                                          : 'Specialty added.')),
-                                );
+                                _snack(isEdit ? 'Specialty updated.' : 'Specialty added.');
                                 _loadData();
                               }
                             } catch (e) {
@@ -792,11 +782,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                                 Navigator.pop(dialogCtx);
                               }
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(
-                                          'Error: ${_errorMessage(e)}')),
-                                );
+                                _snack('Error: ${_errorMessage(e)}');
                               }
                             }
                           },
@@ -914,12 +900,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                                 Navigator.pop(dialogCtx);
                               }
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(isEdit
-                                          ? 'SubSpecialty updated.'
-                                          : 'SubSpecialty added.')),
-                                );
+                                _snack(isEdit ? 'SubSpecialty updated.' : 'SubSpecialty added.');
                                 if (_selectedSpecialtyForSub != null) {
                                   _loadSubSpecialties(_selectedSpecialtyForSub!);
                                 }
@@ -929,11 +910,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                                 Navigator.pop(dialogCtx);
                               }
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(
-                                          'Error: ${_errorMessage(e)}')),
-                                );
+                                _snack('Error: ${_errorMessage(e)}');
                               }
                             }
                           },
@@ -1062,12 +1039,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                                 Navigator.pop(dialogCtx);
                               }
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(isEdit
-                                          ? 'Language updated.'
-                                          : 'Language added.')),
-                                );
+                                _snack(isEdit ? 'Language updated.' : 'Language added.');
                                 _loadData();
                               }
                             } catch (e) {
@@ -1075,11 +1047,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                                 Navigator.pop(dialogCtx);
                               }
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(
-                                          'Error: ${_errorMessage(e)}')),
-                                );
+                                _snack('Error: ${_errorMessage(e)}');
                               }
                             }
                           },
@@ -1266,12 +1234,9 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                                 Navigator.pop(dialogCtx);
                               }
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(isEdit
-                                          ? 'Insurance provider updated.'
-                                          : 'Insurance provider added.')),
-                                );
+                                _snack(isEdit
+                                    ? 'Insurance provider updated.'
+                                    : 'Insurance provider added.');
                                 _loadData();
                               }
                             } catch (e) {
@@ -1279,11 +1244,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                                 Navigator.pop(dialogCtx);
                               }
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(
-                                          'Error: ${_errorMessage(e)}')),
-                                );
+                                _snack('Error: ${_errorMessage(e)}');
                               }
                             }
                           },
@@ -1495,11 +1456,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                                   Navigator.pop(dialogCtx);
                                 }
                                 if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                        content: Text(
-                                            'Dr. ${fullNameController.text.trim()} updated successfully.')),
-                                  );
+                                  _snack('Dr. ${fullNameController.text.trim()} updated successfully.');
                                   _loadData();
                                 }
                               } else {
@@ -1535,11 +1492,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                                   Navigator.pop(dialogCtx);
                                 }
                                 if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                        content: Text(
-                                            'Dr. ${fullNameController.text.trim()} registered successfully.')),
-                                  );
+                                  _snack('Dr. ${fullNameController.text.trim()} registered successfully.');
                                   _loadData();
                                 }
                               }
@@ -1548,11 +1501,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                                 Navigator.pop(dialogCtx);
                               }
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(
-                                          'Error: ${_errorMessage(e)}')),
-                                );
+                                _snack('Error: ${_errorMessage(e)}');
                               }
                             }
                           },
@@ -1599,11 +1548,7 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                     .read(doctorServiceProvider)
                     .updateDoctor(doc.doctorId, {'isActive': newStatus});
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                        content: Text(
-                            'Dr. ${doc.fullName} has been ${newStatus ? 'activated' : 'deactivated'}.')),
-                  );
+                  _snack('Dr. ${doc.fullName} has been ${newStatus ? 'activated' : 'deactivated'}.');
                 }
               } catch (_) {}
               _loadData();
@@ -1673,17 +1618,11 @@ class _SystemAdminScreenState extends ConsumerState<SystemAdminScreen>
                     break;
                 }
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Item deleted.')),
-                  );
+                  _snack('Item deleted.');
                 }
               } catch (_) {
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text(
-                            'Could not delete item. It might be in use.')),
-                  );
+                  _snack('Could not delete item. It might be in use.');
                 }
               }
             },

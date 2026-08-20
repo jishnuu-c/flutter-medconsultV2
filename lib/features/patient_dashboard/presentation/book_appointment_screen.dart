@@ -5,41 +5,30 @@ import 'package:go_router/go_router.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/references_service.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_notification.dart';
 import '../../clinic_admin/data/clinic_service.dart';
 import '../../clinic_admin/data/doctor_service.dart';
 import '../../clinic_admin/data/doctor_models.dart';
 import '../../doctor_dashboard/data/appointment_service.dart';
 import '../data/patient_service.dart';
 
-// Extra brand tokens from styles.css not yet in AppTheme. Mirrors the
-// palette used by patient_doctors_screen.dart so both screens read as one
-// coherent design system.
 class _C {
-  static const tealDark = Color(0xFF085041);
-  static const tealLight = Color(0xFFE1F5EE);
-  static const off = Color(0xFFF8FAF9);
-  static const t3 = Color(0xFF6B7280);
-  static const feeBg = Color(0xFFECFDF5);
-  static const feeText = Color(0xFF065F46);
-
   static const avatarBg = [
-    Color(0xFFE1F5EE),
-    Color(0xFFDBEAFE),
+    Color(0xFFE0F2FE),
+    Color(0xFFF0FDFA),
     Color(0xFFEDE9FE),
     Color(0xFFFEF3C7),
-    Color(0xFFDCFCE7),
+    Color(0xFFECFDF5),
   ];
   static const avatarFg = [
-    Color(0xFF085041),
-    Color(0xFF1E40AF),
-    Color(0xFF5B21B6),
-    Color(0xFF92400E),
-    Color(0xFF166534),
+    Color(0xFF0369A1),
+    Color(0xFF0F766E),
+    Color(0xFF6D28D9),
+    Color(0xFFB45309),
+    Color(0xFF047857),
   ];
 }
 
-/// Turns a relative avatar/logo path into an absolute URL, same rule used
-/// across the app (patient_doctors_screen._resolveAvatarUrl / app_layout).
 String? _resolveUrl(String? raw) {
   if (raw == null || raw.trim().isEmpty) return null;
   final value = raw.trim();
@@ -63,14 +52,11 @@ class _NextDay {
     required this.dayNum,
     required this.dayName,
     required this.monthName,
-    this.hasSlots = true,
-  });
+  }) : hasSlots = true;
 }
 
-/// Mirrors Angular's book-appointment.component 1:1 — a 4-step wizard
-/// (Doctor → Clinic → Date & Time → Confirm), laid out for a phone screen:
-/// single column, stacked selection cards, and a sticky bottom nav bar
-/// instead of the desktop side-by-side footer.
+/// 4-step wizard: Doctor → Clinic → Date & Time → Confirm.
+/// Mirrors Angular's book-appointment.component 1:1.
 class BookAppointmentScreen extends ConsumerStatefulWidget {
   const BookAppointmentScreen({super.key});
 
@@ -80,8 +66,6 @@ class BookAppointmentScreen extends ConsumerStatefulWidget {
 }
 
 class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
-  bool get isNarrow => MediaQuery.of(context).size.width < 480;
-
   final _reasonController = TextEditingController();
   final _searchController = TextEditingController();
 
@@ -132,8 +116,6 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
     _searchController.dispose();
     super.dispose();
   }
-
-  // ── Data loading (mirrors ngOnInit → checkProfileAndLoad → loadDoctors) ──
 
   void _initNextDays() {
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -262,8 +244,6 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
     }
   }
 
-  // ── Filtering & sorting (mirrors get filteredDoctors()) ─────────────────
-
   List<DoctorModel> get _filteredDoctors {
     var result = [..._doctors];
 
@@ -319,8 +299,6 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
     });
   }
 
-  // ── Step transitions (mirrors selectDoctor / selectClinic / selectDate…) ─
-
   Future<void> _selectDoctor(String doctorId) async {
     setState(() {
       _selectedDoctorId = doctorId;
@@ -364,7 +342,7 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
             clinicNameEn: detail.nameEn,
             branchNameEn: branch.isNotEmpty
                 ? branch.first.branchNameEn
-                : 'Unknown Branch',
+                : 'Main Branch',
           );
         } catch (_) {
           return dc;
@@ -468,8 +446,6 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
     setState(() => _currentStep = step);
   }
 
-  // ── Selected-item lookups (mirrors getSelectedDoctor/Clinic/Slot) ───────
-
   DoctorModel? get _selectedDoctor => _selectedDoctorId == null
       ? null
       : _doctors.where((d) => d.doctorId == _selectedDoctorId).firstOrNull;
@@ -481,8 +457,6 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
   dynamic get _selectedSlot => _selectedSlotId == null
       ? null
       : _slots.where((s) => s['slotId'] == _selectedSlotId).firstOrNull;
-
-  // ── Display helpers (mirror getDoctorDisplayName/getInitials/getAvatarBg) ─
 
   String _doctorDisplayName(String fullName) {
     final trimmed = fullName.trim();
@@ -501,8 +475,9 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
   String _initialsOf(String name) {
     if (name.trim().isEmpty) return 'DR';
     final parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.length >= 2)
+    if (parts.length >= 2) {
       return (parts.first[0] + parts.last[0]).toUpperCase();
+    }
     return name
         .trim()
         .substring(0, name.trim().length.clamp(0, 2))
@@ -511,15 +486,15 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
 
   int _colorIndex(String name) {
     var sum = 0;
-    for (final code in name.codeUnits) sum += code;
+    for (final code in name.codeUnits) {
+      sum += code;
+    }
     return sum % _C.avatarBg.length;
   }
 
   String _fmtFee(double fee) => fee == fee.roundToDouble()
       ? fee.toInt().toString()
       : fee.toStringAsFixed(2);
-
-  // ── Submit (mirrors onSubmit) ────────────────────────────────────────────
 
   bool get _canSubmit =>
       _patientId != null &&
@@ -541,15 +516,18 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
         'reason': _reasonController.text.trim(),
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Appointment booked successfully!')),
+        AppNotification.showSuccess(
+          context,
+          'Appointment booked successfully!',
         );
         context.go('/patient/home');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(_extractErrorMessage(e))));
+        AppNotification.showError(
+          context,
+          _extractErrorMessage(e),
+        );
       }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
@@ -575,72 +553,82 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
     return 'Failed to book appointment.';
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
-
     if (_needProfileInit) {
       return Scaffold(
+        backgroundColor: AppTheme.backgroundApp,
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFEF3C7),
-                    borderRadius: BorderRadius.circular(28),
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceWhite,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.8)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                    child: const Icon(Icons.warning_amber_rounded,
+                        color: AppTheme.warningAmber, size: 30),
                   ),
-                  child: const Icon(Icons.warning_amber_rounded,
-                      color: AppTheme.warningAmber, size: 30),
-                ),
-                const SizedBox(height: 16),
-                const Text('Registration Required',
-                    style:
-                        TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                const SizedBox(height: 8),
-                const Text(
-                  'Please initialize your General Patient Profile before booking a new appointment.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppTheme.textMuted),
-                ),
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () => context.go('/patient/profile'),
-                  child: const Text('Setup Profile'),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  const Text('Registration Required',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Please initialize your General Patient Profile before booking a new appointment.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: AppTheme.textMuted),
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: () => context.go('/patient/profile'),
+                    child: const Text('Setup Profile'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       );
     }
 
+    final isMobile = MediaQuery.of(context).size.width <= 768;
+
     return Scaffold(
-      backgroundColor: _C.off,
+      backgroundColor: AppTheme.backgroundApp,
       body: SafeArea(
         child: (_isLoading && _doctors.isEmpty)
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryTeal))
             : Column(
                 children: [
                   Expanded(
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isMobile ? 16 : 24,
+                        vertical: isMobile ? 16 : 24,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildHeader(),
+                          _buildHeader(isMobile),
                           const SizedBox(height: 16),
                           _buildStepNav(),
                           const SizedBox(height: 20),
-                          if (_currentStep == 1) _buildStep1(),
+                          if (_currentStep == 1) _buildStep1(isMobile),
                           if (_currentStep == 2) _buildStep2(),
                           if (_currentStep == 3) _buildStep3(),
-                          if (_currentStep == 4) _buildStep4(),
+                          if (_currentStep == 4) _buildStep4(isMobile),
                         ],
                       ),
                     ),
@@ -652,113 +640,167 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
     );
   }
 
-  // ── Header ────────────────────────────────────────────────────────────
-
-  Widget _buildHeader() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: _C.tealLight,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child:
-              const Icon(Icons.event_note_rounded, color: AppTheme.primaryTeal),
+  // ── Header Banner ────────────────────────────────────────────────────────
+  Widget _buildHeader(bool isMobile) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(isMobile ? 18 : 24),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0F766E), Color(0xFF115E59)],
         ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F766E).withValues(alpha: 0.2),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Schedule Your Consultation',
-                  style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.textMain)),
-              const SizedBox(height: 2),
-              const Text(
-                'Select your preferred doctor, clinic branch, and appointment slot',
-                style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.calendar_month_outlined, size: 13, color: Colors.white),
+                    SizedBox(width: 5),
+                    Text(
+                      'APPOINTMENT BOOKING',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF14B8A6).withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  'SA MOH Verified',
+                  style: TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.bold),
+                ),
               ),
             ],
           ),
-        ),
-      ],
-    );
-  }
-
-  // ── Step nav (mirrors booking-wizard-steps) ──────────────────────────────
-
-  Widget _buildStepNav() {
-    const labels = ['Doctor', 'Clinic', 'Date & Time', 'Confirm'];
-    return Row(
-      children: [
-        for (var i = 1; i <= 4; i++) ...[
-          Expanded(
-            child: GestureDetector(
-              onTap: () => _goToStep(i),
-              child: Column(
-                children: [
-                  CircleAvatar(
-                    radius: 14,
-                    backgroundColor: i == _currentStep
-                        ? AppTheme.primaryTeal
-                        : (i < _currentStep
-                            ? _C.tealLight
-                            : AppTheme.borderGray),
-                    child: i < _currentStep
-                        ? const Icon(Icons.check,
-                            size: 14, color: AppTheme.primaryTeal)
-                        : Text('$i',
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: i == _currentStep
-                                    ? Colors.white
-                                    : AppTheme.textMuted)),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(labels[i - 1],
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: i == _currentStep
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                          color: i == _currentStep
-                              ? AppTheme.primaryTeal
-                              : AppTheme.textMuted)),
-                ],
-              ),
+          const SizedBox(height: 10),
+          Text(
+            'Schedule Consultation',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: isMobile ? 22 : 26,
+              fontWeight: FontWeight.bold,
+              letterSpacing: -0.3,
             ),
           ),
-          if (i != 4)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 18),
-              child: Icon(Icons.chevron_right_rounded,
-                  color: AppTheme.borderGray, size: 16),
+          const SizedBox(height: 3),
+          Text(
+            'Select your preferred doctor, clinic branch, and appointment slot',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.85),
+              fontSize: isMobile ? 12 : 13.5,
             ),
+          ),
         ],
-      ],
+      ),
     );
   }
 
-  // ── STEP 1: choose doctor ────────────────────────────────────────────────
+  // ── Step Navigation ──────────────────────────────────────────────────────
+  Widget _buildStepNav() {
+    const labels = ['Doctor', 'Clinic', 'Date & Time', 'Confirm'];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.8)),
+      ),
+      child: Row(
+        children: [
+          for (var i = 1; i <= 4; i++) ...[
+            Expanded(
+              child: GestureDetector(
+                onTap: () => _goToStep(i),
+                child: Column(
+                  children: [
+                    CircleAvatar(
+                      radius: 14,
+                      backgroundColor: i == _currentStep
+                          ? AppTheme.primaryTeal
+                          : (i < _currentStep
+                              ? AppTheme.primaryLightTeal
+                              : AppTheme.borderGray.withValues(alpha: 0.5)),
+                      child: i < _currentStep
+                          ? const Icon(Icons.check, size: 14, color: AppTheme.primaryTeal)
+                          : Text(
+                              '$i',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.bold,
+                                color: i == _currentStep ? Colors.white : AppTheme.textMuted,
+                              ),
+                            ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      labels[i - 1],
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: i == _currentStep ? FontWeight.bold : FontWeight.w500,
+                        color: i == _currentStep ? AppTheme.primaryTeal : AppTheme.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (i != 4)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Icon(Icons.chevron_right_rounded,
+                    color: AppTheme.borderGray.withValues(alpha: 0.8), size: 16),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
 
-  Widget _buildStep1() {
+  // ── STEP 1: Choose Doctor ────────────────────────────────────────────────
+  Widget _buildStep1(bool isMobile) {
     final filtered = _filteredDoctors;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _stepTitle(
-            Icons.person_search_rounded,
-            'Step 1: Choose Specialist Doctor',
-            'Browse our verified doctors panel and select a specialist to check clinic locations'),
+          Icons.person_search_rounded,
+          'Step 1: Choose Specialist Doctor',
+          'Browse our verified doctors panel and select a specialist to check clinic locations',
+        ),
         const SizedBox(height: 14),
-        _filtersCard(),
+        _filtersCard(isMobile),
         const SizedBox(height: 14),
         if (filtered.isEmpty)
           _emptyState(Icons.person_search_rounded, 'No Doctors Found',
@@ -769,44 +811,51 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
     );
   }
 
-  Widget _filtersCard() {
+  Widget _filtersCard(bool isMobile) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.borderGray),
+        color: AppTheme.surfaceWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.8)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('Search Doctor Name',
-              style: TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w600, color: _C.t3)),
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
           const SizedBox(height: 6),
           TextField(
             controller: _searchController,
             onChanged: (v) => setState(() => _searchQuery = v),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: 'Type to search...',
+              hintStyle: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
               isDense: true,
-              suffixIcon: Icon(Icons.search, size: 18),
-              contentPadding:
-                  EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              prefixIcon: const Icon(Icons.search, size: 18, color: AppTheme.textMuted),
+              suffixIcon: _searchController.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.close, size: 16, color: AppTheme.textMuted),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                    )
+                  : null,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             ),
           ),
           const SizedBox(height: 12),
           const Text('Medical Specialty',
-              style: TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w600, color: _C.t3)),
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
           const SizedBox(height: 6),
           DropdownButtonFormField<String>(
             initialValue: _selectedSpecialtyId,
             isExpanded: true,
             decoration: const InputDecoration(
-                isDense: true,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
             items: [
               const DropdownMenuItem(value: '', child: Text('All Specialties')),
               ..._specialties.map((s) => DropdownMenuItem(
@@ -816,157 +865,73 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
             onChanged: (v) => setState(() => _selectedSpecialtyId = v ?? ''),
           ),
           const SizedBox(height: 12),
-          isNarrow
-              ? Column(
+          Row(
+            children: [
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Years of Experience',
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: _C.t3)),
-                        const SizedBox(height: 6),
-                        DropdownButtonFormField<int>(
-                          initialValue: _selectedMinExperience,
-                          isExpanded: true,
-                          decoration: const InputDecoration(
-                              isDense: true,
-                              contentPadding: EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 10)),
-                          items: const [
-                            DropdownMenuItem(
-                                value: 0, child: Text('Any Experience')),
-                            DropdownMenuItem(value: 3, child: Text('3+ Years')),
-                            DropdownMenuItem(value: 5, child: Text('5+ Years')),
-                            DropdownMenuItem(value: 10, child: Text('10+ Years')),
-                          ],
-                          onChanged: (v) =>
-                              setState(() => _selectedMinExperience = v ?? 0),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Sort By',
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: _C.t3)),
-                        const SizedBox(height: 6),
-                        DropdownButtonFormField<String>(
-                          initialValue: _selectedSortOption,
-                          isExpanded: true,
-                          decoration: const InputDecoration(
-                              isDense: true,
-                              contentPadding: EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 10)),
-                          items: const [
-                            DropdownMenuItem(
-                                value: 'rating', child: Text('Highest Rating')),
-                            DropdownMenuItem(
-                                value: 'experience',
-                                child: Text('Most Experienced')),
-                            DropdownMenuItem(
-                                value: 'fee_asc', child: Text('Fee: Low to High')),
-                            DropdownMenuItem(
-                                value: 'fee_desc', child: Text('Fee: High to Low')),
-                            DropdownMenuItem(
-                                value: 'name', child: Text('Name (A-Z)')),
-                          ],
-                          onChanged: (v) =>
-                              setState(() => _selectedSortOption = v ?? 'rating'),
-                        ),
-                      ],
-                    ),
-                  ],
-                )
-              : Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Years of Experience',
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: _C.t3)),
-                          const SizedBox(height: 6),
-                          DropdownButtonFormField<int>(
-                            initialValue: _selectedMinExperience,
-                            isExpanded: true,
-                            decoration: const InputDecoration(
-                                isDense: true,
-                                contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 10)),
-                            items: const [
-                              DropdownMenuItem(
-                                  value: 0, child: Text('Any Experience')),
-                              DropdownMenuItem(value: 3, child: Text('3+ Years')),
-                              DropdownMenuItem(value: 5, child: Text('5+ Years')),
-                              DropdownMenuItem(value: 10, child: Text('10+ Years')),
-                            ],
-                            onChanged: (v) =>
-                                setState(() => _selectedMinExperience = v ?? 0),
-                          ),
-                        ],
+                    const Text('Experience',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<int>(
+                      initialValue: _selectedMinExperience,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Sort By',
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: _C.t3)),
-                          const SizedBox(height: 6),
-                          DropdownButtonFormField<String>(
-                            initialValue: _selectedSortOption,
-                            isExpanded: true,
-                            decoration: const InputDecoration(
-                                isDense: true,
-                                contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 10)),
-                            items: const [
-                              DropdownMenuItem(
-                                  value: 'rating', child: Text('Highest Rating')),
-                              DropdownMenuItem(
-                                  value: 'experience',
-                                  child: Text('Most Experienced')),
-                              DropdownMenuItem(
-                                  value: 'fee_asc', child: Text('Fee: Low to High')),
-                              DropdownMenuItem(
-                                  value: 'fee_desc', child: Text('Fee: High to Low')),
-                              DropdownMenuItem(
-                                  value: 'name', child: Text('Name (A-Z)')),
-                            ],
-                            onChanged: (v) =>
-                                setState(() => _selectedSortOption = v ?? 'rating'),
-                          ),
-                        ],
-                      ),
+                      items: const [
+                        DropdownMenuItem(value: 0, child: Text('Any')),
+                        DropdownMenuItem(value: 3, child: Text('3+ Yrs')),
+                        DropdownMenuItem(value: 5, child: Text('5+ Yrs')),
+                        DropdownMenuItem(value: 10, child: Text('10+ Yrs')),
+                      ],
+                      onChanged: (v) =>
+                          setState(() => _selectedMinExperience = v ?? 0),
                     ),
                   ],
                 ),
-          const SizedBox(height: 10),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Sort By',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      initialValue: _selectedSortOption,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'rating', child: Text('Rating')),
+                        DropdownMenuItem(value: 'experience', child: Text('Experience')),
+                        DropdownMenuItem(value: 'fee_asc', child: Text('Fee: Low')),
+                        DropdownMenuItem(value: 'fee_desc', child: Text('Fee: High')),
+                        DropdownMenuItem(value: 'name', child: Text('Name')),
+                      ],
+                      onChanged: (v) =>
+                          setState(() => _selectedSortOption = v ?? 'rating'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Flexible(
                 child: Text(
-                    '${_filteredDoctors.length} doctors found matching criteria',
-                    style: const TextStyle(
-                        fontSize: 11.5,
-                        color: _C.t3,
-                        fontWeight: FontWeight.w500)),
+                  '${_filteredDoctors.length} doctors found matching criteria',
+                  style: const TextStyle(fontSize: 11.5, color: AppTheme.textMuted, fontWeight: FontWeight.w500),
+                ),
               ),
               if (_searchQuery.isNotEmpty ||
                   _selectedSpecialtyId.isNotEmpty ||
@@ -974,11 +939,9 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
                   _selectedSortOption != 'rating')
                 TextButton.icon(
                   onPressed: _resetFilters,
-                  style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
+                  style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
                   icon: const Icon(Icons.refresh, size: 13),
-                  label: const Text('Reset Filters',
-                      style: TextStyle(fontSize: 11.5)),
+                  label: const Text('Reset Filters', style: TextStyle(fontSize: 11.5)),
                 ),
             ],
           ),
@@ -997,21 +960,32 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: alreadyBooked
+            ? const Color(0xFFF9FAFB)
+            : (selected ? AppTheme.primaryLightTeal : AppTheme.surfaceWhite),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: selected
+              ? AppTheme.primaryTeal
+              : (alreadyBooked ? AppTheme.borderGray : AppTheme.borderGray.withValues(alpha: 0.7)),
+          width: selected ? 1.5 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           onTap: alreadyBooked ? null : () => _selectDoctor(doc.doctorId),
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: alreadyBooked
-                  ? const Color(0xFFF9FAFB)
-                  : (selected ? _C.tealLight : Colors.white),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                  color: selected ? AppTheme.primaryTeal : AppTheme.borderGray),
-            ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1019,7 +993,7 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     CircleAvatar(
-                      radius: 22,
+                      radius: 24,
                       backgroundColor: alreadyBooked
                           ? const Color(0xFFF3F4F6)
                           : _C.avatarBg[colorIdx],
@@ -1033,10 +1007,10 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
                                       ? const Color(0xFF9CA3AF)
                                       : _C.avatarFg[colorIdx],
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 13))
+                                  fontSize: 14))
                           : null,
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1045,53 +1019,33 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
                               style: const TextStyle(
                                   fontWeight: FontWeight.bold, fontSize: 14.5)),
                           const SizedBox(height: 3),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: _C.tealLight,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(specialtyName,
-                                style: const TextStyle(
-                                    fontSize: 10.5,
-                                    color: _C.tealDark,
-                                    fontWeight: FontWeight.w600)),
-                          ),
+                          Text(specialtyName,
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppTheme.primaryTeal,
+                                  fontWeight: FontWeight.w600)),
                           if (!alreadyBooked) ...[
-                            const SizedBox(height: 6),
-                            Wrap(
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              spacing: 6,
-                              runSpacing: 4,
+                            const SizedBox(height: 4),
+                            Row(
                               children: [
                                 Text('${doc.experienceYears} Yrs Exp',
-                                    style: const TextStyle(
-                                        fontSize: 11.5, color: _C.t3)),
-                                const Text('•',
-                                    style:
-                                        TextStyle(color: _C.t3, fontSize: 11)),
-                                const Icon(Icons.star,
-                                    size: 13, color: Color(0xFFF59E0B)),
-                                Text(
-                                    '${doc.overallRating} (${doc.reviewCount})',
-                                    style: const TextStyle(
-                                        fontSize: 11.5, color: _C.t3)),
+                                    style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                                const Text(' • ', style: TextStyle(color: AppTheme.textMuted)),
+                                const Icon(Icons.star, size: 12, color: Color(0xFFF59E0B)),
+                                const SizedBox(width: 2),
+                                Text('${doc.overallRating} (${doc.reviewCount})',
+                                    style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                               ],
                             ),
                           ] else ...[
-                            const SizedBox(height: 6),
-                            Row(
-                              children: const [
-                                Icon(Icons.info_outline,
-                                    size: 13, color: AppTheme.warningAmber),
+                            const SizedBox(height: 4),
+                            const Row(
+                              children: [
+                                Icon(Icons.info_outline, size: 12, color: AppTheme.warningAmber),
                                 SizedBox(width: 4),
                                 Expanded(
-                                  child: Text(
-                                      'Active booking exists with this doctor',
-                                      style: TextStyle(
-                                          fontSize: 11,
-                                          color: AppTheme.warningAmber)),
+                                  child: Text('Active booking exists with this doctor',
+                                      style: TextStyle(fontSize: 10.5, color: AppTheme.warningAmber)),
                                 ),
                               ],
                             ),
@@ -1100,49 +1054,37 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
                       ),
                     ),
                     if (selected)
-                      const Icon(Icons.check_circle,
-                          color: AppTheme.primaryTeal, size: 20),
+                      const Icon(Icons.check_circle, color: AppTheme.primaryTeal, size: 20),
                   ],
                 ),
                 if (!alreadyBooked) ...[
                   const SizedBox(height: 10),
                   const Divider(height: 1),
                   const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: Wrap(
-                      alignment: WrapAlignment.spaceBetween,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: _C.feeBg,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                              'Fee: SAR ${_fmtFee(doc.consultationFeeSar)}',
-                              style: const TextStyle(
-                                  fontSize: 11.5,
-                                  color: _C.feeText,
-                                  fontWeight: FontWeight.w700)),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFECFDF5),
+                          borderRadius: BorderRadius.circular(6),
                         ),
-                        TextButton.icon(
-                          onPressed: () =>
-                              context.push('/doctors/${doc.doctorId}'),
-                          style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: 6),
-                              minimumSize: const Size(0, 0)),
-                          icon:
-                              const Icon(Icons.remove_red_eye_outlined, size: 14),
-                          label: const Text('View Profile',
-                              style: TextStyle(fontSize: 11.5)),
-                        ),
-                      ],
-                    ),
+                        child: Text('Fee: SAR ${_fmtFee(doc.consultationFeeSar)}',
+                            style: const TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF059669),
+                                fontWeight: FontWeight.bold)),
+                      ),
+                      TextButton.icon(
+                        onPressed: () => context.push('/doctors/${doc.doctorId}'),
+                        style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            minimumSize: const Size(0, 0)),
+                        icon: const Icon(Icons.remove_red_eye_outlined, size: 13),
+                        label: const Text('View Profile', style: TextStyle(fontSize: 11)),
+                      ),
+                    ],
                   ),
                 ],
               ],
@@ -1153,28 +1095,25 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
     );
   }
 
-  // ── STEP 2: choose clinic ────────────────────────────────────────────────
-
+  // ── STEP 2: Choose Clinic ────────────────────────────────────────────────
   Widget _buildStep2() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _stepTitle(
-            Icons.local_hospital_outlined,
-            'Step 2: Choose Clinic Location',
-            'Select from the branch locations where this doctor is currently practicing'),
+          Icons.local_hospital_outlined,
+          'Step 2: Choose Clinic Location',
+          'Select from the branch locations where this doctor is currently practicing',
+        ),
         const SizedBox(height: 14),
         if (_isLoading)
           const Center(
-              child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: CircularProgressIndicator()))
+              child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator(color: AppTheme.primaryTeal)))
         else if (_doctorClinics.isEmpty)
           _emptyState(Icons.local_hospital_outlined, 'No Branches Registered',
               'This doctor is not assigned to any active clinic branch locations.')
         else
-          Column(
-              children: _doctorClinics.map((dc) => _clinicCard(dc)).toList()),
+          Column(children: _doctorClinics.map((dc) => _clinicCard(dc)).toList()),
       ],
     );
   }
@@ -1185,12 +1124,14 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
       onTap: () => _selectClinic(dc.dcId),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: selected ? _C.tealLight : Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          color: selected ? AppTheme.primaryLightTeal : AppTheme.surfaceWhite,
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
-              color: selected ? AppTheme.primaryTeal : AppTheme.borderGray),
+            color: selected ? AppTheme.primaryTeal : AppTheme.borderGray.withValues(alpha: 0.7),
+            width: selected ? 1.5 : 1,
+          ),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1199,13 +1140,12 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: _C.tealLight,
+                color: AppTheme.primaryLightTeal,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.location_on_outlined,
-                  color: AppTheme.primaryTeal),
+              child: const Icon(Icons.location_on_outlined, color: AppTheme.primaryTeal),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1214,68 +1154,49 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
                     children: [
                       Expanded(
                         child: Text(dc.clinicNameEn ?? dc.department,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 14.5),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
                             overflow: TextOverflow.ellipsis),
                       ),
                       if (dc.isPrimary)
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: _C.tealLight,
-                            borderRadius: BorderRadius.circular(20),
+                            color: AppTheme.primaryLightTeal,
+                            borderRadius: BorderRadius.circular(10),
                           ),
                           child: const Text('Primary',
                               style: TextStyle(
                                   fontSize: 9.5,
-                                  color: _C.tealDark,
-                                  fontWeight: FontWeight.w700)),
+                                  color: AppTheme.primaryDarkTeal,
+                                  fontWeight: FontWeight.bold)),
                         ),
                     ],
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 3),
+                  Text(dc.branchNameEn ?? '',
+                      style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                      overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
-                      const Icon(Icons.place_outlined, size: 13, color: _C.t3),
-                      const SizedBox(width: 3),
-                      Expanded(
-                        child: Text(dc.branchNameEn ?? '',
-                            style: const TextStyle(fontSize: 12, color: _C.t3),
-                            overflow: TextOverflow.ellipsis),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 7, vertical: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF3F4F6),
+                          color: const Color(0xFFF1F5F9),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(dc.department,
-                            style: const TextStyle(
-                                fontSize: 10.5,
-                                color: _C.t3,
-                                fontWeight: FontWeight.w600)),
+                            style: const TextStyle(fontSize: 10.5, color: AppTheme.textSecondary, fontWeight: FontWeight.w600)),
                       ),
+                      const SizedBox(width: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 7, vertical: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: _C.feeBg,
+                          color: const Color(0xFFECFDF5),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text('${_fmtFee(dc.consultationFeeSar)} SAR',
-                            style: const TextStyle(
-                                fontSize: 10.5,
-                                color: _C.feeText,
-                                fontWeight: FontWeight.w700)),
+                            style: const TextStyle(fontSize: 10.5, color: Color(0xFF059669), fontWeight: FontWeight.bold)),
                       ),
                     ],
                   ),
@@ -1285,8 +1206,7 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
             if (selected)
               const Padding(
                 padding: EdgeInsets.only(left: 6),
-                child: Icon(Icons.check_circle,
-                    color: AppTheme.primaryTeal, size: 20),
+                child: Icon(Icons.check_circle, color: AppTheme.primaryTeal, size: 20),
               ),
           ],
         ),
@@ -1294,20 +1214,19 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
     );
   }
 
-  // ── STEP 3: date & slot ──────────────────────────────────────────────────
-
+  // ── STEP 3: Date & Slot ──────────────────────────────────────────────────
   Widget _buildStep3() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _stepTitle(
-            Icons.calendar_month_outlined,
-            'Step 3: Appointment Date & Time',
-            'Select a booking date to see available consultation time slots'),
+          Icons.calendar_month_outlined,
+          'Step 3: Appointment Date & Time',
+          'Select a booking date to see available consultation time slots',
+        ),
         const SizedBox(height: 14),
         const Text('Select Date',
-            style: TextStyle(
-                fontSize: 12.5, fontWeight: FontWeight.w600, color: _C.t3)),
+            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: AppTheme.textMain)),
         const SizedBox(height: 8),
         SizedBox(
           height: 88,
@@ -1322,15 +1241,14 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
               return GestureDetector(
                 onTap: () => _selectDate(day.date),
                 child: Container(
-                  width: 60,
+                  width: 62,
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   decoration: BoxDecoration(
-                    color: selected ? AppTheme.primaryTeal : Colors.white,
-                    borderRadius: BorderRadius.circular(12),
+                    color: selected ? AppTheme.primaryTeal : AppTheme.surfaceWhite,
+                    borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                        color: selected
-                            ? AppTheme.primaryTeal
-                            : AppTheme.borderGray),
+                      color: selected ? AppTheme.primaryTeal : AppTheme.borderGray.withValues(alpha: 0.8),
+                    ),
                   ),
                   child: Opacity(
                     opacity: noSlots ? 0.45 : 1,
@@ -1340,28 +1258,24 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
                         Text(day.dayName,
                             style: TextStyle(
                                 fontSize: 10.5,
-                                color: selected ? Colors.white70 : _C.t3)),
+                                color: selected ? Colors.white70 : AppTheme.textMuted)),
                         const SizedBox(height: 2),
                         Text(day.dayNum,
                             style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
-                                color: selected
-                                    ? Colors.white
-                                    : AppTheme.textMain)),
+                                color: selected ? Colors.white : AppTheme.textMain)),
                         Text(day.monthName,
                             style: TextStyle(
                                 fontSize: 10,
-                                color: selected ? Colors.white70 : _C.t3)),
+                                color: selected ? Colors.white70 : AppTheme.textMuted)),
                         if (noSlots) ...[
                           const SizedBox(height: 2),
                           Text('No Slots',
                               style: TextStyle(
                                   fontSize: 8,
                                   fontWeight: FontWeight.bold,
-                                  color: selected
-                                      ? Colors.white
-                                      : const Color(0xFF94A3B8))),
+                                  color: selected ? Colors.white : const Color(0xFF94A3B8))),
                         ],
                       ],
                     ),
@@ -1374,28 +1288,24 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
         const SizedBox(height: 14),
         OutlinedButton.icon(
           onPressed: _pickDate,
-          icon: const Icon(Icons.calendar_today, size: 15),
-          label: Text(
-              _selectedDate == null ? 'Or choose any date' : _selectedDate!),
+          icon: const Icon(Icons.calendar_today, size: 14),
+          label: Text(_selectedDate == null ? 'Or choose another date' : _selectedDate!),
         ),
         if (_selectedDate != null) ...[
           const SizedBox(height: 18),
-          const Divider(),
-          const SizedBox(height: 10),
-          Row(
-            children: const [
+          const Divider(height: 1),
+          const SizedBox(height: 14),
+          const Row(
+            children: [
               Icon(Icons.access_time, size: 15, color: AppTheme.textMain),
-              SizedBox(width: 5),
-              Text('Available Slots',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+              SizedBox(width: 6),
+              Text('Available Slots', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
             ],
           ),
           const SizedBox(height: 10),
           if (_isLoading)
             const Center(
-                child: Padding(
-                    padding: EdgeInsets.all(20),
-                    child: CircularProgressIndicator()))
+                child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: AppTheme.primaryTeal)))
           else if (_slots.isEmpty)
             _emptyState(Icons.access_time, 'No Time Slots Available',
                 'There are no open slots on the selected date. Try choosing another day.')
@@ -1409,39 +1319,32 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
                 final isSelected = _selectedSlotId == id;
                 final isAvailable = status == 'AVAILABLE';
                 final startTime = (slot['startTime'] ?? '').toString();
-                final label = startTime.length >= 5
-                    ? startTime.substring(0, 5)
-                    : startTime;
+                final label = startTime.length >= 5 ? startTime.substring(0, 5) : startTime;
                 return GestureDetector(
                   onTap: isAvailable ? () => _selectSlot(id) : null,
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                     decoration: BoxDecoration(
                       color: !isAvailable
                           ? const Color(0xFFF3F4F6)
                           : (isSelected ? AppTheme.primaryTeal : Colors.white),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                          color: isSelected
-                              ? AppTheme.primaryTeal
-                              : AppTheme.borderGray),
+                        color: isSelected ? AppTheme.primaryTeal : AppTheme.borderGray.withValues(alpha: 0.8),
+                      ),
                     ),
                     child: Column(
                       children: [
                         Text(label,
                             style: TextStyle(
                                 fontSize: 13,
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.bold,
                                 color: !isAvailable
                                     ? AppTheme.textMuted
-                                    : (isSelected
-                                        ? Colors.white
-                                        : AppTheme.textMain))),
+                                    : (isSelected ? Colors.white : AppTheme.textMain))),
                         if (!isAvailable)
                           Text(status == 'BOOKED' ? 'Booked' : 'Blocked',
-                              style: const TextStyle(
-                                  fontSize: 9, color: AppTheme.textMuted)),
+                              style: const TextStyle(fontSize: 9, color: AppTheme.textMuted)),
                       ],
                     ),
                   ),
@@ -1453,9 +1356,8 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
     );
   }
 
-  // ── STEP 4: confirm & book ───────────────────────────────────────────────
-
-  Widget _buildStep4() {
+  // ── STEP 4: Confirm & Book ───────────────────────────────────────────────
+  Widget _buildStep4(bool isMobile) {
     final doctor = _selectedDoctor;
     final clinic = _selectedClinic;
     final slot = _selectedSlot;
@@ -1463,135 +1365,91 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _stepTitle(Icons.fact_check_outlined, 'Step 4: Confirm & Book',
-            'Provide appointment reason and choose session mode to book consultation'),
+        _stepTitle(
+          Icons.fact_check_outlined,
+          'Step 4: Confirm & Book',
+          'Provide appointment reason and choose session mode to book consultation',
+        ),
         const SizedBox(height: 14),
         if (doctor != null && clinic != null)
           _receiptCard(doctor, clinic, slot),
         const SizedBox(height: 16),
-        const Text('Session Mode *',
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+        const Text('Session Mode *', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
         const SizedBox(height: 8),
-        isNarrow
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _modeCard(
-                    icon: Icons.local_hospital_outlined,
-                    title: 'In Clinic',
-                    desc:
-                        'Visit the doctor physically at the selected branch location.',
-                    selected: _selectedSessionType == 'IN_CLINIC',
-                    onTap: () => setState(() => _selectedSessionType = 'IN_CLINIC'),
-                  ),
-                  const SizedBox(height: 10),
-                  _modeCard(
-                    icon: Icons.videocam_outlined,
-                    title: 'Virtual',
-                    desc: 'Consult online via text chat and attachments upload.',
-                    selected: _selectedSessionType == 'VIRTUAL',
-                    onTap: () => setState(() => _selectedSessionType = 'VIRTUAL'),
-                  ),
-                ],
-              )
-            : Row(
-                children: [
-                  Expanded(
-                    child: _modeCard(
-                      icon: Icons.local_hospital_outlined,
-                      title: 'In Clinic',
-                      desc:
-                          'Visit the doctor physically at the selected branch location.',
-                      selected: _selectedSessionType == 'IN_CLINIC',
-                      onTap: () => setState(() => _selectedSessionType = 'IN_CLINIC'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _modeCard(
-                      icon: Icons.videocam_outlined,
-                      title: 'Virtual',
-                      desc: 'Consult online via text chat and attachments upload.',
-                      selected: _selectedSessionType == 'VIRTUAL',
-                      onTap: () => setState(() => _selectedSessionType = 'VIRTUAL'),
-                    ),
-                  ),
-                ],
+        Row(
+          children: [
+            Expanded(
+              child: _modeCard(
+                icon: Icons.local_hospital_outlined,
+                title: 'In Clinic',
+                desc: 'Visit doctor physically at selected branch.',
+                selected: _selectedSessionType == 'IN_CLINIC',
+                onTap: () => setState(() => _selectedSessionType = 'IN_CLINIC'),
               ),
-        const SizedBox(height: 18),
-        const Text('Appointment Type *',
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _modeCard(
+                icon: Icons.videocam_outlined,
+                title: 'Virtual',
+                desc: 'Consult online via text chat and files.',
+                selected: _selectedSessionType == 'VIRTUAL',
+                onTap: () => setState(() => _selectedSessionType = 'VIRTUAL'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        const Text('Appointment Type *', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
         const SizedBox(height: 8),
-        isNarrow
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _typeCard(
-                    title: 'New Patient',
-                    desc:
-                        'First consultation for this specific illness or checkup.',
-                    selected: _selectedApptType == 'NEW_PATIENT',
-                    onTap: () => setState(() => _selectedApptType == 'NEW_PATIENT'),
-                  ),
-                  const SizedBox(height: 10),
-                  _typeCard(
-                    title: 'Follow Up',
-                    desc: 'Routine diagnostic checkup or continuous test reviews.',
-                    selected: _selectedApptType == 'FOLLOW_UP',
-                    onTap: () => setState(() => _selectedApptType == 'FOLLOW_UP'),
-                  ),
-                ],
-              )
-            : Row(
-                children: [
-                  Expanded(
-                    child: _typeCard(
-                      title: 'New Patient',
-                      desc:
-                          'First consultation for this specific illness or checkup.',
-                      selected: _selectedApptType == 'NEW_PATIENT',
-                      onTap: () => setState(() => _selectedApptType == 'NEW_PATIENT'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _typeCard(
-                      title: 'Follow Up',
-                      desc: 'Routine diagnostic checkup or continuous test reviews.',
-                      selected: _selectedApptType == 'FOLLOW_UP',
-                      onTap: () => setState(() => _selectedApptType == 'FOLLOW_UP'),
-                    ),
-                  ),
-                ],
+        Row(
+          children: [
+            Expanded(
+              child: _typeCard(
+                title: 'New Patient',
+                desc: 'First checkup for this issue.',
+                selected: _selectedApptType == 'NEW_PATIENT',
+                onTap: () => setState(() => _selectedApptType = 'NEW_PATIENT'),
               ),
-        const SizedBox(height: 18),
-        const Text('Reason for Visit / Symptoms',
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _typeCard(
+                title: 'Follow Up',
+                desc: 'Routine test review.',
+                selected: _selectedApptType == 'FOLLOW_UP',
+                onTap: () => setState(() => _selectedApptType = 'FOLLOW_UP'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        const Text('Reason for Visit / Symptoms', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
         const SizedBox(height: 8),
         TextField(
           controller: _reasonController,
           maxLines: 3,
           maxLength: 255,
           decoration: const InputDecoration(
-              hintText: 'Type short reasons or symptoms...'),
+            hintText: 'Type short reasons or symptoms...',
+            hintStyle: TextStyle(fontSize: 13, color: AppTheme.textMuted),
+          ),
         ),
       ],
     );
   }
 
-  Widget _receiptCard(
-      DoctorModel doctor, DoctorClinicModel clinic, dynamic slot) {
+  Widget _receiptCard(DoctorModel doctor, DoctorClinicModel clinic, dynamic slot) {
     final avatarUrl = _resolveUrl(doctor.avatarUrl);
     final colorIdx = _colorIndex(doctor.fullName);
     final startTime = slot != null ? (slot['startTime'] ?? '').toString() : '';
-    final timeLabel =
-        startTime.length >= 5 ? startTime.substring(0, 5) : startTime;
+    final timeLabel = startTime.length >= 5 ? startTime.substring(0, 5) : startTime;
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.borderGray),
+        color: AppTheme.surfaceWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.8)),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -1599,17 +1457,17 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            color: AppTheme.primaryTeal,
-            child: Row(
-              children: const [
-                Icon(Icons.receipt_long_outlined,
-                    size: 16, color: Colors.white),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF0F766E), Color(0xFF115E59)],
+              ),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.receipt_long_outlined, size: 16, color: Colors.white),
                 SizedBox(width: 6),
-                Text('Consultation Details Summary',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13.5)),
+                Text('Consultation Summary',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13.5)),
               ],
             ),
           ),
@@ -1626,37 +1484,41 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
                       CircleAvatar(
                         radius: 12,
                         backgroundColor: _C.avatarBg[colorIdx],
-                        backgroundImage:
-                            avatarUrl != null ? NetworkImage(avatarUrl) : null,
+                        backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
                         child: avatarUrl == null
                             ? Text(_initialsOf(doctor.fullName),
                                 style: TextStyle(
-                                    fontSize: 9,
-                                    color: _C.avatarFg[colorIdx],
-                                    fontWeight: FontWeight.bold))
+                                    fontSize: 9, color: _C.avatarFg[colorIdx], fontWeight: FontWeight.bold))
                             : null,
                       ),
                       const SizedBox(width: 6),
                       Flexible(
                         child: Text(_doctorDisplayName(doctor.fullName),
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 12.5),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
                             overflow: TextOverflow.ellipsis),
                       ),
                     ],
                   ),
                 ),
-                const Divider(height: 20),
-                _receiptRow(Icons.local_hospital_outlined, 'Clinic Branch',
-                    value:
-                        '${clinic.clinicNameEn ?? clinic.department} - ${clinic.branchNameEn ?? ''}'),
-                const Divider(height: 20),
-                _receiptRow(Icons.calendar_month_outlined, 'Date & Time',
-                    value: '${_selectedDate ?? ''} @ $timeLabel'),
-                const Divider(height: 20),
-                _receiptRow(Icons.attach_money_rounded, 'Consultation Fee',
-                    value: 'SAR ${_fmtFee(clinic.consultationFeeSar)}',
-                    valueColor: AppTheme.successGreen),
+                const Divider(height: 18),
+                _receiptRow(
+                  Icons.local_hospital_outlined,
+                  'Clinic Branch',
+                  value: '${clinic.clinicNameEn ?? clinic.department} - ${clinic.branchNameEn ?? ''}',
+                ),
+                const Divider(height: 18),
+                _receiptRow(
+                  Icons.calendar_month_outlined,
+                  'Date & Time',
+                  value: '${_selectedDate ?? ''} @ $timeLabel',
+                ),
+                const Divider(height: 18),
+                _receiptRow(
+                  Icons.attach_money_rounded,
+                  'Consultation Fee',
+                  value: 'SAR ${_fmtFee(clinic.consultationFeeSar)}',
+                  valueColor: const Color(0xFF059669),
+                ),
               ],
             ),
           ),
@@ -1673,28 +1535,21 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 14, color: _C.t3),
+            Icon(icon, size: 14, color: AppTheme.textMuted),
             const SizedBox(width: 5),
-            Text(label,
-                style: const TextStyle(
-                    fontSize: 12, color: _C.t3, fontWeight: FontWeight.w500)),
+            Text(label, style: const TextStyle(fontSize: 12, color: AppTheme.textMuted, fontWeight: FontWeight.w500)),
           ],
         ),
         const SizedBox(width: 12),
         if (trailing != null)
-          Expanded(
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: trailing,
-            ),
-          )
+          Expanded(child: Align(alignment: Alignment.centerRight, child: trailing))
         else
           Expanded(
             child: Text(value ?? '',
                 textAlign: TextAlign.right,
                 style: TextStyle(
                     fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.bold,
                     color: valueColor ?? AppTheme.textMain),
                 overflow: TextOverflow.ellipsis),
           ),
@@ -1714,21 +1569,21 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: selected ? _C.tealLight : Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          color: selected ? AppTheme.primaryLightTeal : AppTheme.surfaceWhite,
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-              color: selected ? AppTheme.primaryTeal : AppTheme.borderGray),
+            color: selected ? AppTheme.primaryTeal : AppTheme.borderGray.withValues(alpha: 0.8),
+            width: selected ? 1.5 : 1,
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: AppTheme.primaryTeal, size: 20),
-            const SizedBox(height: 8),
-            Text(title,
-                style:
-                    const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-            const SizedBox(height: 3),
-            Text(desc, style: const TextStyle(fontSize: 10.5, color: _C.t3)),
+            Icon(icon, color: AppTheme.primaryTeal, size: 18),
+            const SizedBox(height: 6),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            const SizedBox(height: 2),
+            Text(desc, style: const TextStyle(fontSize: 10.5, color: AppTheme.textMuted)),
           ],
         ),
       ),
@@ -1746,26 +1601,24 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: selected ? _C.tealLight : Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          color: selected ? AppTheme.primaryLightTeal : AppTheme.surfaceWhite,
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-              color: selected ? AppTheme.primaryTeal : AppTheme.borderGray),
+            color: selected ? AppTheme.primaryTeal : AppTheme.borderGray.withValues(alpha: 0.8),
+            width: selected ? 1.5 : 1,
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title,
-                style:
-                    const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-            const SizedBox(height: 3),
-            Text(desc, style: const TextStyle(fontSize: 10.5, color: _C.t3)),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            const SizedBox(height: 2),
+            Text(desc, style: const TextStyle(fontSize: 10.5, color: AppTheme.textMuted)),
           ],
         ),
       ),
     );
   }
-
-  // ── Shared small pieces ──────────────────────────────────────────────────
 
   Widget _stepTitle(IconData icon, String title, String subtitle) {
     return Column(
@@ -1776,14 +1629,12 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
             Icon(icon, size: 18, color: AppTheme.primaryTeal),
             const SizedBox(width: 6),
             Expanded(
-              child: Text(title,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 15.5)),
+              child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15.5)),
             ),
           ],
         ),
         const SizedBox(height: 4),
-        Text(subtitle, style: const TextStyle(fontSize: 12, color: _C.t3)),
+        Text(subtitle, style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
       ],
     );
   }
@@ -1791,93 +1642,69 @@ class _BookAppointmentScreenState extends ConsumerState<BookAppointmentScreen> {
   Widget _emptyState(IconData icon, String title, String subtitle) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.borderGray),
+        color: AppTheme.surfaceWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.borderGray.withValues(alpha: 0.8)),
       ),
       child: Column(
         children: [
-          Icon(icon, size: 34, color: AppTheme.borderGray),
+          Icon(icon, size: 32, color: AppTheme.textMuted),
           const SizedBox(height: 10),
-          Text(title,
-              style:
-                  const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5)),
           const SizedBox(height: 4),
           Text(subtitle,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12, color: _C.t3)),
+              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
         ],
       ),
     );
   }
 
-  // ── Bottom sticky navigation bar ─────────────────────────────────────────
-
+  // ── Bottom Navigation Bar ────────────────────────────────────────────────
   Widget _buildBottomBar() {
-    Widget? primary;
-    switch (_currentStep) {
-      case 2:
-        primary = _doctorClinics.isEmpty
-            ? null
-            : ElevatedButton.icon(
-                onPressed: _selectedDcId != null ? () => _goToStep(3) : null,
-                icon: const Icon(Icons.arrow_forward, size: 16),
-                label: const Text('Next'),
-              );
-        break;
-      case 3:
-        primary = ElevatedButton.icon(
-          onPressed: _selectedSlotId != null ? () => _goToStep(4) : null,
-          icon: const Icon(Icons.arrow_forward, size: 16),
-          label: const Text('Next'),
-        );
-        break;
-      case 4:
-        primary = ElevatedButton.icon(
-          onPressed: (_isSubmitting || !_canSubmit) ? null : _confirmBooking,
-          icon: _isSubmitting
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white))
-              : const Icon(Icons.check_circle_outline, size: 16),
-          label: Text(isNarrow ? 'Book Now' : 'Confirm & Book Appointment'),
-        );
-        break;
-      default:
-        primary = null;
-    }
-
-    if (_currentStep == 1 && primary == null) return const SizedBox.shrink();
-
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: AppTheme.borderGray)),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceWhite,
+        border: Border(top: BorderSide(color: AppTheme.borderGray.withValues(alpha: 0.8))),
       ),
-      child: SafeArea(
-        top: false,
-        child: Row(
-          children: [
-            if (_currentStep > 1)
-              OutlinedButton.icon(
-                onPressed: () => _goToStep(_currentStep - 1),
-                icon: const Icon(Icons.arrow_back, size: 16),
-                label: const Text('Back'),
-              ),
-            const Spacer(),
-            if (primary != null) primary,
+      child: Row(
+        children: [
+          if (_currentStep > 1) ...[
+            OutlinedButton(
+              onPressed: () => _goToStep(_currentStep - 1),
+              child: const Text('Back'),
+            ),
+            const SizedBox(width: 12),
           ],
-        ),
+          Expanded(
+            child: _currentStep == 4
+                ? ElevatedButton(
+                    onPressed: (_canSubmit && !_isSubmitting) ? _confirmBooking : null,
+                    child: _isSubmitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text('Confirm & Book Appointment'),
+                  )
+                : ElevatedButton(
+                    onPressed: _canAdvance() ? () => _goToStep(_currentStep + 1) : null,
+                    child: const Text('Next'),
+                  ),
+          ),
+        ],
       ),
     );
   }
-}
 
-extension _FirstOrNull<T> on Iterable<T> {
-  T? get firstOrNull => isEmpty ? null : first;
+  bool _canAdvance() {
+    if (_currentStep == 1) return _selectedDoctorId != null;
+    if (_currentStep == 2) return _selectedDcId != null;
+    if (_currentStep == 3) return _selectedDate != null && _selectedSlotId != null;
+    return true;
+  }
 }
