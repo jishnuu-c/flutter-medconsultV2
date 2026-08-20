@@ -57,6 +57,67 @@ class ClinicReviewModel {
   }
 }
 
+/// Mirrors review.service.ts's DoctorReviewResponse — public-facing review
+/// left by a patient for a doctor.
+class DoctorReviewModel {
+  final String reviewId;
+  final String doctorId;
+  final String patientId;
+  final String patientName;
+  final String appointmentId;
+  final int rating;
+  final int? ratingBedside;
+  final int? ratingKnowledge;
+  final int? ratingWait;
+  final String? reviewText;
+  final bool isPublished;
+  final bool isAnonymous;
+  final String? doctorReply;
+  final String? doctorRepliedAt;
+  final String? createdAt;
+  final String? patientAvatarUrl;
+
+  DoctorReviewModel({
+    required this.reviewId,
+    required this.doctorId,
+    required this.patientId,
+    required this.patientName,
+    required this.appointmentId,
+    required this.rating,
+    this.ratingBedside,
+    this.ratingKnowledge,
+    this.ratingWait,
+    this.reviewText,
+    required this.isPublished,
+    required this.isAnonymous,
+    this.doctorReply,
+    this.doctorRepliedAt,
+    this.createdAt,
+    this.patientAvatarUrl,
+  });
+
+  factory DoctorReviewModel.fromJson(Map<String, dynamic> json) {
+    return DoctorReviewModel(
+      reviewId: json['reviewId']?.toString() ?? '',
+      doctorId: json['doctorId']?.toString() ?? '',
+      patientId: json['patientId']?.toString() ?? '',
+      patientName: json['patientName']?.toString() ?? '',
+      appointmentId: json['appointmentId']?.toString() ?? '',
+      rating: (json['rating'] as num?)?.toInt() ?? 0,
+      ratingBedside: (json['ratingBedside'] as num?)?.toInt(),
+      ratingKnowledge: (json['ratingKnowledge'] as num?)?.toInt(),
+      ratingWait: (json['ratingWait'] as num?)?.toInt(),
+      reviewText: json['reviewText']?.toString(),
+      isPublished: json['isPublished'] ?? true,
+      isAnonymous: json['isAnonymous'] ?? false,
+      doctorReply: json['doctorReply']?.toString(),
+      doctorRepliedAt: json['doctorRepliedAt']?.toString(),
+      createdAt: json['createdAt']?.toString(),
+      patientAvatarUrl: json['patientAvatarUrl']?.toString(),
+    );
+  }
+}
+
 class ReviewService {
   final Dio dio;
   ReviewService({required this.dio});
@@ -75,10 +136,33 @@ class ReviewService {
     return res.data;
   }
 
+  /// Mirrors review.service.ts's getDoctorReviews — public paged review
+  /// listing for a doctor.
+  Future<List<DoctorReviewModel>> getDoctorReviews(String doctorId,
+      {int page = 0, int size = 20}) async {
+    final res = await dio.get(
+      '/api/medconsult/reviews/doctors/$doctorId',
+      queryParameters: {'page': page, 'size': size},
+    );
+    final data = res.data;
+    List list;
+    if (data is List) {
+      list = data;
+    } else if (data is Map && data['content'] is List) {
+      list = data['content'] as List;
+    } else if (data is Map && data['data'] is List) {
+      list = data['data'] as List;
+    } else {
+      list = const [];
+    }
+    return list
+        .whereType<Map>()
+        .map((e) => DoctorReviewModel.fromJson(e.cast<String, dynamic>()))
+        .toList();
+  }
+
   /// Mirrors review.service.ts's getClinicReviews — public paged review
-  /// listing for a clinic. Accepts either a bare list or a Spring Page
-  /// envelope ({content: [...]}) from the backend, same defensive handling
-  /// Angular's loadClinicData() does.
+  /// listing for a clinic.
   Future<List<ClinicReviewModel>> getClinicReviews(String clinicId,
       {int page = 0, int size = 20}) async {
     final res = await dio.get(

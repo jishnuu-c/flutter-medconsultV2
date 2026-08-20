@@ -2,25 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/network/api_client.dart';
 import '../../../core/services/references_service.dart';
+import '../../../core/utils/image_utils.dart';
 import '../../clinic_admin/data/doctor_service.dart';
 import '../../clinic_admin/data/doctor_models.dart';
 import '../../clinic_admin/data/clinic_service.dart';
 import '../../clinic_admin/data/clinic_models.dart';
 
 /// Turns a relative avatar path into an absolute URL.
-String? _resolveAvatarUrl(String? raw) {
-  if (raw == null || raw.trim().isEmpty) return null;
-  final value = raw.trim();
-  final uri = Uri.tryParse(value);
-  if (uri != null && uri.hasScheme && uri.host.isNotEmpty) return value;
-  final base = kBaseUrl.endsWith('/')
-      ? kBaseUrl.substring(0, kBaseUrl.length - 1)
-      : kBaseUrl;
-  final path = value.startsWith('/') ? value : '/$value';
-  return '$base$path';
-}
+String? _resolveAvatarUrl(String? raw) => resolveImageUrl(raw);
 
 String _displayDoctorName(String fullName) {
   final trimmed = fullName.trim();
@@ -291,21 +281,7 @@ class _PatientDoctorsScreenState extends ConsumerState<PatientDoctorsScreen> {
   }
 
   void _viewDoctorDetails(_EnrichedDoctor doc) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _DoctorProfileSheet(
-        doctorId: doc.doctor.doctorId,
-        fallback: doc,
-        specialtyName: _specialtyName,
-        languageName: _languageName,
-        onBook: () {
-          Navigator.of(context).pop();
-          context.go('/patient/book-appointment');
-        },
-      ),
-    );
+    context.push('/patient/doctors/${doc.doctor.doctorId}');
   }
 
   void _bookAppointment(_EnrichedDoctor doc) {

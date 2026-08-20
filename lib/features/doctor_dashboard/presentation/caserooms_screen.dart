@@ -6,10 +6,14 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/auth/auth_provider.dart';
+import '../../../core/auth/auth_session.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/image_utils.dart';
 import '../../../core/widgets/app_notification.dart';
 import '../../clinic_admin/data/doctor_service.dart';
+import '../../clinic_admin/data/doctor_models.dart';
+import '../../patient_dashboard/presentation/doctor_detail_screen.dart';
 import '../data/appointment_service.dart';
 import '../data/caseroom_service.dart';
 import '../data/clinical_record_service.dart';
@@ -621,11 +625,6 @@ class _DoctorCaseRoomsScreenState extends ConsumerState<DoctorCaseRoomsScreen> {
             room['avatarUrl'] ??
             '')
         .toString();
-    final avatarUrl = rawAvatarUrl.isNotEmpty
-        ? (rawAvatarUrl.startsWith('http')
-            ? rawAvatarUrl
-            : '$kBaseUrl${rawAvatarUrl.startsWith('/') ? '' : '/'}$rawAvatarUrl')
-        : '';
 
     return Container(
       decoration: BoxDecoration(
@@ -660,26 +659,11 @@ class _DoctorCaseRoomsScreenState extends ConsumerState<DoctorCaseRoomsScreen> {
                 // Patient Avatar
                 Stack(
                   children: [
-                    CircleAvatar(
+                    AppAvatar(
+                      imageUrl: rawAvatarUrl,
+                      name: patientName,
                       radius: 24,
-                      backgroundColor: const Color(0xFFCCFBF1),
-                      backgroundImage: avatarUrl.isNotEmpty
-                          ? NetworkImage(avatarUrl)
-                          : null,
-                      onBackgroundImageError:
-                          avatarUrl.isNotEmpty ? (_, __) {} : null,
-                      child: avatarUrl.isEmpty
-                          ? Text(
-                              patientName.isNotEmpty
-                                  ? patientName[0].toUpperCase()
-                                  : 'P',
-                              style: const TextStyle(
-                                color: Color(0xFF0F766E),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            )
-                          : null,
+                      fontSize: 16,
                     ),
                     Positioned(
                       right: 0,
@@ -1139,6 +1123,15 @@ class _DoctorCaseRoomChatScreenState
     );
   }
 
+  void _openDoctorProfile(String? doctorId) {
+    if (doctorId == null || doctorId.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => DoctorDetailScreen(doctorId: doctorId),
+      ),
+    );
+  }
+
   String _shortTime(String? iso) {
     if (iso == null) return '';
     final dt = DateTime.tryParse(iso)?.toLocal();
@@ -1162,11 +1155,6 @@ class _DoctorCaseRoomChatScreenState
             room['avatarUrl'] ??
             '')
         .toString();
-    final patientAvatarUrl = rawAvatarUrl.isNotEmpty
-        ? (rawAvatarUrl.startsWith('http')
-            ? rawAvatarUrl
-            : '$kBaseUrl${rawAvatarUrl.startsWith('/') ? '' : '/'}$rawAvatarUrl')
-        : '';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -1181,24 +1169,11 @@ class _DoctorCaseRoomChatScreenState
         titleSpacing: 0,
         title: Row(
           children: [
-            CircleAvatar(
+            AppAvatar(
+              imageUrl: rawAvatarUrl,
+              name: patientName,
               radius: 18,
-              backgroundColor: const Color(0xFFCCFBF1),
-              backgroundImage: patientAvatarUrl.isNotEmpty
-                  ? NetworkImage(patientAvatarUrl)
-                  : null,
-              onBackgroundImageError:
-                  patientAvatarUrl.isNotEmpty ? (_, __) {} : null,
-              child: patientAvatarUrl.isEmpty
-                  ? Text(
-                      patientName.isNotEmpty ? patientName[0].toUpperCase() : 'P',
-                      style: const TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF0F766E),
-                      ),
-                    )
-                  : null,
+              fontSize: 13.5,
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -1295,12 +1270,15 @@ class _DoctorCaseRoomChatScreenState
                     const Icon(Icons.lock_outline_rounded,
                         size: 16, color: AppTheme.textMuted),
                     const SizedBox(width: 6),
-                    Text(
-                      'Case Room is marked as ${room['status']}. Discussion is read-only.',
-                      style: const TextStyle(
-                          color: AppTheme.textMuted,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w500),
+                    Flexible(
+                      child: Text(
+                        'Case Room is marked as ${room['status']}. Discussion is read-only.',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            color: AppTheme.textMuted,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500),
+                      ),
                     ),
                   ],
                 ),
@@ -1341,30 +1319,37 @@ class _DoctorCaseRoomChatScreenState
                   child: Row(
                     children: [
                       ..._roomMembers.map((m) {
-                        return Container(
-                          margin: const EdgeInsets.only(right: 6),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(12),
-                            border:
-                                Border.all(color: const Color(0xFFE2E8F0)),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text('👨‍⚕️', style: TextStyle(fontSize: 11)),
-                              const SizedBox(width: 4),
-                              Text(
-                                m['doctorName'] ?? 'Doctor',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF0F766E),
+                        final docId = m['doctorId']?.toString() ?? '';
+                        return InkWell(
+                          onTap: docId.isNotEmpty
+                              ? () => _openDoctorProfile(docId)
+                              : null,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            margin: const EdgeInsets.only(right: 6),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(12),
+                              border:
+                                  Border.all(color: const Color(0xFFE2E8F0)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text('👨‍⚕️', style: TextStyle(fontSize: 11)),
+                                const SizedBox(width: 4),
+                                Text(
+                                  m['doctorName'] ?? 'Doctor',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF0F766E),
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         );
                       }),
@@ -1525,47 +1510,40 @@ class _DoctorCaseRoomChatScreenState
             // Author Meta
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircleAvatar(
-                    radius: 9,
-                    backgroundColor: const Color(0xFFCCFBF1),
-                    backgroundImage: authorAvatar.isNotEmpty
-                        ? NetworkImage(authorAvatar.startsWith('http')
-                            ? authorAvatar
-                            : '$kBaseUrl$authorAvatar')
-                        : null,
-                    child: authorAvatar.isEmpty
-                        ? Text(
-                            authorName.isNotEmpty
-                                ? authorName[0].toUpperCase()
-                                : 'D',
-                            style: const TextStyle(
-                                fontSize: 7.5,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF0F766E)),
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    'Dr. $authorName',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF0F766E),
+              child: InkWell(
+                onTap: (post['authorId'] != null &&
+                        post['authorId'].toString().isNotEmpty)
+                    ? () => _openDoctorProfile(post['authorId'].toString())
+                    : null,
+                borderRadius: BorderRadius.circular(6),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AppAvatar(
+                      imageUrl: authorAvatar,
+                      name: authorName,
+                      radius: 9,
+                      fontSize: 7.5,
                     ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    '• ${_shortTime(post['postedAt'])}',
-                    style: const TextStyle(
-                        fontSize: 10, color: AppTheme.textMuted),
-                  ),
-                  const SizedBox(width: 6),
-                  _postTypeBadge(type),
-                ],
+                    const SizedBox(width: 5),
+                    Text(
+                      'Dr. $authorName',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F766E),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '• ${_shortTime(post['postedAt'])}',
+                      style: const TextStyle(
+                          fontSize: 10, color: AppTheme.textMuted),
+                    ),
+                    const SizedBox(width: 6),
+                    _postTypeBadge(type),
+                  ],
+                ),
               ),
             ),
 
@@ -2136,9 +2114,9 @@ class _CreateCaseRoomDialogState extends State<_CreateCaseRoomDialog> {
     final query = _doctorSearchController.text.trim().toLowerCase();
     final filteredDoctors = widget.doctorsList.where((d) {
       if (query.isEmpty) return true;
-      final name = d.fullName.toString().toLowerCase();
-      final spec = (d.specialization ?? '').toString().toLowerCase();
-      return name.contains(query) || spec.contains(query);
+      final name = (d is DoctorModel ? d.fullName : (d['fullName'] ?? d['name'] ?? '')).toString().toLowerCase();
+      final email = (d is DoctorModel ? d.email : (d['email'] ?? '')).toString().toLowerCase();
+      return name.contains(query) || email.contains(query);
     }).toList();
 
     return Dialog(
@@ -2357,23 +2335,27 @@ class _CreateCaseRoomDialogState extends State<_CreateCaseRoomDialog> {
                               itemCount: filteredDoctors.length,
                               itemBuilder: (context, index) {
                                 final doc = filteredDoctors[index];
+                                final docId = (doc is DoctorModel ? doc.doctorId : (doc['doctorId'] ?? doc['id'] ?? '')).toString();
+                                final docName = (doc is DoctorModel ? doc.fullName : (doc['fullName'] ?? doc['name'] ?? 'Doctor')).toString();
+                                final docEmail = (doc is DoctorModel ? doc.email : (doc['email'] ?? '')).toString();
                                 final isChecked =
-                                    _selectedDoctorIds.contains(doc.doctorId);
+                                    _selectedDoctorIds.contains(docId);
                                 return CheckboxListTile(
                                   dense: true,
                                   value: isChecked,
-                                  title: Text('Dr. ${doc.fullName}',
+                                  title: Text(
+                                      docName.toLowerCase().startsWith('dr') ? docName : 'Dr. $docName',
                                       style: const TextStyle(fontSize: 12)),
-                                  subtitle: doc.specialization != null
-                                      ? Text(doc.specialization!,
-                                          style: const TextStyle(fontSize: 10))
+                                  subtitle: docEmail.isNotEmpty
+                                      ? Text(docEmail,
+                                          style: const TextStyle(fontSize: 10, color: AppTheme.textMuted))
                                       : null,
                                   onChanged: (val) {
                                     setState(() {
                                       if (val == true) {
-                                        _selectedDoctorIds.add(doc.doctorId);
+                                        _selectedDoctorIds.add(docId);
                                       } else {
-                                        _selectedDoctorIds.remove(doc.doctorId);
+                                        _selectedDoctorIds.remove(docId);
                                       }
                                     });
                                   },
@@ -2454,11 +2436,12 @@ class _InviteSpecialistDialogState extends State<_InviteSpecialistDialog> {
   Widget build(BuildContext context) {
     final query = _searchController.text.trim().toLowerCase();
     final availableDoctors = widget.doctorsList.where((d) {
-      if (widget.existingMemberDoctorIds.contains(d.doctorId)) return false;
+      final docId = (d is DoctorModel ? d.doctorId : (d['doctorId'] ?? d['id'] ?? '')).toString();
+      if (widget.existingMemberDoctorIds.contains(docId)) return false;
       if (query.isEmpty) return true;
-      final name = d.fullName.toString().toLowerCase();
-      final spec = (d.specialization ?? '').toString().toLowerCase();
-      return name.contains(query) || spec.contains(query);
+      final name = (d is DoctorModel ? d.fullName : (d['fullName'] ?? d['name'] ?? '')).toString().toLowerCase();
+      final email = (d is DoctorModel ? d.email : (d['email'] ?? '')).toString().toLowerCase();
+      return name.contains(query) || email.contains(query);
     }).toList();
 
     return Dialog(
@@ -2473,13 +2456,17 @@ class _InviteSpecialistDialogState extends State<_InviteSpecialistDialog> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Invite Specialist to Case Room',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                const Expanded(
+                  child: Text(
+                    'Invite Specialist to Case Room',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                  ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.close, size: 18),
                   onPressed: () => Navigator.of(context).pop(),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
                 ),
               ],
             ),
@@ -2516,24 +2503,31 @@ class _InviteSpecialistDialogState extends State<_InviteSpecialistDialog> {
                       separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (ctx, idx) {
                         final doc = availableDoctors[idx];
+                        final docName = (doc is DoctorModel ? doc.fullName : (doc['fullName'] ?? doc['name'] ?? 'Doctor')).toString();
+                        final docEmail = (doc is DoctorModel ? doc.email : (doc['email'] ?? '')).toString();
+                        final docAvatar = (doc is DoctorModel ? doc.avatarUrl : (doc['avatarUrl'] ?? doc['avatar'] ?? '')).toString();
+                        final docId = (doc is DoctorModel ? doc.doctorId : (doc['doctorId'] ?? doc['id'] ?? '')).toString();
+
                         return ListTile(
                           dense: true,
-                          leading: const CircleAvatar(
+                          leading: AppAvatar(
+                            imageUrl: docAvatar,
+                            name: docName,
                             radius: 16,
-                            backgroundColor: Color(0xFFCCFBF1),
-                            child: Icon(Icons.medical_services_outlined,
-                                size: 14, color: Color(0xFF0F766E)),
+                            fontSize: 11,
                           ),
-                          title: Text('Dr. ${doc.fullName}',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 13)),
-                          subtitle: doc.specialization != null
-                              ? Text(doc.specialization!,
-                                  style: const TextStyle(fontSize: 11))
+                          title: Text(
+                            docName.toLowerCase().startsWith('dr') ? docName : 'Dr. $docName',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                          subtitle: docEmail.isNotEmpty
+                              ? Text(docEmail,
+                                  style: const TextStyle(fontSize: 11, color: AppTheme.textMuted))
                               : null,
                           trailing: ElevatedButton(
                             onPressed: () {
-                              widget.onInvite(doc.doctorId);
+                              widget.onInvite(docId);
                               Navigator.of(context).pop();
                             },
                             style: ElevatedButton.styleFrom(
@@ -2631,7 +2625,10 @@ class _ImageLightboxDialog extends StatelessWidget {
                 color: const Color(0xFF020617),
                 child: InteractiveViewer(
                   child: Image.network(
-                    url,
+                    resolveImageUrl(url) ?? url,
+                    headers: AuthSession.token != null
+                        ? {'Authorization': 'Bearer ${AuthSession.token}'}
+                        : null,
                     fit: BoxFit.contain,
                     errorBuilder: (_, __, ___) => const Center(
                       child: Text('Failed to load image preview.',

@@ -24,6 +24,7 @@ import '../../features/patient_dashboard/presentation/patient_clinics_screen.dar
 import '../../features/patient_dashboard/presentation/clinic_detail_screen.dart';
 import '../../features/patient_dashboard/presentation/patient_consultations_screen.dart';
 import '../../features/patient_dashboard/presentation/patient_doctors_screen.dart';
+import '../../features/patient_dashboard/presentation/doctor_detail_screen.dart';
 import '../../features/patient_dashboard/presentation/patient_emr_screen.dart';
 import '../../features/patient_dashboard/presentation/patient_health_profile_screen.dart';
 import '../../features/patient_dashboard/presentation/patient_home_screen.dart';
@@ -145,6 +146,18 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/patient/doctors',
             builder: (context, state) => const PatientDoctorsScreen(),
+          ),
+          GoRoute(
+            path: '/patient/doctors/:id',
+            builder: (context, state) => DoctorDetailScreen(
+              doctorId: state.pathParameters['id']!,
+            ),
+          ),
+          GoRoute(
+            path: '/doctors/:id',
+            builder: (context, state) => DoctorDetailScreen(
+              doctorId: state.pathParameters['id']!,
+            ),
           ),
           GoRoute(
             path: '/patient/clinics',

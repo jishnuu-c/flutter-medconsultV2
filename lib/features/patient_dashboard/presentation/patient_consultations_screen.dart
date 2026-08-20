@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../../core/auth/auth_provider.dart';
-import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../clinic_admin/data/doctor_service.dart';
 import '../../clinic_admin/data/doctor_models.dart';
@@ -15,18 +14,9 @@ import '../data/patient_service.dart';
 import '../data/chat_file_service.dart';
 import '../data/review_service.dart';
 import '../data/consultation_realtime_service.dart';
+import '../../../core/utils/image_utils.dart';
 
-String? _resolveAvatarUrl(String? raw) {
-  if (raw == null || raw.trim().isEmpty) return null;
-  final value = raw.trim();
-  final uri = Uri.tryParse(value);
-  if (uri != null && uri.hasScheme && uri.host.isNotEmpty) return value;
-  final base = kBaseUrl.endsWith('/')
-      ? kBaseUrl.substring(0, kBaseUrl.length - 1)
-      : kBaseUrl;
-  final path = value.startsWith('/') ? value : '/$value';
-  return '$base$path';
-}
+String? _resolveAvatarUrl(String? raw) => resolveImageUrl(raw);
 
 String? _findDoctorAvatarUrl({
   String? explicitAvatarUrl,

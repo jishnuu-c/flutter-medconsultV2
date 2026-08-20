@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/image_utils.dart';
 import '../../../core/widgets/app_notification.dart';
 import '../../../core/network/api_client.dart';
 import '../../clinic_admin/data/doctor_service.dart';
@@ -490,11 +491,6 @@ class _DoctorConsultationsScreenState
     final isUrgent = c['isUrgent'] == true;
     final patientName = (c['patientName'] ?? 'Unknown Patient').toString();
     final rawAvatarUrl = (c['patientAvatarUrl'] ?? c['patientAvatar'] ?? c['avatarUrl'] ?? '').toString();
-    final avatarUrl = rawAvatarUrl.isNotEmpty
-        ? (rawAvatarUrl.startsWith('http')
-            ? rawAvatarUrl
-            : '$kBaseUrl${rawAvatarUrl.startsWith('/') ? '' : '/'}$rawAvatarUrl')
-        : '';
 
     return Container(
       decoration: BoxDecoration(
@@ -523,21 +519,11 @@ class _DoctorConsultationsScreenState
               children: [
                 Stack(
                   children: [
-                    CircleAvatar(
+                    AppAvatar(
+                      imageUrl: rawAvatarUrl,
+                      name: patientName,
                       radius: 24,
-                      backgroundColor: AppTheme.primaryLightTeal,
-                      backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
-                      onBackgroundImageError: avatarUrl.isNotEmpty ? (_, __) {} : null,
-                      child: avatarUrl.isEmpty
-                          ? Text(
-                              patientName.isNotEmpty ? patientName[0].toUpperCase() : 'P',
-                              style: const TextStyle(
-                                color: AppTheme.primaryDarkTeal,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            )
-                          : null,
+                      fontSize: 16,
                     ),
                     if (isUrgent)
                       Positioned(
@@ -2836,12 +2822,15 @@ class _DoctorConsultationChatScreenState
             Icon(Icons.lock_outline_rounded,
                 size: 16, color: AppTheme.textMuted),
             SizedBox(width: 6),
-            Text(
-              'This consultation is closed. Messages cannot be sent.',
-              style: TextStyle(
-                  color: AppTheme.textMuted,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500),
+            Flexible(
+              child: Text(
+                'This consultation is closed. Messages cannot be sent.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    color: AppTheme.textMuted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500),
+              ),
             ),
           ],
         ),
