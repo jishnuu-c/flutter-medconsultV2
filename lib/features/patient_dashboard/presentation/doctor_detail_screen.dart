@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../core/localization/language_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/image_utils.dart';
 import '../../../core/services/references_service.dart';
@@ -227,10 +228,10 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Consultation Fee',
-                    style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                Text('Standard Consultation Fee'.tr,
+                    style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                 Text(
-                  'SAR ${doc.consultationFeeSar.toStringAsFixed(0)}',
+                  '${doc.consultationFeeSar.toStringAsFixed(0)} ${'SAR'.tr}',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -252,9 +253,9 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
                   ),
                 ),
                 icon: const Icon(Icons.calendar_month_rounded, size: 18),
-                label: const Text(
-                  'Book Appointment',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                label: Text(
+                  'Book Appointment'.tr,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                 ),
               ),
             ),
@@ -367,8 +368,8 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
                           const SizedBox(width: 4),
                           Text(
                             doc.mohVerified
-                                ? 'MOH Verified License'
-                                : 'Verification Pending',
+                                ? '✓ MOH Verified License'.tr
+                                : 'MOH Verification Pending'.tr,
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
@@ -393,7 +394,7 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
               spacing: 6,
               runSpacing: 6,
               children: doc.specialties.map((s) {
-                final name = _specialtyNames[s.specialtyId] ?? 'Specialist';
+                final name = _specialtyNames[s.specialtyId] ?? 'Specialist'.tr;
                 return Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -434,9 +435,9 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Registration ID',
+                    Text('Registration ID:'.tr,
                         style:
-                            TextStyle(fontSize: 10.5, color: AppTheme.textMuted)),
+                            const TextStyle(fontSize: 10.5, color: AppTheme.textMuted)),
                     Text(
                       doc.mohRegistrationNumber.isNotEmpty
                           ? doc.mohRegistrationNumber
@@ -459,8 +460,8 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Email',
-                            style: TextStyle(
+                        Text('Email'.tr,
+                            style: const TextStyle(
                                 fontSize: 10.5, color: AppTheme.textMuted)),
                         Text(
                           doc.email,
@@ -490,8 +491,8 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
         Expanded(
           child: _statCell(
             icon: Icons.work_outline_rounded,
-            value: '${doc.experienceYears} Years',
-            label: 'Experience',
+            value: '${doc.experienceYears} ${'Years'.tr}',
+            label: 'Experience'.tr,
           ),
         ),
         const SizedBox(width: 10),
@@ -500,15 +501,15 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
             icon: Icons.star_rounded,
             iconColor: const Color(0xFFF59E0B),
             value: '${doc.overallRating.toStringAsFixed(1)} ★',
-            label: '${doc.reviewCount} Reviews',
+            label: '${doc.reviewCount} ${'reviews'.tr}',
           ),
         ),
         const SizedBox(width: 10),
         Expanded(
           child: _statCell(
             icon: Icons.payments_outlined,
-            value: 'SAR ${doc.consultationFeeSar.toStringAsFixed(0)}',
-            label: 'Standard Fee',
+            value: '${doc.consultationFeeSar.toStringAsFixed(0)} ${'SAR'.tr}',
+            label: 'Standard Fee:'.tr,
           ),
         ),
       ],
@@ -561,7 +562,7 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
     final hasBio = bioEn.isNotEmpty || bioAr.isNotEmpty;
 
     return _cardWrapper(
-      title: 'Professional Biography',
+      title: 'Professional Biography'.tr,
       icon: Icons.description_outlined,
       child: hasBio
           ? Column(
@@ -591,24 +592,27 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
                 ],
               ],
             )
-          : const Text(
-              'No biography details provided.',
-              style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
+          : Text(
+              'No bio notes provided.'.tr,
+              style: const TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
             ),
     );
   }
 
   // ── Associated Clinics Card ────────────────────────────────────────────
   Widget _buildClinicsCard(DoctorDetailResponse doc) {
+    final isAr = ref.watch(isArabicProvider);
     return _cardWrapper(
-      title: 'Associated Clinics & Locations',
+      title: 'Associated Clinics & Locations'.tr,
       icon: Icons.local_hospital_outlined,
       child: doc.clinics.isNotEmpty
           ? Column(
               children: doc.clinics.map((c) {
                 final clinic = _clinicsMap[c.clinicId];
-                final clinicName = clinic?.nameEn ?? c.clinicNameEn ?? 'Clinic Location';
-                final branchName = _branchNames[c.branchId] ?? c.branchNameEn ?? 'Main Branch';
+                final clinicName = clinic != null
+                    ? (isAr && clinic.nameAr.isNotEmpty ? clinic.nameAr : clinic.nameEn)
+                    : (c.clinicNameEn ?? 'Clinic Location'.tr);
+                final branchName = _branchNames[c.branchId] ?? c.branchNameEn ?? 'Primary Branch'.tr;
                 final logoUrl = resolveImageUrl(clinic?.logoUrl);
 
                 return Container(
@@ -662,9 +666,9 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
                                           color: const Color(0xFFCCFBF1),
                                           borderRadius: BorderRadius.circular(6),
                                         ),
-                                        child: const Text(
-                                          'Primary',
-                                          style: TextStyle(
+                                        child: Text(
+                                          'Primary Location'.tr,
+                                          style: const TextStyle(
                                             fontSize: 9.5,
                                             fontWeight: FontWeight.bold,
                                             color: Color(0xFF0F766E),
@@ -695,7 +699,7 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
                             ),
                           ),
                           Text(
-                            'Fee: SAR ${c.consultationFeeSar.toStringAsFixed(0)}',
+                            '${'Fee:'.tr} ${c.consultationFeeSar.toStringAsFixed(0)} ${'SAR'.tr}',
                             style: const TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.bold,
@@ -709,9 +713,9 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
                 );
               }).toList(),
             )
-          : const Text(
-              'No registered clinical locations assigned.',
-              style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
+          : Text(
+              'No registered clinical locations assigned.'.tr,
+              style: const TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
             ),
     );
   }
@@ -732,7 +736,7 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
   // ── Academic Qualifications Card ───────────────────────────────────────
   Widget _buildQualificationsCard(DoctorDetailResponse doc) {
     return _cardWrapper(
-      title: 'Academic Qualifications',
+      title: 'Academic Qualifications'.tr,
       icon: Icons.school_outlined,
       child: doc.qualifications.isNotEmpty
           ? Column(
@@ -798,9 +802,9 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
                 );
               }).toList(),
             )
-          : const Text(
-              'No qualifications recorded on profile.',
-              style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
+          : Text(
+              'No qualifications recorded on profile file.'.tr,
+              style: const TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
             ),
     );
   }
@@ -808,14 +812,14 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
   // ── Spoken Languages Card ──────────────────────────────────────────────
   Widget _buildLanguagesCard(DoctorDetailResponse doc) {
     return _cardWrapper(
-      title: 'Spoken Languages',
+      title: 'Spoken Languages'.tr,
       icon: Icons.language_rounded,
       child: doc.languages.isNotEmpty
           ? Wrap(
               spacing: 8,
               runSpacing: 8,
               children: doc.languages.map((l) {
-                final name = _languageNames[l.languageId] ?? 'Language';
+                final name = _languageNames[l.languageId] ?? 'Language'.tr;
                 return Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -860,9 +864,9 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
                 );
               }).toList(),
             )
-          : const Text(
-              'No languages documented.',
-              style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
+          : Text(
+              'No languages documented.'.tr,
+              style: const TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
             ),
     );
   }
@@ -882,14 +886,14 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.star_rounded,
+                  const Icon(Icons.star_rounded,
                       size: 20, color: Color(0xFFF59E0B)),
-                  SizedBox(width: 6),
+                  const SizedBox(width: 6),
                   Text(
-                    'Patient Reviews & Ratings',
-                    style: TextStyle(
+                    'Patient Reviews & Ratings'.tr,
+                    style: const TextStyle(
                       fontSize: 14.5,
                       fontWeight: FontWeight.bold,
                       color: AppTheme.textMain,
@@ -919,17 +923,17 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
           const SizedBox(height: 14),
 
           if (_reviews.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
               child: Center(
                 child: Column(
                   children: [
-                    Icon(Icons.rate_review_outlined,
+                    const Icon(Icons.rate_review_outlined,
                         size: 32, color: AppTheme.textMuted),
-                    SizedBox(height: 6),
+                    const SizedBox(height: 6),
                     Text(
-                      'No patient reviews recorded yet for this doctor.',
-                      style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                      'No patient reviews recorded yet for this doctor.'.tr,
+                      style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
                     ),
                   ],
                 ),
@@ -943,8 +947,9 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
   }
 
   Widget _buildReviewRow(DoctorReviewModel rev, String doctorName) {
-    final patientName =
-        rev.isAnonymous ? 'Anonymous' : (rev.patientName.isNotEmpty ? rev.patientName : 'Patient');
+    final patientName = rev.isAnonymous
+        ? 'Anonymous'.tr
+        : (rev.patientName.isNotEmpty ? rev.patientName : 'Patient'.tr);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1027,11 +1032,11 @@ class _DoctorDetailScreenState extends ConsumerState<DoctorDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Row(
+                  Row(
                     children: [
                       Text(
-                        '👨‍⚕️ Doctor Response',
-                        style: TextStyle(
+                        '👨‍⚕️ ${'Doctor Response'.tr}',
+                        style: const TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.bold,
                           color: Color(0xFF0F766E),

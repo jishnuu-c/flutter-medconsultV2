@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../auth/auth_provider.dart';
+import '../localization/language_service.dart';
 import '../models/auth_models.dart';
 import '../network/api_client.dart';
 import '../theme/app_theme.dart';
@@ -283,7 +284,7 @@ class AppLayout extends ConsumerWidget {
                           color: isActive ? Colors.white : Colors.white70,
                         ),
                         title: Text(
-                          item.label,
+                          item.label.tr,
                           style: TextStyle(
                             color: isActive ? Colors.white : Colors.white70,
                             fontSize: 14,
@@ -305,9 +306,9 @@ class AppLayout extends ConsumerWidget {
                 ListTile(
                   leading:
                       const Icon(Icons.public, color: Colors.white70, size: 20),
-                  title: const Text(
-                    'Public Portal Home',
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  title: Text(
+                    'Public Portal Home'.tr,
+                    style: const TextStyle(color: Colors.white70, fontSize: 14),
                   ),
                   onTap: () {
                     context.go('/');
@@ -315,6 +316,29 @@ class AppLayout extends ConsumerWidget {
                   },
                 ),
               ],
+            ),
+          ),
+
+          // Language Switcher in Sidebar (matching Angular layout.component.html)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Colors.white24),
+                minimumSize: const Size.fromHeight(40),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              icon: const Icon(Icons.language, size: 16, color: AppTheme.primaryTeal),
+              label: Text(
+                ref.watch(isArabicProvider) ? 'English' : 'العربية',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              onPressed: () {
+                ref.read(languageNotifierProvider.notifier).toggleLanguage();
+              },
             ),
           ),
 
@@ -326,9 +350,12 @@ class AppLayout extends ConsumerWidget {
                 foregroundColor: Colors.white,
                 side: const BorderSide(color: Colors.white24),
                 minimumSize: const Size.fromHeight(44),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
               icon: const Icon(Icons.logout, size: 18),
-              label: const Text('Logout'),
+              label: Text('Logout'.tr),
               onPressed: () {
                 ref.read(authNotifierProvider.notifier).logout();
                 context.go('/login');
@@ -401,8 +428,9 @@ class AppLayout extends ConsumerWidget {
                   // Top Header Bar
                   if (!hideBars)
                     Container(
-                      height: 70,
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      height: 64,
+                      padding: EdgeInsets.symmetric(
+                          horizontal: isDesktop ? 24 : 12),
                       decoration: const BoxDecoration(
                         color: Colors.white,
                         border: Border(
@@ -410,104 +438,152 @@ class AppLayout extends ConsumerWidget {
                       ),
                       child: Row(
                         children: [
-                          if (!isDesktop)
+                          if (!isDesktop) ...[
                             Builder(
                               builder: (ctx) => IconButton(
-                              icon: const Icon(Icons.menu),
-                              onPressed: () => Scaffold.of(ctx).openDrawer(),
+                                icon: const Icon(Icons.menu),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(
+                                    minWidth: 36, minHeight: 36),
+                                onPressed: () => Scaffold.of(ctx).openDrawer(),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          Text(
+                            'Dashboard'.tr,
+                            style: TextStyle(
+                              fontSize: isDesktop ? 18 : 16,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.textMain,
                             ),
                           ),
-                        const Text(
-                          'Dashboard',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textMain,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        if (isDesktop)
-                          OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
+                          if (isDesktop) ...[
+                            const SizedBox(width: 12),
+                            OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 6),
+                                textStyle: const TextStyle(fontSize: 12),
+                              ),
+                              icon: const Icon(Icons.public, size: 14),
+                              label: Text('View Public Portal'.tr),
+                              onPressed: () => context.go('/'),
+                            ),
+                          ],
+                          const Spacer(),
+                          // Quick Language Toggle Pill
+                          InkWell(
+                            onTap: () {
+                              ref
+                                  .read(languageNotifierProvider.notifier)
+                                  .toggleLanguage();
+                            },
+                            borderRadius: BorderRadius.circular(20),
+                            child: Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 6),
-                              textStyle: const TextStyle(fontSize: 12),
-                            ),
-                            icon: const Icon(Icons.public, size: 14),
-                            label: const Text('View Public Portal'),
-                            onPressed: () => context.go('/'),
-                          ),
-                        const Spacer(),
-                        if (user != null) ...[
-                          CircleAvatar(
-                            radius: 18,
-                            backgroundColor: AppTheme.primaryLightTeal,
-                            backgroundImage:
-                                _resolveAssetUrl(user.avatarUrl) != null
-                                    ? NetworkImage(
-                                        _resolveAssetUrl(user.avatarUrl)!)
-                                    : null,
-                            child: _resolveAssetUrl(user.avatarUrl) == null
-                                ? Text(
-                                    user.initials,
-                                    style: const TextStyle(
-                                      color: AppTheme.primaryTeal,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
-                                    ),
-                                  )
-                                : null,
-                          ),
-                          const SizedBox(width: 12),
-                          if (isDesktop)
-                            Flexible(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                    color: const Color(0xFFE2E8F0)),
+                              ),
+                              child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
+                                  const Icon(Icons.language,
+                                      size: 14, color: Color(0xFF0F766E)),
+                                  const SizedBox(width: 4),
                                   Text(
-                                    user.fullName,
-                                    overflow: TextOverflow.ellipsis,
+                                    ref.watch(isArabicProvider)
+                                        ? 'English'
+                                        : 'العربية',
                                     style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 14,
-                                      color: AppTheme.textMain,
-                                    ),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.primaryLightTeal,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      user.role.value.replaceAll('_', ' '),
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        color: AppTheme.primaryDarkTeal,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF0F766E),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                          const SizedBox(width: 12),
-                          IconButton(
-                            icon: const Icon(Icons.logout,
-                                color: AppTheme.dangerRed, size: 20),
-                            tooltip: 'Logout',
-                            onPressed: () {
-                              ref.read(authNotifierProvider.notifier).logout();
-                              context.go('/login');
-                            },
                           ),
+                          const SizedBox(width: 6),
+                          if (user != null) ...[
+                            CircleAvatar(
+                              radius: isDesktop ? 18 : 15,
+                              backgroundColor: AppTheme.primaryLightTeal,
+                              backgroundImage:
+                                  _resolveAssetUrl(user.avatarUrl) != null
+                                      ? NetworkImage(
+                                          _resolveAssetUrl(user.avatarUrl)!)
+                                      : null,
+                              child: _resolveAssetUrl(user.avatarUrl) == null
+                                  ? Text(
+                                      user.initials,
+                                      style: TextStyle(
+                                        color: AppTheme.primaryTeal,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: isDesktop ? 12 : 10,
+                                      ),
+                                    )
+                                  : null,
+                            ),
+                            if (isDesktop) ...[
+                              const SizedBox(width: 12),
+                              Flexible(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      user.fullName,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                        color: AppTheme.textMain,
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.primaryLightTeal,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        user.role.value.replaceAll('_', ' '),
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          color: AppTheme.primaryDarkTeal,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            const SizedBox(width: 4),
+                            IconButton(
+                              icon: const Icon(Icons.logout,
+                                  color: AppTheme.dangerRed, size: 18),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(
+                                  minWidth: 32, minHeight: 32),
+                              tooltip: 'Logout'.tr,
+                              onPressed: () {
+                                ref.read(authNotifierProvider.notifier).logout();
+                                context.go('/login');
+                              },
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
-                  ),
 
                   // Main Content Viewport
                   Expanded(child: child),

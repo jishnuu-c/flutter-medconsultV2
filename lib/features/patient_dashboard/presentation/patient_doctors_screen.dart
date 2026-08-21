@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/localization/language_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/references_service.dart';
 import '../../../core/utils/image_utils.dart';
@@ -239,33 +240,64 @@ class _PatientDoctorsScreenState extends ConsumerState<PatientDoctorsScreen> {
     return n;
   }
 
-  List<_Option> get _specialtyOptions => _specialties
-      .map((s) =>
-          _Option(s.specialtyId, s.nameEn.isNotEmpty ? s.nameEn : 'Specialty'))
-      .toList();
+  List<_Option> get _specialtyOptions {
+    final isAr = ref.watch(isArabicProvider);
+    return _specialties
+        .map((s) => _Option(
+            s.specialtyId,
+            isAr && s.nameAr.isNotEmpty
+                ? s.nameAr
+                : (s.nameEn.isNotEmpty ? s.nameEn : 'Specialty'.tr)))
+        .toList();
+  }
 
-  List<_Option> get _cityOptions => _cities
-      .map((c) => _Option(c.cityId, c.nameEn.isNotEmpty ? c.nameEn : 'City'))
-      .toList();
+  List<_Option> get _cityOptions {
+    final isAr = ref.watch(isArabicProvider);
+    return _cities
+        .map((c) => _Option(
+            c.cityId,
+            isAr && c.nameAr.isNotEmpty
+                ? c.nameAr
+                : (c.nameEn.isNotEmpty ? c.nameEn : 'City'.tr)))
+        .toList();
+  }
 
-  List<_Option> get _languageOptions => _languages
-      .map((l) =>
-          _Option(l.languageId, l.nameEn.isNotEmpty ? l.nameEn : 'Language'))
-      .toList();
+  List<_Option> get _languageOptions {
+    final isAr = ref.watch(isArabicProvider);
+    return _languages
+        .map((l) => _Option(
+            l.languageId,
+            isAr && l.nameAr.isNotEmpty
+                ? l.nameAr
+                : (l.nameEn.isNotEmpty ? l.nameEn : 'Language'.tr)))
+        .toList();
+  }
 
   String _specialtyName(String id) {
+    final isAr = ref.watch(isArabicProvider);
     final match = _specialties.where((s) => s.specialtyId == id);
-    return match.isNotEmpty ? match.first.nameEn : 'Specialist';
+    if (match.isEmpty) return 'Specialist'.tr;
+    return isAr && match.first.nameAr.isNotEmpty
+        ? match.first.nameAr
+        : match.first.nameEn;
   }
 
   String _cityName(String id) {
+    final isAr = ref.watch(isArabicProvider);
     final match = _cities.where((c) => c.cityId == id);
-    return match.isNotEmpty ? match.first.nameEn : '';
+    if (match.isEmpty) return '';
+    return isAr && match.first.nameAr.isNotEmpty
+        ? match.first.nameAr
+        : match.first.nameEn;
   }
 
   String _languageName(String id) {
+    final isAr = ref.watch(isArabicProvider);
     final match = _languages.where((l) => l.languageId == id);
-    return match.isNotEmpty ? match.first.nameEn : '';
+    if (match.isEmpty) return '';
+    return isAr && match.first.nameAr.isNotEmpty
+        ? match.first.nameAr
+        : match.first.nameEn;
   }
 
   void _resetFilters() {
@@ -521,14 +553,14 @@ class _HeaderBanner extends StatelessWidget {
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: Colors.white.withOpacity(0.2)),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.medical_services_outlined, size: 12, color: Colors.white),
-                    SizedBox(width: 5),
+                    const Icon(Icons.medical_services_outlined, size: 12, color: Colors.white),
+                    const SizedBox(width: 5),
                     Text(
-                      'SPECIALIST DIRECTORY',
-                      style: TextStyle(
+                      'Specialist'.tr.toUpperCase(),
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
@@ -545,7 +577,7 @@ class _HeaderBanner extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  '$count Available',
+                  '$count ${'Doctors'.tr}',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 11,
@@ -557,7 +589,7 @@ class _HeaderBanner extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'Browse Doctors',
+            'Browse Doctors'.tr,
             style: TextStyle(
               color: Colors.white,
               fontSize: isMobile ? 22 : 28,
@@ -567,7 +599,7 @@ class _HeaderBanner extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           Text(
-            'Find and book consultations with certified medical specialists',
+            'Find and book consultations with certified medical specialists'.tr,
             style: TextStyle(
               color: Colors.white.withOpacity(0.85),
               fontSize: isMobile ? 12 : 14,
@@ -641,7 +673,7 @@ class _MobileSearchRow extends StatelessWidget {
                   controller: controller,
                   onChanged: (_) => onChanged(),
                   decoration: InputDecoration(
-                    hintText: 'Search doctor by name or bio...',
+                    hintText: 'Search doctor name or title...'.tr,
                     hintStyle: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
                     prefixIcon: const Icon(Icons.search, size: 18, color: AppTheme.textMuted),
                     suffixIcon: controller.text.isNotEmpty
@@ -687,7 +719,7 @@ class _MobileSearchRow extends StatelessWidget {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        'Filter',
+                        'Filter'.tr,
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.bold,
@@ -724,13 +756,13 @@ class _MobileSearchRow extends StatelessWidget {
             child: Row(
               children: [
                 _buildQuickPill(
-                  label: 'All',
+                  label: 'All Types'.tr,
                   isSelected: selectedSpecialtyIds.isEmpty,
                   onTap: onClearAllSpecialties,
                 ),
                 for (final s in specialties.take(8))
                   _buildQuickPill(
-                    label: s.nameEn.isNotEmpty ? s.nameEn : 'Specialty',
+                    label: specialtyName(s.specialtyId),
                     isSelected: selectedSpecialtyIds.contains(s.specialtyId),
                     onTap: () => onSelectSpecialty(s.specialtyId),
                   ),
@@ -756,8 +788,8 @@ class _MobileSearchRow extends StatelessWidget {
                   _activeFilterChip('🗣️ ${languageName(selectedLanguageId)}', onClearLanguage),
                 TextButton(
                   onPressed: onClearAll,
-                  child: const Text('Clear All',
-                      style: TextStyle(color: AppTheme.dangerRed, fontWeight: FontWeight.bold, fontSize: 11.5)),
+                  child: Text('Clear All'.tr,
+                      style: const TextStyle(color: AppTheme.dangerRed, fontWeight: FontWeight.bold, fontSize: 11.5)),
                 ),
               ],
             ),
@@ -1056,7 +1088,7 @@ class _DoctorCard extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          '${doctor.experienceYears} yrs exp',
+                          '${doctor.experienceYears} ${'Years Experience'.tr}',
                           style: const TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
                         ),
                       ],
@@ -1079,10 +1111,9 @@ class _DoctorCard extends StatelessWidget {
                   const Icon(Icons.payments_outlined, size: 15, color: Color(0xFF059669)),
                   const SizedBox(width: 4),
                   Text(
-                    '${doctor.consultationFeeSar.toStringAsFixed(0)} SAR',
+                    '${doctor.consultationFeeSar.toStringAsFixed(0)} ${'SAR'.tr}',
                     style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF059669)),
                   ),
-                  const Text(' / consult', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                 ],
               ),
               if (languageNames.isNotEmpty)
@@ -1105,7 +1136,7 @@ class _DoctorCard extends StatelessWidget {
                     side: const BorderSide(color: AppTheme.borderGray),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  child: const Text('View Profile', style: TextStyle(fontSize: 12.5, color: AppTheme.textMain)),
+                  child: Text('View Profile'.tr, style: const TextStyle(fontSize: 12.5, color: AppTheme.textMain)),
                 ),
               ),
               const SizedBox(width: 10),
@@ -1117,7 +1148,7 @@ class _DoctorCard extends StatelessWidget {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   icon: const Icon(Icons.calendar_month, size: 14),
-                  label: const Text('Book', style: TextStyle(fontSize: 12.5)),
+                  label: Text('Book'.tr, style: const TextStyle(fontSize: 12.5)),
                 ),
               ),
             ],
@@ -1150,15 +1181,15 @@ class _EmptyState extends StatelessWidget {
             child: const Icon(Icons.search_off, size: 32, color: AppTheme.textMuted),
           ),
           const SizedBox(height: 12),
-          const Text('No Doctors Found', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          Text('No medical experts match your search query.'.tr, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          const Text(
-            'Try adjusting your search keyword, specialty, or rating filters.',
+          Text(
+            'Try adjusting your search filters or click below to clear all preferences.'.tr,
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
+            style: const TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
           ),
           const SizedBox(height: 16),
-          ElevatedButton(onPressed: onReset, child: const Text('Clear All Filters')),
+          ElevatedButton(onPressed: onReset, child: Text('Clear All'.tr)),
         ],
       ),
     );
